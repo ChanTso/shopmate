@@ -24,6 +24,13 @@ merchant_products(product_id,name,price_minor,currency,publication_version,avail
 merchant_paid_orders(order_kind,order_id,product_id,product_name,quantity,total_price_minor,
  currency,succeeded_at)
 merchant_daily_sales(sale_date,product_id,currency,amount_minor,order_count,units)
+Resolve the requested product set against merchant_products and keep its actual product_id.
+Names in the question may be shorthand, translated labels, or annotations: they are not join
+keys. Read the name/id mapping when needed; do not invent a literal name list as a catalog.
+Join views on product_id, and copy the observed name only for display. An unmatched name is
+an unresolved product lookup, not zero sales. Confirm the catalog row before concluding
+that the product has no paid rows. Whole-currency rankings derive their set from the views,
+not from a hand-written list of names.
 Paid sales are gross before refunds, based on succeeded_at in [start,end), using immutable
 historical order amounts. These views already join successful payment to PAID order by both
 order_kind and order_id; do not join payment again. Separate currencies; CNY and USD amounts

@@ -126,9 +126,9 @@ def build_tools(
         {
             "name": "get_business_snapshot",
             "description": (
-                "Headline figures for a period: sales, orders, traffic, conversion, average "
-                "order value, the change against the prior period, and alert counts. Call it "
-                "first for any question about how the business is doing."
+                "Whole-store headline figures for a period and its prior-period comparison. "
+                "Use for a store overview. This tool has no listing filter: its totals do not "
+                "answer a question about one listing or a selected group."
             ),
             "input_schema": {
                 "type": "object",
@@ -146,9 +146,9 @@ def build_tools(
         {
             "name": "query_metrics",
             "description": (
-                "One metric over time, optionally narrowed to a segment (a category, a "
-                "listing, a channel). Use after the snapshot for a trend, a breakdown, a "
-                "comparable, or the explanation of a movement."
+                "One metric over time for the requested scope. For a listing question, "
+                "pass that listing's returned id as segment; no whole-store snapshot is "
+                "needed first. Keep the same target across periods, including empty results."
             ),
             "input_schema": {
                 "type": "object",
@@ -168,7 +168,10 @@ def build_tools(
                     },
                     "segment": {
                         "type": "string",
-                        "description": "Segment to narrow to; omit for the whole operation.",
+                        "description": (
+                            "The target listing id returned by a catalog read, or a supported "
+                            "segment. Omit only for a whole-store question."
+                        ),
                     },
                 },
                 "required": ["metric"],

@@ -51,7 +51,13 @@ class AnalysisBrief(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
 
-    question: str = Field(max_length=300, description="The question, stated plainly.")
+    question: str = Field(
+        max_length=300,
+        description=(
+            "The current question and its required scope and filters. Use the other brief "
+            "fields for periods and targets; shorten prose, not business conditions."
+        ),
+    )
     metrics_needed: list[_BriefItem] = Field(
         default_factory=list, max_length=8, description="Metrics in the read tools' vocabulary."
     )
@@ -61,7 +67,10 @@ class AnalysisBrief(BaseModel):
     )
     segments: list[_BriefItem] = Field(
         default_factory=list, max_length=6,
-        description="Segments the data is known to carry; omit rather than guess.",
+        description=(
+            "Target listing ids or breakdowns requested by this question, not every "
+            "available listing or currency. Use ids already returned by a catalog read."
+        ),
     )
     expected_output: str = Field(
         default="", max_length=200,
@@ -75,10 +84,11 @@ def build_analysis_tool_definition() -> dict[str, Any]:
     return {
         "name": ANALYSIS_TOOL,
         "description": (
-            "Compute an answer over the store's data for a question that needs "
-            "computing: which segment drove a change, how two metrics relate, which "
-            "listings make up a movement. It renders its own metrics card. For a figure "
-            "one read answers, use the read."
+            "Compute derived figures, period comparisons or breakdowns over the current "
+            "question's exact targets. A later subquestion keeps the named listing unless "
+            "the operator changes it; an accessible catalog is not the requested scope. "
+            "Carry the targets, periods, currencies and filters into the brief. It renders "
+            "its own metrics card. For a figure one scoped read answers, use that read."
         ),
         "input_schema": AnalysisBrief.model_json_schema(),
     }
