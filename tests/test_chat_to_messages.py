@@ -83,6 +83,81 @@ class CompatibilityTests(unittest.IsolatedAsyncioTestCase):
             message = await stream.get_final_message()
         return source, client, events, message
 
+    async def test_sdk_request_explicitly_preserves_optional_tool_fields(self):
+        from merchant_agent.tools.registry import build_tools
+
+        from shopmate.backend import ShopMateConfig
+
+        tool = next(t for t in build_tools(ShopMateConfig(), []) if t["name"] == "search_listings")
+        original = json.dumps(tool, sort_keys=True)
+
+        async def handle(request):
+            function = json.loads(request.content)["tools"][0]["function"]
+            self.assertIs(function["strict"], False)
+            self.assertEqual(function["parameters"], tool["input_schema"])
+            self.assertNotIn("filters", function["parameters"]["required"])
+            self.assertNotIn(
+                "category", function["parameters"]["properties"]["filters"]["properties"]
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "tool_calls",
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "lookup",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "search_listings",
+                                            "arguments": '{"query":"coffee"}',
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                },
+            )
+
+        client = make_client(
+            "https://fixture.invalid/v1",
+            "fixture-key",
+            upstream_transport=httpx.MockTransport(handle),
+        )
+        self.addAsyncCleanup(client.close)
+        response = await client.messages.create(
+            model="fixture-model",
+            max_tokens=50,
+            tools=[tool],
+            messages=[{"role": "user", "content": "Find coffee"}],
+        )
+        self.assertEqual(response.content[0].input, {"query": "coffee"})
+        self.assertEqual(json.dumps(tool, sort_keys=True), original)
+
+    def test_explicit_strict_tool_is_not_silently_downgraded(self):
+        body = translate_request(
+            {
+                "model": "fixture-model",
+                "max_tokens": 50,
+                "messages": [],
+                "tools": [
+                    {
+                        "name": "one",
+                        "strict": True,
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertIs(body["tools"][0]["function"]["strict"], True)
+
     async def test_text_and_usage(self):
         source, client, _events, message = await self.consume(
             [

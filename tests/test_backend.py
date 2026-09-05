@@ -5,7 +5,12 @@ import pytest
 from fastapi import HTTPException
 from merchant_agent.changes import ChangeNotApplicable
 from merchant_agent.tools.registry import build_tools
-from merchant_agent.types import AnalysisTable, MerchantSessionContext, PriceUpdateItem
+from merchant_agent.types import (
+    AnalysisTable,
+    ListingFilters,
+    MerchantSessionContext,
+    PriceUpdateItem,
+)
 
 from shopmate.auth import RequestIdentity, bind_context
 from shopmate.backend import CityBuddyMerchantBackend, ShopMateConfig, reporting_period
@@ -298,3 +303,32 @@ async def test_snapshot_does_not_sum_currencies_or_invent_unknown_metrics(rig):
     assert series.points[0].value == 115
     with pytest.raises(ChangeNotApplicable):
         await rig.backend.query_metrics(rig.session, "profit")
+
+
+async def test_catalog_name_lookup_omits_filters_and_supported_filters_remain_effective(rig):
+    tool = next(t for t in build_tools(ShopMateConfig(), []) if t["name"] == "search_listings")
+    schema = tool["input_schema"]
+    filters = schema["properties"]["filters"]
+    assert set(filters["properties"]) == {"status", "max_stock", "sort"}
+    assert set(filters["properties"]["sort"]["enum"]) == {
+        "relevance",
+        "stock_asc",
+        "price_desc",
+        "price_asc",
+    }
+    assert "filters" not in schema["required"]
+    assert not filters.get("required")
+    assert [row.listing_id for row in await rig.backend.search_listings(rig.session, "coffee")] == [
+        "coffee"
+    ]
+    rig.client.products_by_id["tea"] = rig.client.products_by_id["tea"].model_copy(
+        update={"stockQuantity": 3}
+    )
+    rows = await rig.backend.search_listings(
+        rig.session, "", ListingFilters(status="active", max_stock=3, sort="price_asc")
+    )
+    assert [row.listing_id for row in rows] == ["tea"]
+    with pytest.raises(ChangeNotApplicable):
+        await rig.backend.search_listings(
+            rig.session, "coffee", ListingFilters(content_quality="good")
+        )

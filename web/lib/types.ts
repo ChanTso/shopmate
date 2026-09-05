@@ -226,6 +226,7 @@ export interface AlertsResponse {
 export interface MetricEntry {
   metric: string;
   value?: number | null;
+  unit?: string | null;
   change_pct?: number | null;
   currency?: string | null;
   note?: string | null;
@@ -236,6 +237,12 @@ export interface MetricsPayload {
   title?: string | null;
   period?: string | null;
   metrics: MetricEntry[];
+  analysis?: {
+    headline: string;
+    findings: string[];
+    caveats: string[];
+    method_note?: string | null;
+  };
 }
 
 export interface DigestEntry {

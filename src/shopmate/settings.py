@@ -27,7 +27,7 @@ class Settings:
     sql_database: str = "commerce_db"
     state_path: Path = ROOT / ".run/sessions.sqlite3"
     model: str = "gpt-5.6-terra"
-    analysis_model: str = "gpt-5.6-luna"
+    analysis_model: str = "gpt-5.6-terra"
     task_timeout_s: float = 300.0
     max_model_calls: int = 16
     sql_timeout_ms: int = 2000

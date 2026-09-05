@@ -46,27 +46,24 @@ def _title(what: str) -> dict[str, Any]:
 def _listing_filters_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "description": "Constraints the operator stated; with an empty query they scan everything.",
+        "description": (
+            "Only constraints the operator stated. Omit filters for a name lookup; "
+            "do not invent a status or stock threshold. An empty query browses the catalog."
+        ),
         "properties": {
             "status": {
                 "type": "string",
                 "enum": ["active", "paused", "draft", "out_of_stock"],
                 "description": "Listing status to match.",
             },
-            "category": {"type": "string", "description": "Catalog category name."},
             "max_stock": {
                 "type": "integer",
                 "minimum": 0,
                 "description": "Only listings at or below this stock level.",
             },
-            "content_quality": {
-                "type": "string",
-                "enum": ["good", "needs_work", "poor"],
-                "description": "Content-quality flag to match; needs_work or poor for audits.",
-            },
             "sort": {
                 "type": "string",
-                "enum": ["relevance", "sales_desc", "stock_asc", "price_desc", "price_asc"],
+                "enum": ["relevance", "stock_asc", "price_desc", "price_asc"],
                 "description": "Result order; relevance when omitted.",
             },
         },
@@ -199,9 +196,9 @@ def build_tools(
         {
             "name": "search_listings",
             "description": (
-                "Search the listings; returns id, title, status, price, stock, and the "
-                "content-quality flag. Use a specific query to find something, or an empty "
-                "query with filters to sweep the whole catalog for an audit."
+                "Search the listings by name or id; returns title, status, current price, "
+                "currency and stock. Omit filters unless the operator requested a constraint. "
+                "Use an empty query to browse; use run_analysis for sales rankings."
             ),
             "input_schema": {
                 "type": "object",

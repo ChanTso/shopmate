@@ -130,7 +130,12 @@ def translate_request(body: dict[str, Any]) -> dict[str, Any]:
         for tool in body["tools"]:
             if tool.get("type") not in {None, "custom"} or "input_schema" not in tool:
                 raise ChatCompatibilityError("ServerToolUnsupported")
-            function = {"name": tool["name"], "parameters": tool["input_schema"]}
+            # Preserve optional arguments rather than relying on another protocol's defaults.
+            function = {
+                "name": tool["name"],
+                "parameters": tool["input_schema"],
+                "strict": tool.get("strict", False),
+            }
             if "description" in tool:
                 function["description"] = tool["description"]
             tools.append({"type": "function", "function": function})

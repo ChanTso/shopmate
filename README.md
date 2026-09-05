@@ -57,7 +57,7 @@ npm --prefix web run start
 
 ## 模型与数据配置
 
-模型代理配置沿用同级 `citybuddy/.env` 中的 `CLIPROXY_BASE_URL` 和 `CLIPROXY_API_KEY`。由运行中的 API 读取，不复制到源代码、浏览器或执行记录。默认主模型 `gpt-5.6-terra`，分析模型 `gpt-5.6-luna`；模型名、业务服务地址与每轮预算通过 `.run/settings.json` 配置，也可用 `SHOPMATE_CONFIG` 指向另一份本地配置。
+模型代理配置沿用同级 `citybuddy/.env` 中的 `CLIPROXY_BASE_URL` 和 `CLIPROXY_API_KEY`。由运行中的 API 读取，不复制到源代码、浏览器或执行记录。默认主模型和分析模型均为 `gpt-5.6-terra`；模型名、业务服务地址与每轮预算通过 `.run/settings.json` 配置，也可用 `SHOPMATE_CONFIG` 指向另一份本地配置。
 
 实际网络协议为 Chat Completions，通过进程内适配对接 Merchant 的 Messages 循环。主模型流式返回工具参数，收齐后执行并回传；分析子循环使用同一客户端和共享预算。缓存用量只显示代理实际返回的数据，未提供时标为未知，不宣称专属协议的提前派发或缓存收益。
 
