@@ -2,8 +2,11 @@
 
 import importlib.util
 import io
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
 spec = importlib.util.spec_from_file_location(
@@ -137,3 +140,95 @@ def test_provider_failure_requires_explicit_observation_not_generic_host_error()
             }
         }
     )
+
+
+@pytest.mark.parametrize("recovery_status", [200, 503])
+def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixture(
+    tmp_path, monkeypatch, recovery_status
+):
+    runtime = tmp_path / ".run"
+    runtime.mkdir()
+    (runtime / "operator_password").write_text("private-login-password")
+    monkeypatch.setattr(driver, "ROOT", tmp_path)
+    monkeypatch.setattr(driver, "verify_sources", lambda *_: None)
+    monkeypatch.setattr(
+        driver.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=0)
+    )
+    calls = []
+    recovered = False
+
+    def handle(request):
+        nonlocal recovered
+        path = request.url.path.rsplit("/", 1)[-1]
+        calls.append((request.method, path))
+        if path == "login":
+            return httpx.Response(
+                200,
+                json={
+                    "subject": driver.SUBJECT,
+                    "accessToken": "private-user-token",
+                },
+            )
+        if path == "sessions":
+            return httpx.Response(200, json={"sessions": [{"status": "completed"}]})
+        if path == "session" and request.method == "POST":
+            return httpx.Response(200, json={"session_id": "new-session"})
+        if path == "listings":
+            return httpx.Response(200, json={"listings": []})
+        if path == "chat":
+            # A tool failed after sending prepare; the model nevertheless finished its turn.
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=(
+                    'event: tool_result\ndata: {"is_error":true,"reason":"COMMERCE_UNAVAILABLE"}\n\n'
+                    'event: turn_complete\ndata: {"stop_reason":"end_turn"}\n\n'
+                ),
+            )
+        if path == "overview":
+            if recovery_status == 503:
+                return httpx.Response(503, json={"category": "COMMERCE_UNAVAILABLE"})
+            recovered = True
+            return httpx.Response(200, json={"recent_changes": [{"change_id": "recovered-draft"}]})
+        if path == "session":
+            assert recovered, "Archival must happen after pending prepare recovery"
+            return httpx.Response(200, json={"items": [{"changeIds": ["recovered-draft"]}]})
+        raise AssertionError(f"Unexpected request {request.method} {path}")
+
+    client_type = httpx.Client
+    monkeypatch.setattr(
+        driver.httpx,
+        "Client",
+        lambda **kwargs: client_type(**kwargs, transport=httpx.MockTransport(handle)),
+    )
+    monkeypatch.setattr(
+        driver, "snapshot", lambda _evidence, stage, _paths, _session: calls.append(("SQL", stage))
+    )
+    evidence = driver.Evidence(
+        tmp_path / "results",
+        {
+            "citybuddy_commit": "a" * 40,
+            "shopmate_commit": "b" * 40,
+        },
+    )
+    result = driver.run_task(
+        {
+            "steps": [{"kind": "chat", "message": "Prepare a draft"}],
+            "evaluator": {"reference_sql": []},
+        },
+        {"common_context": "UTC"},
+        evidence,
+        SimpleNamespace(task_timeout_s=1, citybuddy_dir=tmp_path),
+        "http://host/api/merchant",
+    )
+    assert calls.index(("GET", "overview")) < calls.index(("SQL", "after"))
+    if recovery_status == 200:
+        assert result["execution_status"] == "executed"
+        assert calls.index(("GET", "overview")) < calls.index(("GET", "session"))
+        saved = json.loads((evidence.path / "saved-session.json").read_text())
+        assert "recovered-draft" in saved["data"]["response_body"]
+    else:
+        assert result["execution_status"] == "failed"
+        assert result["fixture_retained"] is True
+        assert ("GET", "session") not in calls
+    assert calls.count(("GET", "overview")) == 1

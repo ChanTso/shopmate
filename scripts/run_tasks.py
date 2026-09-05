@@ -439,6 +439,10 @@ def run_task(task: dict, suite: dict, evidence: Evidence, settings: Settings, ap
             if session_id is not None:
                 try:
                     wait_quiet(client, evidence, "sessions-after.json")
+                    # A completed turn can still contain a prepare whose Java response was lost.
+                    request_json(
+                        client, evidence, "recovered-overview.json", "GET", "overview", write=True
+                    )
                     request_json(client, evidence, "saved-session.json", "GET", "session")
                 except TaskFailure as error:
                     if failure is None:
