@@ -42,6 +42,7 @@ from merchant_agent.analysis import (
     CODE_EXECUTION_TOOL_TYPE,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ANALYSIS_TOOL,
+    AnalysisBrief,
     build_analysis_query_tool,
     build_analysis_system_prompt,
     build_analysis_tool_definition,
@@ -139,18 +140,8 @@ class AnalysisRunner:
         return with_tool_cache_control(tools)
 
     async def _task_brief(self, session: Any, args: dict[str, Any]) -> str:
-        """The opening message: the brief, plus the backend's schema notes when queries
-        are supported. The brief's strings are cut to size again here; the schema's limits
-        describe what the model was asked to send, not what it sent."""
-
-        def _clamp(value: Any, limit: int = 300) -> Any:
-            if isinstance(value, str):
-                return value[:limit]
-            if isinstance(value, list):
-                return [_clamp(item, 80) for item in value[:8]]
-            return value
-
-        brief = {key: _clamp(value) for key, value in args.items() if value}
+        """Validate the model's complete brief before passing it to the isolated delegate."""
+        brief = AnalysisBrief.model_validate(args).model_dump(exclude_unset=True)
         text = "Analysis task:\n" + json.dumps(brief, ensure_ascii=False, indent=2)
         if self._sql_supported:
             try:

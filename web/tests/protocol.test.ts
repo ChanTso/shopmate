@@ -40,6 +40,9 @@ test("missing and partial provider usage cannot be displayed as measured totals"
   const provider = { usage_complete: false, model_calls: 2, calls_with_usage: 0, known_input_tokens: 0, known_output_tokens: 0, known_cache_read_input_tokens: 0 };
   assert.equal(formatTurnUsage({ usage: sdkPlaceholders, provider_usage: provider }), "usage unknown · 2 model calls");
   const measured = { ...provider, calls_with_usage: 1, known_input_tokens: 125, known_output_tokens: 30 };
-  assert.equal(formatTurnUsage({ usage: sdkPlaceholders, provider_usage: measured }), "known in 125 · out 30 · cache read 0 · total unknown (1/2 calls reported)");
-  assert.equal(formatTurnUsage({ provider_usage: { ...measured, usage_complete: true, calls_with_usage: 2 } }), "in 125 · out 30 · cache read 0");
+  assert.equal(formatTurnUsage({ usage: sdkPlaceholders, provider_usage: measured }), "known in 125 · out 30 · cache read unknown · total unknown (1/2 calls reported)");
+  assert.equal(formatTurnUsage({ provider_usage: { ...measured, usage_complete: true, calls_with_usage: 2 } }), "in 125 · out 30 · cache read unknown");
+  const complete = { ...measured, usage_complete: true, calls_with_usage: 2 };
+  assert.equal(formatTurnUsage({ provider_usage: { ...complete, cache_read_usage_complete: true, calls_with_cache_read_usage: 2 } }), "in 125 · out 30 · cache read 0");
+  assert.equal(formatTurnUsage({ provider_usage: { ...complete, cache_read_usage_complete: false, calls_with_cache_read_usage: 1, known_cache_read_input_tokens: 20 } }), "in 125 · out 30 · cache read known 20 (1/2 calls reported; total unknown)");
 });

@@ -166,7 +166,8 @@ def _usage(value: Any) -> dict[str, int]:
             "cache_read_input_tokens": 0,
         }
     prompt, output = value.get("prompt_tokens"), value.get("completion_tokens")
-    cached = (value.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+    cached = (value.get("prompt_tokens_details") or {}).get("cached_tokens")
+    cached = 0 if cached is None else cached
     if (
         any(type(number) is not int or number < 0 for number in (prompt, output, cached))
         or cached > prompt
@@ -178,6 +179,11 @@ def _usage(value: Any) -> dict[str, int]:
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": cached,
     }
+
+
+def _cache_read_available(value: Any) -> bool:
+    details = value.get("prompt_tokens_details") if isinstance(value, dict) else None
+    return isinstance(details, dict) and details.get("cached_tokens") is not None
 
 
 def _stop(reason: Any, has_tools: bool) -> str:
@@ -420,6 +426,7 @@ class _MessagesStream(httpx.AsyncByteStream):
             _arguments(tool["buffer"])
         final_usage = _usage(usage)
         self.observation["usage_available"] = usage is not None
+        self.observation["cache_read_usage_available"] = _cache_read_available(usage)
         self.observation["usage"] = final_usage if usage is not None else None
         self.observation["elapsed_ms"] = round(
             (time.monotonic() - self.observation["_started"]) * 1000
@@ -484,6 +491,9 @@ class ChatToMessagesTransport(httpx.AsyncBaseTransport):
                 "stream": body["stream"],
                 "completed": False,
                 "usage_available": False,
+                "cache_read_usage_available": False,
+                # Chat usage has no Anthropic cache-write count; its SDK zero is a placeholder.
+                "cache_creation_usage_available": False,
                 "text_delta_count": 0,
                 "tool_argument_delta_count": 0,
             }
@@ -527,6 +537,7 @@ class ChatToMessagesTransport(httpx.AsyncBaseTransport):
                 observation.update(
                     completed=True,
                     usage_available=response_body.get("usage") is not None,
+                    cache_read_usage_available=_cache_read_available(response_body.get("usage")),
                     usage=translated["usage"] if response_body.get("usage") is not None else None,
                     elapsed_ms=round((time.monotonic() - observation["_started"]) * 1000),
                 )

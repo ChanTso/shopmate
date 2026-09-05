@@ -179,6 +179,47 @@ class CompatibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(source.closed)
         self.assertEqual(client._chat_compat_transport.observations[0]["text_delta_count"], 2)
 
+    async def test_cache_presence_is_separate_from_sdk_zero_in_both_response_modes(self):
+        for streaming in (False, True):
+            for details, available, cached in (
+                (None, False, 0),
+                ({"cached_tokens": None}, False, 0),
+                ({"cached_tokens": 0}, True, 0),
+                ({"cached_tokens": 5}, True, 5),
+            ):
+                with self.subTest(streaming=streaming, details=details):
+                    usage = {"prompt_tokens": 20, "completion_tokens": 4}
+                    if details is not None:
+                        usage["prompt_tokens_details"] = details
+                    if streaming:
+                        _, client, _, message = await self.consume(
+                            [chunk({"content": "ok"}, "stop"), chunk(usage=usage)]
+                        )
+                    else:
+                        client = await self.open_client(
+                            httpx.Response(
+                                200,
+                                json={
+                                    "choices": [
+                                        {"finish_reason": "stop", "message": {"content": "ok"}}
+                                    ],
+                                    "usage": usage,
+                                },
+                            )
+                        )
+                        message = await client.messages.create(
+                            model="fixture-model",
+                            max_tokens=50,
+                            messages=[{"role": "user", "content": "fixture"}],
+                        )
+                    observation = client._chat_compat_transport.observations[0]
+                    self.assertIs(observation["usage_available"], True)
+                    self.assertIs(observation["cache_read_usage_available"], available)
+                    self.assertIs(observation["cache_creation_usage_available"], False)
+                    self.assertEqual(message.usage.input_tokens, 20 - cached)
+                    self.assertEqual(message.usage.cache_read_input_tokens, cached)
+                    self.assertEqual(message.usage.output_tokens, 4)
+
     async def test_interleaved_tools_and_no_early_stop(self):
         stopped = []
         pieces = [

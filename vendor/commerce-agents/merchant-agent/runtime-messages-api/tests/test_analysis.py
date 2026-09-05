@@ -10,10 +10,18 @@ import json
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from commerce_common.delegation import DelegateExtension, DelegationContext
-from commerce_common.testing import FakeCreateClient, create_response, text_block, tool_use_block
+from commerce_common.testing import (
+    FakeClient,
+    FakeCreateClient,
+    create_response,
+    text_block,
+    text_message,
+    tool_calls_message,
+    tool_use_block,
+)
 from commerce_common.turn import usage_totals
 from merchant_agent import (
     AnalysisResult,
@@ -218,6 +226,101 @@ def test_code_execution_substrate_is_config_gated(backend):
     plain = AnalysisRunner(client=FakeCreateClient([]), backend=backend, config=analysis_config())
     assert CODE_EXECUTION_TOOL_TYPE not in {tool.get("type") for tool in plain._tools}
     assert not any("allowed_callers" in tool for tool in plain._tools)
+
+
+# -- delegation inputs ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {},
+        {"question": "x" * 301},
+        {"question": "q", "period": "x" * 61},
+        {"question": "q", "expected_output": "x" * 201},
+        {"question": "q", "metrics_needed": ["sales"] * 9},
+        {"question": "q", "segments": ["CNY"] * 7},
+        {"question": "q", "metrics_needed": ["x" * 61]},
+        {"question": "q", "segments": ["x" * 61]},
+        {"question": {"filter": "CNY"}},
+        {"question": "q", "period": None},
+        {"question": "q", "metrics_needed": "sales"},
+        {"question": "q", "segments": [123]},
+        {"question": "q", "expected_output": ["summary"]},
+        {"question": "q", "unknown_filter": "exclude cancelled"},
+    ],
+)
+async def test_invalid_brief_is_rejected_before_delegate_model_calls(backend, session, state, invalid):
+    config = analysis_config()
+    client = FakeCreateClient([])
+    runner = AnalysisRunner(client=client, backend=backend, config=config)
+    with pytest.raises(ValidationError):
+        await runner.run(make_context(backend, config, session, state), invalid)
+    assert client.calls == []
+    assert not state.seen_analyses
+
+
+async def test_valid_brief_keeps_all_filters_and_maximum_length_fields(backend, session):
+    suffix = "Only CNY; exclude cancelled payments; UTC [2026-03-01,2026-04-01)."
+    brief = {
+        "question": "Compare paid totals. ".ljust(300 - len(suffix)) + suffix,
+        "period": "2026-03-01/2026-04-01 UTC, exclusive end".ljust(60),
+        "metrics_needed": [f"metric_{i}".ljust(60) for i in range(8)],
+        "segments": [f"segment_{i}".ljust(60) for i in range(6)],
+        "expected_output": "Report totals and the applied filters.".ljust(200),
+    }
+    runner = AnalysisRunner(client=FakeCreateClient([]), backend=backend, config=analysis_config())
+    text = await runner._task_brief(session, brief)
+    assert json.loads(text.removeprefix("Analysis task:\n")) == brief
+    minimal = await runner._task_brief(session, {"question": "Compare paid totals."})
+    assert json.loads(minimal.removeprefix("Analysis task:\n")) == {
+        "question": "Compare paid totals."
+    }
+
+
+async def test_main_model_receives_brief_error_and_can_retry_without_losing_filters(
+    backend, skills, session, state
+):
+    corrected = {
+        "question": "Compare paid totals for CNY, excluding cancelled payments.",
+        "period": "2026-03-01/2026-04-01 UTC, exclusive end",
+    }
+    invalid = {"question": "Summarize sales. " * 24 + "Only CNY; exclude cancelled payments."}
+    delegate_client = FakeCreateClient(
+        [create_response(tool_use_block(SUBMIT_ANALYSIS_TOOL, SUBMISSION))]
+    )
+    client = FakeClient(
+        [
+            tool_calls_message((ANALYSIS_TOOL, invalid, "bad-brief")),
+            tool_calls_message((ANALYSIS_TOOL, corrected, "corrected-brief")),
+            text_message("The analysis is ready."),
+        ]
+    )
+    client.messages.create = delegate_client.messages.create
+    agent = MerchantAgent(
+        backend=backend, skills=skills,
+        config=analysis_config(close_on_presentation=False), client=client,
+    )
+    messages = [{"role": "user", "content": "Compare the paid totals."}]
+    events = [event async for event in agent.stream_turn(messages, session, state)]
+    error = next(
+        block
+        for message in client.calls[1]["messages"]
+        if isinstance(message.get("content"), list)
+        for block in message["content"]
+        if block.get("type") == "tool_result" and block.get("tool_use_id") == "bad-brief"
+    )
+    assert error["is_error"] is True
+    assert "question" in error["content"] and "300" in error["content"]
+    assert invalid["question"] not in error["content"]
+    assert len(delegate_client.calls) == 1
+    opening = delegate_client.calls[0]["messages"][0]["content"]
+    assert json.loads(opening.removeprefix("Analysis task:\n")) == corrected
+    outcomes = [event.data for event in events if event.type == "tool_result"]
+    assert [(outcome["id"], outcome["is_error"]) for outcome in outcomes] == [
+        ("bad-brief", True), ("corrected-brief", False)
+    ]
+    assert len(state.seen_analyses) == 1
 
 
 # -- the isolated loop -----------------------------------------------------------------

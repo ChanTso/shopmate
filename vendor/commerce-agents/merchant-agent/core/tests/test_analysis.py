@@ -24,6 +24,7 @@ from merchant_agent.analysis import (
     REPORT_PROGRESS_TOOL,
     SUBMIT_ANALYSIS_TOOL,
     build_analysis_system_prompt,
+    build_analysis_tool_definition,
     build_report_progress_tool,
     cap_analysis_table,
     derive_metrics_payload,
@@ -74,6 +75,27 @@ def test_allowlist_accepts_read_only_selects(sql):
 )
 def test_allowlist_rejects_everything_that_is_not_one_select(sql):
     assert check_analysis_sql(sql) is not None
+
+
+# -- delegation input contract --------------------------------------------------------
+
+
+def test_analysis_brief_schema_keeps_the_existing_field_limits():
+    schema = build_analysis_tool_definition()["input_schema"]
+    assert schema["required"] == ["question"]
+    assert schema["additionalProperties"] is False
+    properties = schema["properties"]
+    assert set(properties) == {
+        "question", "metrics_needed", "period", "segments", "expected_output"
+    }
+    for name, limit in {"question": 300, "period": 60, "expected_output": 200}.items():
+        assert properties[name]["type"] == "string"
+        assert properties[name]["maxLength"] == limit
+    for name, limit in {"metrics_needed": 8, "segments": 6}.items():
+        assert properties[name]["type"] == "array"
+        assert properties[name]["maxItems"] == limit
+        assert properties[name]["items"]["type"] == "string"
+        assert properties[name]["items"]["maxLength"] == 60
 
 
 # -- report_progress contract ---------------------------------------------------------

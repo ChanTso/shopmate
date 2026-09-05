@@ -7,8 +7,10 @@ reset them: the environment owner resets the fixture before model acceptance.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -18,7 +20,7 @@ import pytest
 from merchant_agent import MerchantSessionContext
 from merchant_agent.types import PriceUpdateItem
 
-from shopmate.analysis_sql import AnalysisQueryError, AnalysisSQL
+from shopmate.analysis_sql import AnalysisQueryError, AnalysisSQL, capture_analysis_queries
 from shopmate.app import create_app
 from shopmate.auth import AuthClient, RequestIdentity, bind_context
 from shopmate.backend import CityBuddyMerchantBackend
@@ -357,3 +359,184 @@ async def test_write_prepare_operator_approval_conflict_and_replay_have_sql_trut
         await sql.close()
         await client.close()
         await auth.close()
+
+
+async def test_committed_approval_recovers_after_host_loses_response(settings, truth, tmp_path):
+    revisions = {
+        name: (
+            await asyncio.to_thread(
+                subprocess.check_output, ["git", "-C", str(path), "rev-parse", "HEAD"], text=True
+            )
+        ).strip()
+        for name, path in {
+            "citybuddy_sha": ROOT.parent / "citybuddy",
+            "shopmate_sha": ROOT,
+        }.items()
+    }
+    lost = False
+    apply_path = None
+
+    async def lose_one_committed_response(response):
+        nonlocal lost
+        if (
+            not lost
+            and response.request.method == "POST"
+            and response.request.url.path == apply_path
+            and response.status_code == 200
+        ):
+            # Real Java has answered 200; withhold that response before CommerceClient observes it.
+            lost = True
+            await response.aclose()
+            raise httpx.ReadError("Injected post-commit response loss", request=response.request)
+
+    java_http = httpx.AsyncClient(
+        timeout=15, follow_redirects=False, event_hooks={"response": [lose_one_committed_response]}
+    )
+    auth = AuthClient(settings)
+    client = CommerceClient(settings.commerce_url, http_client=java_http)
+    sql = AnalysisSQL(settings)
+    store = SessionStore(tmp_path / "approval-response-loss.sqlite3")
+    backend = CityBuddyMerchantBackend(auth, store, client, sql)
+    app = create_app(
+        settings, auth=auth, store=store, backend=backend, agent=object(), provider=object()
+    )
+    try:
+        await sql.start()
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://shopmate.integration"
+            ) as http,
+        ):
+            login = await http.post(
+                "/api/merchant/login",
+                json={
+                    "loginIdentifier": "shopmate-fixture-operator",
+                    "password": _password(),
+                },
+            )
+            assert login.status_code == 200
+            identity = RequestIdentity(login.json()["subject"], login.json()["accessToken"])
+            headers = {"Authorization": "Bearer " + identity.token}
+            created = await http.post("/api/merchant/session", headers=headers)
+            assert created.status_code == 200
+            session_id = created.json()["session_id"]
+            headers["X-Session-Id"] = session_id
+            session = MerchantSessionContext(
+                session_id=session_id,
+                merchant_id="citybuddy",
+                operator=identity.subject,
+                now=datetime.now(UTC),
+            )
+            baseline = {row["product_id"]: row for row in await _products(truth)}
+
+            async def snapshot():
+                return {
+                    "products": await _products(truth),
+                    "paid_history": await _paid_truth(truth),
+                    "generation": await _rows(
+                        truth,
+                        "SELECT publication_generation FROM catalog_metadata WHERE singleton_id=1",
+                    ),
+                    "new_events": await _rows(
+                        truth,
+                        """
+                        SELECT event_id, aggregate_id, aggregate_version, event_type
+                        FROM commerce_outbox
+                        WHERE aggregate_type = 'PRODUCT' AND aggregate_id = %s
+                          AND aggregate_version > %s
+                        ORDER BY aggregate_version, event_id
+                        """,
+                        (COFFEE, baseline[COFFEE]["publication_version"]),
+                    ),
+                }
+
+            before = await snapshot()
+            assert before["new_events"] == []
+            print(json.dumps({**revisions, "phase": "before_prepare", **before}, default=str))
+            current = store.get(session_id, identity.subject)
+            turn_id = store.begin_turn(current)
+            try:
+                with bind_context(identity, session_id, turn_id):
+                    change = await backend.stage_price_update(
+                        session,
+                        [
+                            PriceUpdateItem(
+                                listing_id=COFFEE,
+                                new_price=(baseline[COFFEE]["price_minor"] + 10) / 100,
+                            )
+                        ],
+                    )
+            finally:
+                store.finish_turn(current, "completed")
+            assert await snapshot() == before
+            apply_path = f"/api/merchant/price-drafts/{change.change_id}/apply"
+            host_path = f"/api/merchant/changes/{change.change_id}"
+            unavailable = await http.post(host_path + "/apply", headers=headers)
+            assert lost and unavailable.status_code == 503
+            assert unavailable.json()["category"] == "COMMERCE_UNAVAILABLE"
+
+            draft = await _rows(
+                truth,
+                "SELECT state, result FROM merchant_price_draft WHERE draft_id = %s",
+                (change.change_id,),
+            )
+            committed = await snapshot()
+            print(
+                json.dumps(
+                    {**revisions, "phase": "response_lost", "draft": draft, **committed},
+                    default=str,
+                )
+            )
+            assert draft[0]["state"] == "APPLIED"
+            result = json.loads(draft[0]["result"])
+            assert len(result["changes"]) == 1
+            expected_products = [
+                {
+                    **row,
+                    "price_minor": row["price_minor"] + (10 if row["product_id"] == COFFEE else 0),
+                    "publication_version": row["publication_version"]
+                    + (1 if row["product_id"] == COFFEE else 0),
+                }
+                for row in before["products"]
+            ]
+            assert committed["products"] == expected_products
+            assert committed["paid_history"] == before["paid_history"]
+            assert committed["generation"][0]["publication_generation"] == (
+                before["generation"][0]["publication_generation"] + 1
+            )
+            assert committed["new_events"] == [
+                {
+                    "event_id": result["changes"][0]["eventId"],
+                    "aggregate_id": COFFEE,
+                    "aggregate_version": baseline[COFFEE]["publication_version"] + 1,
+                    "event_type": "PRODUCT_PUBLICATION_CHANGED",
+                }
+            ]
+            readback = await http.get(host_path, headers=headers)
+            assert readback.status_code == 200
+            receipt = readback.json()["receipt"]
+            assert receipt["state"] == "APPLIED" and receipt["result"] == result
+            retry = await http.post(host_path + "/apply", headers=headers)
+            assert retry.status_code == 200 and retry.json()["ok"] is True
+            assert retry.json()["receipt"] == receipt
+            recovered = await snapshot()
+            print(json.dumps({**revisions, "phase": "get_and_retry", **recovered}, default=str))
+            assert recovered == committed
+    finally:
+        store.close()
+        await sql.close()
+        await client.close()
+        await java_http.aclose()
+        await auth.close()
+
+
+async def test_unsigned_subtraction_reports_code_and_signed_query_recovers(sql):
+    with capture_analysis_queries() as records:
+        with pytest.raises(AnalysisQueryError, match="SIGNED") as failure:
+            await sql.query("SELECT CAST(0 AS UNSIGNED) - CAST(1 AS UNSIGNED) AS difference")
+        assert failure.value.mysql_error_code == 1690
+        corrected = await sql.query("SELECT CAST(0 AS SIGNED) - CAST(1 AS SIGNED) AS difference")
+    assert corrected.rows == [[-1]] and not corrected.truncated
+    assert records[0]["status"] == "error" and records[0]["mysql_error_code"] == 1690
+    assert records[1]["status"] == "success" and records[1]["result"]["rows"] == [[-1]]

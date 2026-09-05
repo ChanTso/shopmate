@@ -37,6 +37,7 @@ def test_missing_usage_stays_unknown_while_reported_cached_tokens_are_counted_on
     budget.observations = [
         {
             "usage_available": True,
+            "cache_read_usage_available": True,
             "usage": {"input_tokens": 80, "output_tokens": 3, "cache_read_input_tokens": 20},
         },
         {"usage_available": False, "completed": False},
@@ -46,3 +47,32 @@ def test_missing_usage_stays_unknown_while_reported_cached_tokens_are_counted_on
     assert result["calls_with_usage"] == 1
     assert result["known_input_tokens"] == 100
     assert result["known_cache_read_input_tokens"] == 20
+
+
+@pytest.mark.parametrize(
+    ("cached", "complete", "reported", "known"),
+    [([None], False, 0, 0), ([0], True, 1, 0), ([20, None], False, 1, 20), ([20, 0], True, 2, 20)],
+)
+def test_cache_coverage_is_independent_of_reported_input_and_output(
+    cached, complete, reported, known
+):
+    budget = TaskBudget(max_calls=3, timeout_s=10, calls=len(cached))
+    budget.observations = [
+        {
+            "usage_available": True,
+            "cache_read_usage_available": value is not None,
+            "usage": {
+                "input_tokens": 100 - (0 if value is None else value),
+                "output_tokens": 3,
+                "cache_read_input_tokens": 0 if value is None else value,
+            },
+        }
+        for value in cached
+    ]
+    result = budget.summary()
+    assert result["usage_complete"] is True
+    assert result["known_input_tokens"] == 100 * len(cached)
+    assert result["known_output_tokens"] == 3 * len(cached)
+    assert result["cache_read_usage_complete"] is complete
+    assert result["calls_with_cache_read_usage"] == reported
+    assert result["known_cache_read_input_tokens"] == known

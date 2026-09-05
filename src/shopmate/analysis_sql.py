@@ -45,7 +45,9 @@ have an execution deadline, row and byte caps. A truncated result is not a compl
 
 
 class AnalysisQueryError(ValueError):
-    pass
+    def __init__(self, message: str, *, mysql_error_code: int | None = None):
+        super().__init__(message)
+        self.mysql_error_code = mysql_error_code
 
 
 _query_records: ContextVar[list[dict[str, Any]] | None] = ContextVar(
@@ -178,9 +180,11 @@ class AnalysisSQL:
         except asyncio.CancelledError:
             observation["status"] = "cancelled"
             raise
-        except AnalysisQueryError:
+        except AnalysisQueryError as error:
             observation["status"] = "rejected" if observation["sql"] is None else "error"
             observation["error_category"] = "validation" if observation["sql"] is None else "query"
+            if error.mysql_error_code is not None:
+                observation["mysql_error_code"] = error.mysql_error_code
             raise
         except Exception:
             observation.update(status="error", error_category="unexpected")
@@ -259,12 +263,18 @@ class AnalysisSQL:
                 "Analysis query deadline exceeded; narrow or simplify the query"
             ) from None
         except aiomysql.Error as error:
-            code = error.args[0] if error.args else None
+            raw_code = error.args[0] if error.args else None
+            code = raw_code if type(raw_code) is int and 0 < raw_code <= 65535 else None
             detail = {
                 1054: "Unknown column; consult the merchant view schema",
                 1064: "Invalid MySQL syntax; consult the merchant view schema",
                 1142: "Only SELECT access to merchant views is available",
                 1146: "Unknown view; consult the merchant view schema",
+                1690: (
+                    "Numeric value out of range (MySQL 1690); unsigned arithmetic, including "
+                    "RANK() subtraction, may underflow. Cast operands to SIGNED or DECIMAL "
+                    "before subtracting, then retry."
+                ),
                 3024: "Analysis query deadline exceeded; simplify the query",
             }.get(code, "Analysis database unavailable or query rejected")
-            raise AnalysisQueryError(detail) from None
+            raise AnalysisQueryError(detail, mysql_error_code=code) from None

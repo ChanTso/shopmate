@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from types import SimpleNamespace
@@ -141,6 +142,24 @@ async def test_query_errors_do_not_expose_driver_connection_details():
     assert connection.closed
 
 
+async def test_numeric_range_error_is_correctable_and_keeps_only_safe_driver_code():
+    cursor = Cursor([], error=aiomysql.OperationalError(1690, "private-host upstream-secret"))
+    sql, connection = connection_for(cursor)
+    with capture_analysis_queries() as records, pytest.raises(AnalysisQueryError) as failure:
+        await sql.query("SELECT CAST(0 AS UNSIGNED) - CAST(1 AS UNSIGNED) AS difference")
+    error = failure.value
+    assert error.mysql_error_code == 1690
+    assert "1690" in str(error) and "unsigned" in str(error) and "RANK()" in str(error)
+    assert "SIGNED" in str(error) and "DECIMAL" in str(error)
+    assert "unavailable" not in str(error)
+    assert records[0]["status"] == "error" and records[0]["error_category"] == "query"
+    assert records[0]["mysql_error_code"] == 1690
+    assert records[0]["sql"] == cursor.executed_sql
+    rendered = "".join(traceback.format_exception(error)) + str(records)
+    assert "upstream-secret" not in rendered and "private-host" not in rendered
+    assert connection.closed
+
+
 async def test_query_trace_keeps_executed_sql_and_bounded_return_values():
     cursor = Cursor([(Decimal("23.75"),), (Decimal(45),), (Decimal(67),)])
     sql, _ = connection_for(cursor)
@@ -166,18 +185,22 @@ async def test_rejected_query_has_no_executed_sql():
 
 
 @pytest.mark.parametrize(
-    ("error", "raised", "category"),
+    ("error", "raised", "category", "mysql_error_code"),
     [
-        (aiomysql.OperationalError(2003, "private-host secret"), AnalysisQueryError, "query"),
-        (RuntimeError("private configuration secret"), RuntimeError, "unexpected"),
+        (aiomysql.OperationalError(2003, "private-host secret"), AnalysisQueryError, "query", 2003),
+        (aiomysql.OperationalError("private-host secret"), AnalysisQueryError, "query", None),
+        (RuntimeError("private configuration secret"), RuntimeError, "unexpected", None),
     ],
 )
-async def test_query_trace_records_failure_without_exception_body(error, raised, category):
+async def test_query_trace_records_failure_without_exception_body(
+    error, raised, category, mysql_error_code
+):
     sql, _ = connection_for(Cursor([], error=error))
     with capture_analysis_queries() as records, pytest.raises(raised):
         await sql.query("SELECT name FROM merchant_products")
     assert records[0]["status"] == "error"
     assert records[0]["error_category"] == category
+    assert records[0].get("mysql_error_code") == mysql_error_code
     assert "secret" not in str(records) and "private" not in str(records)
 
 

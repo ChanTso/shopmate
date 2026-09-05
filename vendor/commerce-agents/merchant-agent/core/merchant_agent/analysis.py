@@ -13,7 +13,9 @@ alone, as the deployment provides.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import MerchantAgentConfig
 from .types import AnalysisResult, AnalysisTable
@@ -41,6 +43,32 @@ ANALYSIS_READ_TOOLS = (
 CODE_EXECUTION_TOOL_TYPE = "code_execution_20260120"
 
 
+_BriefItem = Annotated[str, Field(max_length=60)]
+
+
+class AnalysisBrief(BaseModel):
+    """Reject invalid delegation inputs before truncation could remove business filters."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+
+    question: str = Field(max_length=300, description="The question, stated plainly.")
+    metrics_needed: list[_BriefItem] = Field(
+        default_factory=list, max_length=8, description="Metrics in the read tools' vocabulary."
+    )
+    period: str = Field(
+        default="", max_length=60,
+        description="Window ending at the latest data date you have seen.",
+    )
+    segments: list[_BriefItem] = Field(
+        default_factory=list, max_length=6,
+        description="Segments the data is known to carry; omit rather than guess.",
+    )
+    expected_output: str = Field(
+        default="", max_length=200,
+        description="Shape of a useful answer, and the decision it informs.",
+    )
+
+
 def build_analysis_tool_definition() -> dict[str, Any]:
     """The orchestrator-facing tool: the model supplies a brief, and the description
     confines it to questions that need computation."""
@@ -52,40 +80,7 @@ def build_analysis_tool_definition() -> dict[str, Any]:
             "listings make up a movement. It renders its own metrics card. For a figure "
             "one read answers, use the read."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "question": {
-                    "type": "string",
-                    "maxLength": 300,
-                    "description": "The question, stated plainly.",
-                },
-                "metrics_needed": {
-                    "type": "array",
-                    "items": {"type": "string", "maxLength": 60},
-                    "maxItems": 8,
-                    "description": "Metrics in the read tools' vocabulary.",
-                },
-                "period": {
-                    "type": "string",
-                    "maxLength": 60,
-                    "description": "Window ending at the latest data date you have seen.",
-                },
-                "segments": {
-                    "type": "array",
-                    "items": {"type": "string", "maxLength": 60},
-                    "maxItems": 6,
-                    "description": "Segments the data is known to carry; omit rather than guess.",
-                },
-                "expected_output": {
-                    "type": "string",
-                    "maxLength": 200,
-                    "description": "Shape of a useful answer, and the decision it informs.",
-                },
-            },
-            "required": ["question"],
-            "additionalProperties": False,
-        },
+        "input_schema": AnalysisBrief.model_json_schema(),
     }
 
 

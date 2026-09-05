@@ -37,6 +37,12 @@ class TaskBudget:
 
     def summary(self) -> dict[str, Any]:
         known = [item["usage"] for item in self.observations if item.get("usage_available")]
+        known_cache_read = [
+            item["usage"]
+            for item in self.observations
+            if item.get("usage_available") is True
+            and item.get("cache_read_usage_available") is True
+        ]
         complete = len(known) == self.calls
         return {
             "model_calls": self.calls,
@@ -44,11 +50,15 @@ class TaskBudget:
             "stop_reason": self.stop_reason,
             "usage_complete": complete,
             "calls_with_usage": len(known),
+            "cache_read_usage_complete": len(known_cache_read) == self.calls,
+            "calls_with_cache_read_usage": len(known_cache_read),
             "known_input_tokens": sum(
                 u["input_tokens"] + u["cache_read_input_tokens"] for u in known
             ),
             "known_output_tokens": sum(u["output_tokens"] for u in known),
-            "known_cache_read_input_tokens": sum(u["cache_read_input_tokens"] for u in known),
+            "known_cache_read_input_tokens": sum(
+                u["cache_read_input_tokens"] for u in known_cache_read
+            ),
             "model_observations": [
                 {key: value for key, value in item.items() if key != "_started"}
                 for item in self.observations
