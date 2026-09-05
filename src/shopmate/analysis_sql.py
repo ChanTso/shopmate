@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -29,6 +31,12 @@ are integer minor units (divide by 100 for display). Do not use today's product 
 recalculate past sales. Products with no paid rows have zero recorded sales; a missing period
 is not proof of why the business had no sales. Percentage change with a zero baseline is
 undefined. price_editable requires published/available and no seckill association of any state.
+Return every derived number as an explicit SQL column: percentage changes, differences,
+shares, weighted averages, and displayed major-unit amounts. Return their source totals
+beside them, with distinct aliases for each metric, currency, and period. For a comparable
+nonzero baseline, percentage change is 100.0 * (current_value - prior_value) /
+NULLIF(prior_value, 0). Never calculate these numbers mentally or copy another metric's
+change. Query a missing calculation before submitting it; otherwise report it as unknown.
 No customer identities, traffic, acquisition, campaign, cost, margin, or refund-net metrics.
 Use SELECT/CTE/joins/aggregates/window functions over these views. No writes, other schemas,
 locking SELECTs, stored functions, system metadata, or comments. Keep results small; queries
@@ -38,6 +46,21 @@ have an execution deadline, row and byte caps. A truncated result is not a compl
 
 class AnalysisQueryError(ValueError):
     pass
+
+
+_query_records: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+    "shopmate_analysis_queries", default=None
+)
+
+
+@contextmanager
+def capture_analysis_queries():
+    records: list[dict[str, Any]] = []
+    token = _query_records.set(records)
+    try:
+        yield records
+    finally:
+        _query_records.reset(token)
 
 
 def validate_sql(sql: str) -> str:
@@ -139,7 +162,33 @@ class AnalysisSQL:
             self.pool = None
 
     async def query(self, sql: str) -> AnalysisTable:
-        statement = validate_sql(sql)
+        records = _query_records.get()
+        if records is None:
+            return await self._query(validate_sql(sql))
+
+        started = time.monotonic()
+        observation: dict[str, Any] = {"sql": None, "status": "started"}
+        records.append(observation)
+        try:
+            statement = validate_sql(sql)
+            observation["sql"] = statement
+            result = await self._query(statement)
+            observation.update(status="success", result=result.model_dump(mode="json"))
+            return result
+        except asyncio.CancelledError:
+            observation["status"] = "cancelled"
+            raise
+        except AnalysisQueryError:
+            observation["status"] = "rejected" if observation["sql"] is None else "error"
+            observation["error_category"] = "validation" if observation["sql"] is None else "query"
+            raise
+        except Exception:
+            observation.update(status="error", error_category="unexpected")
+            raise
+        finally:
+            observation["duration_ms"] = round((time.monotonic() - started) * 1000, 1)
+
+    async def _query(self, statement: str) -> AnalysisTable:
         if self.pool is None:
             raise RuntimeError("Analysis SQL pool is not initialized")
         started = time.monotonic()

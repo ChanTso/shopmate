@@ -130,6 +130,7 @@ def resolve_metrics(
         snapshot_values = {
             "sales": (snapshot.sales, snapshot.sales_change_pct),
             "orders": (float(snapshot.orders), snapshot.orders_change_pct),
+            "units": (snapshot.units, None),
             "traffic": (snapshot.traffic, snapshot.traffic_change_pct),
             "conversion_rate": (snapshot.conversion_rate, snapshot.conversion_change_pct),
             "average_order_value": (snapshot.average_order_value, None),

@@ -46,6 +46,7 @@ class ShopMateConfig(MerchantAgentConfig):
     enable_pricing: bool = True
     max_items_per_change: int = 3
     stage_shows_preview: bool = True
+    close_on_presentation: bool = False
     require_host_approval: bool = True
     approval_surface: str = "商家工作台草案卡片的批准按钮"
     thinking_effort: ThinkingEffort | None = None

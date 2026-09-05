@@ -102,6 +102,8 @@ def build_submit_analysis_tool() -> dict[str, Any]:
         "description": (
             "Submit the finished analysis. Every figure and series point must come "
             "from data fetched or computed in this analysis run — never from memory. "
+            "When SQL is available, every derived number must be an explicitly returned "
+            "SQL calculation for that exact metric, currency and period, not mental arithmetic. "
             "Calling this ends the analysis."
         ),
         "input_schema": {
@@ -127,6 +129,8 @@ def build_submit_analysis_tool() -> dict[str, Any]:
                                 "type": ["number", "null"],
                                 "description": (
                                     "Measured percentage change against a comparable prior value. "
+                                    "When SQL is available, use the returned percentage column "
+                                    "for this exact metric; never reuse another metric's change. "
                                     "Omit or use null when no comparison was computed or the prior "
                                     "value is zero; 0 means a measured unchanged value."
                                 ),
@@ -281,6 +285,7 @@ def build_analysis_system_prompt(config: MerchantAgentConfig) -> str:
 
 - Fetch what you need with the read tools and compute over what they return. Submit only figures you can trace to data fetched or computed in this run.
 - Compute; do not eyeball. A join, a share, a ranking, or a correlation is arithmetic, in code or SQL when those tools are available.
+- When SQL is available, every derived number you submit must appear in a returned SQL calculation column: percentage changes, differences, shares, weighted averages and unit conversions. Return the source totals beside each calculation and use distinct aliases for each metric, currency and period. Never calculate these in your head or copy a different metric's change. If a needed calculation was not returned, query it before submitting; if you cannot, report that value as unknown. Display rounding is allowed; it must not invent a calculation.
 - Decide from the schema note in your brief, before your first query, whether every dimension the question asks for exists; a metric derivable from existing columns counts. For a dimension that does not exist, say that part cannot be computed and answer the rest; do not hunt for it with exploratory reads or stand in a different column for it.
 - Batch independent reads into one response. One query grouped by every dimension the question names (period and segment together, say) answers the whole question at once; do not query one period or one segment at a time. Most analyses fit in two to four responses; past four, submit the best-supported partial answer with its caveats.
 - Count the dates in each window before aggregating, and check each bucket's distinct-date count beside its aggregate. When the question pins a formula, use that formula.

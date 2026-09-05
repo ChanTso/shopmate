@@ -1,4 +1,5 @@
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -8,7 +9,9 @@ import pytest
 from commerce_common.streaming import AgentEvent
 from fastapi import HTTPException
 from merchant_agent import StagedChange
+from merchant_agent.types import AnalysisTable
 
+from shopmate.analysis_sql import AnalysisSQL
 from shopmate.app import create_app
 from shopmate.auth import RequestIdentity, current_context
 from shopmate.sessions import SessionStore
@@ -33,10 +36,13 @@ class Agent:
         self.release = asyncio.Event()
         self.wait = False
         self.fail = False
+        self.query = None
 
     async def stream_turn(self, messages, session, state):
         assert current_context().identity.subject == session.operator
         assert current_context().turn_id
+        if self.query:
+            await self.query()
         self.started.set()
         if self.wait:
             await self.release.wait()
@@ -189,6 +195,52 @@ async def test_cancelled_stream_becomes_interrupted_and_unblocks_session(rig):
     assert (
         await rig.client.post("/api/merchant/chat", headers=rig.headers, json={"message": "Retry"})
     ).status_code == 200
+
+
+def attach_analysis_query(rig, monkeypatch):
+    sql = AnalysisSQL(SimpleNamespace())
+
+    async def execute(statement):
+        return AnalysisTable(columns=["amount_minor"], rows=[[345]], row_count=1)
+
+    monkeypatch.setattr(sql, "_query", execute)
+    rig.agent.query = lambda: sql.query("SELECT amount_minor FROM merchant_daily_sales")
+
+
+@pytest.mark.parametrize("failed", [False, True])
+async def test_terminal_and_restored_session_keep_query_trace(rig, monkeypatch, failed):
+    attach_analysis_query(rig, monkeypatch)
+    rig.agent.fail = failed
+    response = await rig.client.post(
+        "/api/merchant/chat", headers=rig.headers, json={"message": "Analyze"}
+    )
+    terminal = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"analysis_queries"' in line
+    ][-1]
+    restored = (await rig.client.get("/api/merchant/session", headers=rig.headers)).json()
+    records = restored["items"][-1]["analysis_queries"]
+    assert terminal["analysis_queries"] == records
+    assert records[0]["result"]["rows"] == [[345]]
+    assert records[0]["status"] == "success"
+    assert restored["status"] == ("failed" if failed else "completed")
+    assert "analysis_queries" not in str(rig.store.get(rig.session_id, "owner").messages)
+
+
+async def test_interrupted_turn_preserves_completed_query_trace(rig, monkeypatch):
+    attach_analysis_query(rig, monkeypatch)
+    rig.agent.wait = True
+    task = asyncio.create_task(
+        rig.client.post("/api/merchant/chat", headers=rig.headers, json={"message": "Analyze"})
+    )
+    await rig.agent.started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    restored = (await rig.client.get("/api/merchant/session", headers=rig.headers)).json()
+    assert restored["status"] == "interrupted"
+    assert restored["items"][-1]["analysis_queries"][0]["result"]["rows"] == [[345]]
 
 
 async def test_operator_approval_uses_current_direct_identity_and_receipt_recovery(rig):

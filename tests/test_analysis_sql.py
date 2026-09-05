@@ -6,7 +6,12 @@ from types import SimpleNamespace
 import aiomysql
 import pytest
 
-from shopmate.analysis_sql import AnalysisQueryError, AnalysisSQL, validate_sql
+from shopmate.analysis_sql import (
+    AnalysisQueryError,
+    AnalysisSQL,
+    capture_analysis_queries,
+    validate_sql,
+)
 
 
 @pytest.mark.parametrize(
@@ -50,8 +55,12 @@ class Cursor:
         self.wait, self.error = wait, error
         self.close_calls = 0
         self.fetches = 0
+        self.started = asyncio.Event()
+        self.executed_sql = None
 
     async def execute(self, sql):
+        self.executed_sql = sql
+        self.started.set()
         if self.error:
             raise self.error
         if self.wait:
@@ -130,3 +139,74 @@ async def test_query_errors_do_not_expose_driver_connection_details():
     assert "upstream-secret" not in str(failure.value)
     assert "private-host" not in str(failure.value)
     assert connection.closed
+
+
+async def test_query_trace_keeps_executed_sql_and_bounded_return_values():
+    cursor = Cursor([(Decimal("23.75"),), (Decimal(45),), (Decimal(67),)])
+    sql, _ = connection_for(cursor)
+    with capture_analysis_queries() as records:
+        result = await sql.query("select amount_minor from merchant_daily_sales")
+    assert records[0]["sql"] == cursor.executed_sql
+    assert records[0]["status"] == "success"
+    assert records[0]["result"] == result.model_dump(mode="json")
+    assert records[0]["result"]["rows"] == [["23.75"], [45]]
+    assert records[0]["result"]["truncated"] is True
+    assert records[0]["duration_ms"] >= 0
+
+
+async def test_rejected_query_has_no_executed_sql():
+    cursor = Cursor([])
+    sql, _ = connection_for(cursor)
+    with capture_analysis_queries() as records, pytest.raises(AnalysisQueryError):
+        await sql.query("DELETE FROM merchant_products")
+    assert cursor.executed_sql is None
+    assert records[0]["sql"] is None
+    assert records[0]["status"] == "rejected"
+    assert records[0]["error_category"] == "validation"
+
+
+@pytest.mark.parametrize(
+    ("error", "raised", "category"),
+    [
+        (aiomysql.OperationalError(2003, "private-host secret"), AnalysisQueryError, "query"),
+        (RuntimeError("private configuration secret"), RuntimeError, "unexpected"),
+    ],
+)
+async def test_query_trace_records_failure_without_exception_body(error, raised, category):
+    sql, _ = connection_for(Cursor([], error=error))
+    with capture_analysis_queries() as records, pytest.raises(raised):
+        await sql.query("SELECT name FROM merchant_products")
+    assert records[0]["status"] == "error"
+    assert records[0]["error_category"] == category
+    assert "secret" not in str(records) and "private" not in str(records)
+
+
+async def test_cancelled_query_retains_status_and_removes_connection():
+    cursor = Cursor([], wait=True)
+    sql, connection = connection_for(cursor, timeout_ms=5000)
+    with capture_analysis_queries() as records:
+        task = asyncio.create_task(sql.query("SELECT name FROM merchant_products"))
+        await cursor.started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert records[0]["status"] == "cancelled"
+    assert "result" not in records[0]
+    assert connection.closed
+
+
+async def test_concurrent_turn_query_traces_do_not_leak_or_retain_outside_queries():
+    async def turn(value):
+        sql, _ = connection_for(Cursor([(value,)]))
+        with capture_analysis_queries() as records:
+            await asyncio.sleep(0)
+            await sql.query("SELECT amount_minor FROM merchant_daily_sales")
+            await asyncio.sleep(0)
+        outside, _ = connection_for(Cursor([(999,)]))
+        await outside.query("SELECT amount_minor FROM merchant_daily_sales")
+        return records
+
+    first, second = await asyncio.gather(turn(12), turn(34))
+    assert len(first) == len(second) == 1
+    assert first[0]["result"]["rows"] == [[12]]
+    assert second[0]["result"]["rows"] == [[34]]

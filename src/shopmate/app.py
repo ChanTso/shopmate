@@ -14,6 +14,7 @@ from merchant_agent import MerchantSessionContext
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
+from .analysis_sql import capture_analysis_queries
 from .auth import AuthClient, RequestIdentity, bind_context
 from .commerce_client import CommerceError
 from .sessions import SessionRecord, SessionStore
@@ -345,8 +346,12 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             nonlocal finished
             status = "interrupted"
             budget = None
+            analysis_queries = []
             try:
-                with bind_context(user, record.session_id, turn_id):
+                with (
+                    bind_context(user, record.session_id, turn_id),
+                    capture_analysis_queries() as analysis_queries,
+                ):
                     async with resources["provider"].task_budget() as budget:
                         async with aclosing(
                             resources["agent"].stream_turn(
@@ -355,8 +360,10 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
                         ) as stream:
                             async for event in stream:
                                 _ui_event(record, event)
-                                if event.type == "turn_complete":
-                                    status = "completed"
+                                if event.type in {"turn_complete", "error"}:
+                                    if event.type == "turn_complete":
+                                        status = "completed"
+                                    event.data["analysis_queries"] = analysis_queries
                                     if budget is not None:
                                         event.data["provider_usage"] = budget.summary()
                                 yield to_sse(event)
@@ -370,7 +377,8 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
                 event = AgentEvent(
                     type="error",
                     data={
-                        "message": "The turn could not complete. Saved changes can be checked before retrying."
+                        "message": "The turn could not complete. Saved changes can be checked before retrying.",
+                        "analysis_queries": analysis_queries,
                     },
                 )
                 if budget is not None:
@@ -379,6 +387,7 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
                 yield to_sse(event)
             finally:
                 finished = True
+                record.items[-1]["analysis_queries"] = analysis_queries
                 if budget is not None:
                     record.items[-1]["provider_usage"] = budget.summary()
                 try:
