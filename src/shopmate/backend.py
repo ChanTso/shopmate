@@ -44,6 +44,9 @@ class ShopMateConfig(MerchantAgentConfig):
     enable_inventory: bool = False
     enable_campaigns: bool = False
     enable_pricing: bool = True
+    # Two independent drafts can need ten serial read/stage rounds; the provider
+    # still bounds the whole turn, including analysis, to its shared call budget.
+    max_tool_iterations: int = 12
     max_items_per_change: int = 3
     stage_shows_preview: bool = True
     close_on_presentation: bool = False

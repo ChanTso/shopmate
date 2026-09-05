@@ -64,8 +64,12 @@ def build_static_system(config: MerchantAgentConfig, skills: SkillRegistry) -> s
 
     analysis_rule = (
         "\n- Send derived calculations and period comparisons to run_analysis with the "
-        "current request's exact targets, windows, currencies and filters. Resolve named "
-        "listings to ids first; do not substitute the available catalog for those targets. "
+        "current request's exact targets, windows, currencies and filters. For a "
+        "whole-store or filter-defined group, delegate the set definition directly; let "
+        "analysis resolve its members from the catalog instead of searching every member "
+        "first. Preserve any explicit named subset and exclusions; never replace them "
+        "with the whole store. For named targets selected by this question, resolve ids "
+        "before scoped reads, analysis or writes. The delegate sees only this brief. "
         "For a figure one read answers, use get_business_snapshot for a whole-store "
         "overview or query_metrics with the target listing id for its series; a store "
         "snapshot is not a prerequisite for a scoped read or analysis. Its field "

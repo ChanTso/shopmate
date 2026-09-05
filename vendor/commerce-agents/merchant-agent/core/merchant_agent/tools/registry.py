@@ -551,8 +551,17 @@ def build_tools(
             "name": "present_metrics",
             "description": (
                 "Show measures the tools returned as tiles and trend lines; the portal fills "
-                "in the values. Name each pick as the tool spelled it, or as a campaign id "
-                "plus one measure ('<campaign_id> spend', revenue, budget, or roas)."
+                "in the values. A bare snapshot field such as 'sales' uses the latest "
+                "snapshot value when present, before any queried series with that name. "
+                "For a queried series with a segment, use '<metric>:<segment>', built from "
+                "the returned fields with their exact spelling and case, e.g. 'sales:USD'. "
+                "Without a segment the series key is just its metric; a non-null snapshot "
+                "field still takes precedence. Only the latest queried window for each "
+                "series key is retained. The note and displayed period do not change the "
+                "bound source, currency or window. Use run_analysis and its existing card "
+                "for period comparisons or derived totals, not notes on a different measure. "
+                "Other picks may name a returned analysis figure, or a campaign id plus one "
+                "measure ('<campaign_id> spend', revenue, budget, or roas)."
             ),
             "input_schema": {
                 "type": "object",
@@ -574,7 +583,13 @@ def build_tools(
                                 "metric": {
                                     "type": "string",
                                     "maxLength": 60,
-                                    "description": "Measure name as a tool returned it.",
+                                    "description": (
+                                        "Snapshot field, queried series key, or returned figure name. "
+                                        "Use '<metric>:<segment>' for a segmented series, e.g. "
+                                        "'sales:USD', preserving the returned case. An unsegmented "
+                                        "series uses '<metric>'; a non-null snapshot field wins "
+                                        "over that same bare key."
+                                    ),
                                 },
                                 "note": {
                                     "type": "string",

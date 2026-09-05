@@ -63,13 +63,19 @@ class AnalysisBrief(BaseModel):
     )
     period: str = Field(
         default="", max_length=60,
-        description="Window ending at the latest data date you have seen.",
+        description=(
+            "The requested UTC window, end exclusive. Use compact date ranges for whole "
+            "days; preserve exact times when requested. Put comparison windows in the "
+            "question if they do not fit here."
+        ),
     )
     segments: list[_BriefItem] = Field(
         default_factory=list, max_length=6,
         description=(
-            "Target listing ids or breakdowns requested by this question, not every "
-            "available listing or currency. Use ids already returned by a catalog read."
+            "Set filters or breakdowns, such as a requested currency or grouping by "
+            "product; omit when none apply. For a named subset, preserve its exact "
+            "members in the brief. Use only observed ids; do not enumerate a whole "
+            "catalog here or drop members to fit this list."
         ),
     )
     expected_output: str = Field(
@@ -87,8 +93,12 @@ def build_analysis_tool_definition() -> dict[str, Any]:
             "Compute derived figures, period comparisons or breakdowns over the current "
             "question's exact targets. A later subquestion keeps the named listing unless "
             "the operator changes it; an accessible catalog is not the requested scope. "
-            "Carry the targets, periods, currencies and filters into the brief. It renders "
-            "its own metrics card. For a figure one scoped read answers, use that read."
+            "For whole-store or filter-defined groups, pass the set definition and "
+            "requested breakdowns directly; analysis resolves catalog membership. It "
+            "receives only this brief: include any explicit subset or exclusions, the "
+            "periods and requested currencies. Do not split out unrequested currencies. "
+            "It renders its own metrics card. For a figure one scoped read answers, use "
+            "that read."
         ),
         "input_schema": AnalysisBrief.model_json_schema(),
     }
