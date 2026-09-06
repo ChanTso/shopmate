@@ -123,7 +123,7 @@ export function StoreShell<V extends string>({
       <div className="flex h-dvh flex-col text-(--ink)">
         <header className="flex h-[58px] shrink-0 items-center gap-2 border-b border-(--line) bg-(--chrome) px-3 sm:gap-5 sm:px-5">
           <div className="flex shrink-0 items-center">{brand}</div>
-          <nav className="flex min-w-0 items-center gap-1" aria-label="Views">
+          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label="Views">
             {views.map((item) => {
               const active = item.id === view;
               return (
@@ -133,7 +133,7 @@ export function StoreShell<V extends string>({
                   onClick={() => onViewChange(item.id)}
                   aria-current={active ? "page" : undefined}
                   aria-label={item.attention ? `${item.label}, ${item.attention.label}` : item.label}
-                  className={`flex items-center gap-2 rounded-[9px] px-2.5 py-1.5 text-[14px] transition-colors ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[9px] px-2.5 py-1.5 text-[14px] transition-colors ${
                     active ? "bg-(--well) font-semibold text-(--ink)" : "font-medium text-(--ink-2) hover:bg-(--well)/60"
                   }`}
                 >
@@ -148,7 +148,7 @@ export function StoreShell<V extends string>({
               );
             })}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <ActivityButton
               streaming={chat.streaming}
               newMemoryCount={chat.newMemoryKeys.size}

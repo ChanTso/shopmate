@@ -141,7 +141,9 @@ def checkout_body(quote, request_key=None):
     }
 
 
-async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(settings, tmp_path):
+async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(
+    settings, tmp_path, truth
+):
     async with portal(settings, tmp_path) as p:
         first, second = await login(p.http), await login(p.http, 2)
         roots, offset = [], 0
@@ -171,6 +173,22 @@ async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(set
         assert profile["user_id"] == BUYERS[0]
         policies = await get(p.http, "/api/buyer/policies?query=returns", first)
         assert policies["policies"]
+        for policy in policies["policies"]:
+            published = (
+                await _rows(
+                    truth,
+                    "SELECT published_question,published_answer FROM faq_source "
+                    "WHERE faq_id=%s AND published_version>0",
+                    (policy["policy_id"],),
+                )
+            )[0]
+            assert policy["title"] == published["published_question"]
+            assert policy["content"] == published["published_answer"]
+        for query in (None, "", "x" * 201):
+            params = {} if query is None else {"query": query}
+            assert (
+                await p.http.get("/api/buyer/policies", headers=first, params=params)
+            ).status_code == 422
         delivery = await post(p.http, "/api/buyer/delivery", first, {"product_ids": [PRODUCTS[0]]})
         assert delivery["options"] and all(
             option["estimate_only"] and option["currency"] == "CNY"

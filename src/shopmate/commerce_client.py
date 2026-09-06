@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from .order_facts import OrderView
+
 Minor = Annotated[StrictInt, Field(gt=0, le=9223372036854775807)]
 Nonnegative = Annotated[StrictInt, Field(ge=0)]
 State = Literal["PREPARED", "APPLIED", "CANCELLED", "REJECTED"]
@@ -416,6 +418,20 @@ class CommerceClient:
             params=params,
         )
         return self._parse(PageView[InventoryView], value)
+
+    async def recent_orders(self, token, session_id, *, limit=6) -> list[OrderView]:
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise CommerceError(400, "VALIDATION", "Recent order limit must be between 1 and 50")
+        value = await self._request(
+            "GET",
+            "/internal/merchant/orders",
+            token,
+            session_id=session_id,
+            params={"limit": limit},
+        )
+        if not isinstance(value, list) or len(value) > limit:
+            raise CommerceError(502, "INVALID_RESPONSE", "Invalid recent orders response")
+        return [self._parse(OrderView, row) for row in value]
 
     async def issues(self, token, session_id, *, limit=100):
         value = await self._request(

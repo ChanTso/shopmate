@@ -83,12 +83,11 @@ def run(
         input=stdin,
         text=True,
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        capture_output=True,
         env=os.environ | (env or {}),
     )
     if log:
-        output = result.stdout
+        output = result.stdout + result.stderr
         for secret in sorted(redactions, key=len, reverse=True):
             if secret:
                 output = output.replace(secret, "[REDACTED]")

@@ -1,6 +1,8 @@
 // Copyright 2026 Anthropic PBC
 // SPDX-License-Identifier: Apache-2.0
 
+import type { OrderFacts } from "./buyer-types";
+
 /** Mirrors merchant_agent/types.py and tools/presentation.py; overview shapes are the vertical's api/. */
 
 // --- Listings (the operator's view of the catalog) ---
@@ -67,7 +69,7 @@ export interface PricingContext {
 export interface AlertCounts {
   low_stock?: number;
   slow_movers?: number;
-  order_issues?: number;
+  order_issues?: number | null;
   pending_changes?: number;
 }
 
@@ -190,14 +192,6 @@ export interface StagedChange {
 
 // --- Portal data-plane responses ---
 
-export interface RecentOrder {
-  order_id: string;
-  status: string;
-  placed_at: string;
-  total: number;
-  items: number;
-}
-
 export interface HomeInsight {
   insight_id: string;
   kind: string;
@@ -206,17 +200,27 @@ export interface HomeInsight {
   prompt: string;
 }
 
+export type OverviewMetric = "sales" | "orders" | "conversion" | "average_order_value";
+
 export interface OverviewResponse {
   snapshot: BusinessSnapshot;
+  window: ReportingWindow;
+  prior_window: ReportingWindow;
   needs_attention: {
     pending_changes: StagedChange[];
+    low_stock: InventoryAlert[];
+    slow_movers: InventoryAlert[];
+    order_issues: OrderIssue[];
+    order_issues_limit: number;
+    order_issues_may_have_more: boolean;
   };
-
-  /** Newest first. */
+  /** Newest SKU orders across the store, independent of the reporting cutoff. */
+  recent_orders: OrderFacts[];
   recent_changes: StagedChange[];
-  trends?: Record<string, MetricPoint[]>;
-  /** The window before `trends`, same keys, for the dashed comparison line. */
-  trends_prior?: Record<string, MetricPoint[]>;
+  trends: Record<OverviewMetric, MetricPoint[]>;
+  trends_prior: Record<OverviewMetric, MetricPoint[]>;
+  trend_notes: Record<OverviewMetric, string>;
+  trend_notes_prior: Record<OverviewMetric, string>;
   insights?: HomeInsight[];
 }
 

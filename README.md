@@ -7,6 +7,7 @@
 ## 当前能力
 
 - **经营分析**：主 Agent 组织查询与追问，复杂计算交给分析子 Agent；它通过受限 SQL 取数，也可在独立 Python 容器内计算完整查询结果。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
+- **经营首页与订单**：六项指标、四项日趋势和三类待办使用同一报告口径；近期订单读取当前全店标准单与秒杀单，不受历史报告截止限制。按 SKU 子单展示成交时的金额，订单、付款、退款和履约状态分别保留。
 - **商品与运营**：服务端分页浏览商品系列和单品，详情展开真实 SKU、规格、当前价格、库存、内容和成本观察；库存预警及订单问题提供对应分析入口。
 - **五类草案**：支持 `LISTING_UPDATE`、`PRICE_UPDATE`、`INVENTORY_ACTION`、`PROMOTION`、`CAMPAIGN`。涉及商品的操作展开后至多 25 个 SKU；卡片分别显示金额、数量、开关和文字差异。
 - **操作员审批**：模型可读取、建案和取消未执行方案，不能批准。批准按钮使用登录操作员的直接身份；Java 核对快照、版本和业务条件，在同一事务内保存实际变更、草案回执及适用的商品 Outbox。冲突整批拒绝，重复批准返回原结果。
@@ -30,7 +31,7 @@ flowchart LR
 
 ## 本地运行
 
-需要同级 [CityBuddy](https://github.com/ChanTso/citybuddy) 仓库、Java 21、Python 3.11+、Node.js 24、uv 和 Docker Compose。CityBuddy 至少包含 [PR #158](https://github.com/ChanTso/citybuddy/pull/158)（`43bddbe0efd466a9332b4a2af9bb2ea478e24d72`），提供零售/营销迁移、商家操作和 FAQ 发布 CLI。
+需要同级 [CityBuddy](https://github.com/ChanTso/citybuddy) 仓库、Java 21、Python 3.11+、Node.js 24、uv 和 Docker Compose。CityBuddy 至少包含 [PR #159](https://github.com/ChanTso/citybuddy/pull/159)（`2eb42634f082c0ddf93639f902db38009381d337`），提供零售/营销迁移、商家操作、全店近期订单读取和 FAQ 发布 CLI。
 
 首次准备 Java 服务：
 
