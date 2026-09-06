@@ -20,8 +20,10 @@ CART_OPERATIONS = {"add_to_cart": "ADD", "update_cart_item": "SET", "remove_from
 REFUND_TOOL = {
     "name": "prepare_refund",
     "description": (
-        "Prepare a refund only when the customer requests it. The amount is an integer in minor "
-        "currency units. Java checks ownership, payment and remaining refundable amount. This does "
+        "Prepare a refund for the customer's exact requested amount and currency. Follow the "
+        "amount_minor unit rules below; never replace it with the order total or another amount. "
+        "Ask if the amount or unit is unclear. Java checks ownership, payment and remaining "
+        "refundable amount. This does "
         "not submit a refund: present the returned confirmation card, and the customer must click "
         "its confirmation button. Never claim the money has been returned."
     ),
@@ -29,8 +31,22 @@ REFUND_TOOL = {
         "type": "object",
         "properties": {
             "order_id": {"type": "string"},
-            "amount_minor": {"type": "integer", "minimum": 1},
-            "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+            "amount_minor": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Exact requested refund in integer minor units, not display currency units. "
+                    "For CNY, 1 yuan (元) = 100 fen (分): '100 分 CNY' means amount_minor=100 "
+                    "(¥1.00), while '100 元 CNY' means amount_minor=10000 (¥100.00). "
+                    "If already stated in 分, cents, or minor units, keep that integer; do not "
+                    "multiply it by 100 again. Fields ending in Minor already use this unit."
+                ),
+            },
+            "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$",
+                "description": "Requested ISO currency code matching the order; do not convert currencies.",
+            },
         },
         "required": ["order_id", "amount_minor", "currency"],
         "additionalProperties": False,

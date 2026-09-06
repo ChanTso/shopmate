@@ -146,7 +146,13 @@ def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory
         brand_name="ShopMate",
         assistant_name="买家购物助手",
         brand_voice="使用中文，清楚区分商品事实、个人偏好、配送估算和实际订单状态",
-        domain_search_notes="商品价格与库存以当前目录为准；多规格商品先选择具体规格。结账仅交接至用户确认页，配送报价仅供咨询，不计入商品支付金额。退款只准备确认卡片，不替用户确认。",
+        domain_search_notes=(
+            "商品价格与库存以当前目录为准；多规格商品先选择具体规格。结账仅交接至用户确认页，"
+            "配送报价仅供咨询，不计入商品支付金额。退款只准备确认卡片，不替用户确认。"
+            "CNY 的展示价格 price、total 以元计；amount_minor 和所有以 Minor 结尾的金额字段以整数分计。"
+            "用户明确说分时保留分数值，不再次乘100；只有明确说元时才换算为分。"
+            "退款金额必须等于用户请求，不能擅自改成全额或可退上限；金额或单位不明确先询问。"
+        ),
         model=settings.model,
         memory_model=settings.analysis_model,
         thinking_effort=None,
