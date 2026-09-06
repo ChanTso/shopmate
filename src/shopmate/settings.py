@@ -35,6 +35,7 @@ class Settings:
     sql_timeout_ms: int = 2000
     sql_max_rows: int = 200
     sql_max_bytes: int = 16000
+    analysis_sandbox_image: str = "shopmate-analysis:1"
     as_of: str | None = None
 
     def __post_init__(self) -> None:

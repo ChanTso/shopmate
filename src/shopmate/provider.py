@@ -25,6 +25,8 @@ class TaskBudget:
     calls: int = 0
     stop_reason: str | None = None
     observations: list[dict[str, Any]] = field(default_factory=list)
+    tool_calls: dict[str, int] = field(default_factory=dict)
+    tool_observations: list[dict[str, Any]] = field(default_factory=list)
 
     def consume(self, request: dict[str, Any]) -> None:
         if time.monotonic() - self.started >= self.timeout_s:
@@ -34,6 +36,20 @@ class TaskBudget:
             self.stop_reason = "model_call_limit"
             raise TaskBudgetExceeded("Model call limit reached")
         self.calls += 1
+
+    def remaining_s(self) -> float:
+        remaining = self.timeout_s - (time.monotonic() - self.started)
+        if remaining <= 0:
+            self.stop_reason = "task_deadline"
+            raise TaskBudgetExceeded("Task deadline reached")
+        return remaining
+
+    def consume_tool(self, name: str, limit: int) -> None:
+        self.remaining_s()
+        if self.tool_calls.get(name, 0) >= limit:
+            self.stop_reason = name + "_call_limit"
+            raise TaskBudgetExceeded(name + " call limit reached")
+        self.tool_calls[name] = self.tool_calls.get(name, 0) + 1
 
     def summary(self) -> dict[str, Any]:
         known = [item["usage"] for item in self.observations if item.get("usage_available")]
@@ -46,6 +62,8 @@ class TaskBudget:
         complete = len(known) == self.calls
         return {
             "model_calls": self.calls,
+            "tool_attempts": dict(self.tool_calls),
+            "tool_observations": list(self.tool_observations),
             "elapsed_ms": round((time.monotonic() - self.started) * 1000),
             "stop_reason": self.stop_reason,
             "usage_complete": complete,
@@ -77,10 +95,13 @@ def current_budget() -> TaskBudget:
 
 
 class Provider:
-    def __init__(self, settings: Settings, *, client=None) -> None:
+    def __init__(self, settings: Settings, *, client=None, web_search=None) -> None:
         self.settings = settings
         if client is None:
+            from .web_search import ResponsesWebSearch
+
             root, key = provider_credentials(settings.citybuddy_dir)
+            self.web_search = web_search or ResponsesWebSearch(root, key, model=settings.model)
             self.client = make_client(
                 root,
                 key,
@@ -90,6 +111,7 @@ class Provider:
             )
         else:
             self.client = client
+            self.web_search = web_search
 
     @asynccontextmanager
     async def task_budget(self):
@@ -105,14 +127,23 @@ class Provider:
             _budget.reset(token)
 
     async def close(self) -> None:
-        await self.client.close()
+        try:
+            await self.client.close()
+        finally:
+            if self.web_search is not None:
+                await self.web_search.close()
 
 
-def build_agent(settings: Settings, backend, provider: Provider, *, memory_store=None):
+def build_agent(
+    settings: Settings, backend, provider: Provider, *, memory_store=None, sandbox=None
+):
     from merchant_agent_runtime import MerchantAgent
 
+    from .analysis_runner import RetailAnalysisRunner
     from .backend import ShopMateConfig
+    from .merchant_executor import RetailMerchantExecutor
     from .settings import ROOT
+    from .web_search import WEB_SEARCH_TOOL
 
     config = ShopMateConfig(
         model=settings.model,
@@ -132,6 +163,11 @@ def build_agent(settings: Settings, backend, provider: Provider, *, memory_store
         client=provider.client,
         skills_dir=ROOT / "skills",
         memory_store=memory_store,
+        executor_class=RetailMerchantExecutor,
+        extra_tools=[WEB_SEARCH_TOOL],
+        analysis_runner=RetailAnalysisRunner(
+            client=provider.client, backend=backend, config=config, sandbox=sandbox
+        ),
     )
 
 
@@ -141,6 +177,7 @@ def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory
 
     from .buyer_executor import REFUND_TOOL, BuyerToolExecutor
     from .settings import ROOT
+    from .web_search import WEB_SEARCH_TOOL
 
     config = ShoppingAgentConfig(
         brand_name="ShopMate",
@@ -178,5 +215,5 @@ def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory
         skills_dir=ROOT / "vendor/commerce-agents/shopping-agent/skills",
         memory_store=memory_store,
         executor_class=BuyerToolExecutor,
-        extra_tools=[REFUND_TOOL],
+        extra_tools=[REFUND_TOOL, WEB_SEARCH_TOOL],
     )

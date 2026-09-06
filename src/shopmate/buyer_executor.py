@@ -13,6 +13,8 @@ from .buyer_client import RefundArguments
 from .commerce_client import CommerceError
 from .memory import MemoryChanged
 from .provider import TaskBudgetExceeded
+from .search_tool import execute_search
+from .web_search import SearchUnavailable
 
 CART_TOOLS = {"add_to_cart", "update_cart_item", "remove_from_cart"}
 CART_OPERATIONS = {"add_to_cart": "ADD", "update_cart_item": "SET", "remove_from_cart": "REMOVE"}
@@ -91,13 +93,19 @@ class BuyerToolExecutor(ShoppingToolExecutor):
     def domain_error(self, error):
         if isinstance(error, TaskBudgetExceeded):
             raise error
-        if isinstance(error, (HTTPException, CommerceError, MemoryChanged)):
+        if isinstance(error, (HTTPException, CommerceError, MemoryChanged, SearchUnavailable)):
             message = error.detail if hasattr(error, "detail") else str(error)
             return ToolOutcome.error(self._sanitize(message, 300))
         return super().domain_error(error)
 
     def handlers(self):
-        return super().handlers() | {"prepare_refund": self._prepare_refund}
+        return super().handlers() | {
+            "prepare_refund": self._prepare_refund,
+            "web_search": self._web_search,
+        }
+
+    async def _web_search(self, arguments):
+        return await execute_search(self, arguments)
 
     async def _prepare_refund(self, arguments):
         if set(arguments) != {"order_id", "amount_minor", "currency"}:

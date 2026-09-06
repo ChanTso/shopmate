@@ -453,6 +453,10 @@ export function useAgentTurn(api: AgentApi, options: AgentTurnOptions): AgentTur
       try {
         for await (const event of events) {
           if (event.type === "turn_complete") {
+            if (typeof event.data.memory_status === "string") {
+              const memoryStatus = event.data.memory_status;
+              updateTurn(turn, (item) => ({ ...item, memory_status: memoryStatus }));
+            }
             appendTrace({
               kind: "turn_complete",
               turn,

@@ -84,10 +84,11 @@ def present_analysis(result: BaseModel, context: DelegationContext) -> tuple[Any
 
 
 def build_analysis_delegate(
-    client: AsyncAnthropic, backend: MerchantBackend, config: MerchantAgentConfig
+    client: AsyncAnthropic, backend: MerchantBackend, config: MerchantAgentConfig,
+    *, runner: AnalysisRunner | None = None,
 ) -> DelegateExtension:
     definition = build_analysis_tool_definition()
-    runner = AnalysisRunner(client=client, backend=backend, config=config)
+    runner = runner if runner is not None else AnalysisRunner(client=client, backend=backend, config=config)
     return DelegateExtension(
         name=ANALYSIS_TOOL,
         description=definition["description"],

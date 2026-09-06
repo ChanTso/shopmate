@@ -5,6 +5,8 @@
 
 import { type ChangeAction, type GenerativeBlockProps, Skeleton, UnknownBlock } from "web-shared";
 import type { ChangePreviewPayload, DigestPayload, MetricsPayload, StagedChange } from "@/lib/types";
+import WebSourcesCard from "@/components/generative/WebSourcesCard";
+import type { WebSourcesPayload } from "@/lib/web-sources";
 import ChangePreviewCard from "./ChangePreviewCard";
 import DigestCard from "./DigestCard";
 import MetricsCard from "./MetricsCard";
@@ -19,6 +21,8 @@ export default function GenerativeBlock({
   onPrefill?: (text: string) => void;
 }) {
   switch (block.component) {
+    case "web_sources":
+      return status === "final" ? <WebSourcesCard payload={block.payload as WebSourcesPayload} /> : null;
     case "metrics":
       return <MetricsCard payload={block.payload as MetricsPayload} />;
     case "digest":

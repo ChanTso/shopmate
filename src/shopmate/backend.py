@@ -161,11 +161,14 @@ class CityBuddyMerchantBackend(MerchantBackend):
         client: CommerceClient,
         sql: AnalysisSQL,
         report_as_of: datetime | None = None,
+        *,
+        web_search=None,
     ):
         if report_as_of is not None and report_as_of.tzinfo is None:
             raise ValueError("report_as_of must include a timezone")
         self.auth, self.store, self.client, self.sql = auth, store, client, sql
         self.report_as_of = report_as_of
+        self.web_search = web_search
 
     @staticmethod
     def _bound(session):

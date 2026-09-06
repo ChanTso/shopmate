@@ -61,9 +61,11 @@ are integer minor units (divide by 100 for display). Do not use today's product 
 recalculate past sales. Products with no paid rows have zero recorded sales; a missing period
 is not proof of why the business had no sales. Percentage change with a zero baseline is
 undefined. price_editable requires published/available and no seckill association of any state.
-Return every derived number as an explicit SQL column: percentage changes, differences,
-shares, weighted averages, and displayed major-unit amounts. Return their source totals
-beside them, with distinct aliases for each metric, currency, and period. For a comparable
+Return every derived number as an explicit SQL column or successful controlled Python output:
+percentage changes, differences, shares, weighted averages, and displayed major-unit amounts.
+Python receives only the actual complete SQL table, never a manually retyped dataset.
+Return source totals beside each calculation, with distinct aliases for every metric,
+currency, and period. For a comparable
 nonzero baseline, percentage change is 100.0 * (current_value - prior_value) /
 NULLIF(prior_value, 0). Never calculate these numbers mentally or copy another metric's
 change. Query a missing calculation before submitting it; otherwise report it as unknown.

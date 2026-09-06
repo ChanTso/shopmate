@@ -6,7 +6,7 @@
 
 ## 当前能力
 
-- **经营分析**：主 Agent 组织查询与追问，复杂计算交给只读 SQL 分析子 Agent。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
+- **经营分析**：主 Agent 组织查询与追问，复杂计算交给分析子 Agent；它通过受限 SQL 取数，也可在独立 Python 容器内计算完整查询结果。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
 - **商品与运营**：服务端分页浏览商品系列和单品，详情展开真实 SKU、规格、当前价格、库存、内容和成本观察；库存预警及订单问题提供对应分析入口。
 - **五类草案**：支持 `LISTING_UPDATE`、`PRICE_UPDATE`、`INVENTORY_ACTION`、`PROMOTION`、`CAMPAIGN`。涉及商品的操作展开后至多 25 个 SKU；卡片分别显示金额、数量、开关和文字差异。
 - **操作员审批**：模型可读取、建案和取消未执行方案，不能批准。批准按钮使用登录操作员的直接身份；Java 核对快照、版本和业务条件，在同一事务内保存实际变更、草案回执及适用的商品 Outbox。冲突整批拒绝，重复批准返回原结果。
@@ -26,7 +26,7 @@ flowchart LR
   Java --> Transaction[实际变更 / 草案回执 / 商品事件]
 ```
 
-商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 原买家客服入口暂时保留，待新买家入口完成验证后切换，不是最终保留两套买家运行时的设计。Web search、独立代码执行沙箱及新版真实模型验收不在本次前端接线完成的声明内。
+商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 原买家客服入口暂时保留，待新买家入口完成验证后切换，不是最终保留两套买家运行时的设计。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。新版完整业务评测与旧入口切换仍待收口，当前接线检查不是最终成功率。
 
 ## 本地运行
 
@@ -61,7 +61,11 @@ npm --prefix web run start
 
 模型代理凭证继续来自同级 `citybuddy/.env` 的 `CLIPROXY_BASE_URL` 和 `CLIPROXY_API_KEY`。默认主模型与分析模型均为 `gpt-5.6-terra`，经 Chat Completions 适配对接 Messages 循环。运行参数位于 `.run/settings.json`，也可通过 `SHOPMATE_CONFIG` 指定配置文件；凭证不传入浏览器或模型工具参数。
 
-每回合主、分析子 Agent 共用默认 16 次模型调用和 300 秒截止；主循环最多 12 个工具轮。分析账号仅有六个经营视图的 SELECT，默认查询上限 2 秒、200 行及 16,000 字节，不启用分析代码执行。缓存用量仅展示代理实际报告的字段，未知量不推断成命中率或费用收益。
+每回合主、分析子 Agent 共用默认 16 次模型调用和 300 秒截止；主循环最多 12 个工具轮。分析账号仅有六个经营视图的 SELECT，默认查询上限 2 秒、200 行及 16,000 字节。Python 只接收这些视图的完整、有界查询结果；截断表在执行前拒绝。缓存用量仅展示代理实际报告的字段，未知量不推断成命中率或费用收益。主、分析、记忆和搜索请求共用模型调用预算；实际 Responses 搜索用量与 Chat 用量合计一次。默认每任务至多 3 次搜索和 3 次 Python 尝试，次数与任务时间限制不是硬 token 或费用上限。
+
+网页搜索通过独立的 Responses 请求接入现有普通工具接口，返回外部摘要、实际引用和服务提供的查阅来源。来源卡将引用与查阅列表分开；没有元数据时明确提示。网页内容不作为本站商品、订单、政策或权限真相。当前代理不支持原生 Messages server tools，本部署没有启用原生 server search、code execution 或原生提前派发；搜索与 Python 能力由宿主实际执行。字段依据见 [Responses 搜索文档](https://developers.openai.com/api/docs/guides/tools-web-search)。
+
+`local_runtime.py up` 从 `infra/analysis-sandbox/` 专用目录构建 `shopmate-analysis:1`。每次 Python 调用创建独立容器：非 root、无网络、只读根目录、不挂载宿主或项目文件，固定 Python/pandas/numpy，1 CPU / 512 MiB / 64 PID / 32 MiB 临时目录。单次执行窗口至多 20 秒（含排队），结束清理另有 10 秒限时；合计输出至多 64 KiB，宿主同时运行至多两个；查询和排队也受任务截止约束。停止生成、任务超时或正常关闭会终止对应容器；若 Docker 失联导致无法核实清理，会报告错误并拒绝后续沙箱执行，不把它当成成功。宿主被强制杀死后的遗留容器不属于该保证，可按 `shopmate.analysis=true` 标签检查。容器约束说明见 [Docker 文档](https://docs.docker.com/engine/containers/run/)。
 
 当前演示数据为 `shopmate-retail-v1`：**87 个目录根、104 个可交易 SKU、90 个完整 Shanghai 日、CNY**。这是从 vendored 零售样例和确定性造数构成的演示数据，不是实际经营记录。报告截止固定为 `2026-09-05T00:00:00+08:00`；模型的操作时钟是每轮真实 Shanghai 时间。相对报表期间使用报告截止，促销的“今天/明天”使用真实操作日期。详情见[零售夹具与重置说明](docs/retail-fixture.md)。
 
@@ -85,7 +89,9 @@ uv run ruff format --check src tests scripts integration_tests
 uv run pytest --import-mode=importlib tests \
   vendor/commerce-agents/commerce-common/tests \
   vendor/commerce-agents/merchant-agent/core/tests \
-  vendor/commerce-agents/merchant-agent/runtime-messages-api/tests
+  vendor/commerce-agents/merchant-agent/runtime-messages-api/tests \
+  vendor/commerce-agents/shopping-agent/core/tests \
+  vendor/commerce-agents/shopping-agent/runtime-messages-api/tests
 npm --prefix web run typecheck
 npm --prefix web test
 npm --prefix web run build

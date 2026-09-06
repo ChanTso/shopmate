@@ -73,7 +73,7 @@ from merchant_agent.prompt import build_dynamic_context, build_static_system
 from merchant_agent.tools.registry import build_tools
 from merchant_agent.types import MerchantSessionContext, MerchantSessionState
 
-from .analysis import build_analysis_delegate
+from .analysis import AnalysisRunner, build_analysis_delegate
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,8 @@ class MerchantAgent:
         extra_presentation_tools: Sequence[PresentationExtension] = (),
         extra_delegates: Sequence[DelegateExtension] = (),
         executor_class: type[MerchantToolExecutor] = MerchantToolExecutor,
+        extra_tools: Sequence[dict[str, Any]] = (),
+        analysis_runner: AnalysisRunner | None = None,
     ) -> None:
         if skills is None:
             skills = SkillRegistry.from_dir(skills_dir) if skills_dir else SkillRegistry([])
@@ -111,7 +113,7 @@ class MerchantAgent:
         self.extra_presentation_tools = tuple(extra_presentation_tools)
         self.extra_delegates = tuple(extra_delegates)
         built_in = (
-            [build_analysis_delegate(self.client, self.backend, self.config)]
+            [build_analysis_delegate(self.client, self.backend, self.config, runner=analysis_runner)]
             if self.config.enable_analysis
             else []
         )
@@ -131,6 +133,7 @@ class MerchantAgent:
         tools = build_tools(
             self.config, self.skills.names, self.extra_presentation_tools, self.extra_delegates
         )
+        tools.extend(extra_tools)
         self._tools = with_tool_cache_control(with_eager_input(tools, self._partial_ui_tools))
 
     async def stream_turn(
