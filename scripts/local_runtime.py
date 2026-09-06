@@ -395,6 +395,27 @@ def reset_fixture_sessions() -> None:
         db.execute("PRAGMA foreign_keys=ON")
         owners = retail.fixture_owners()
         sessions = "SELECT id FROM sessions WHERE owner IN (" + ",".join("?" for _ in owners) + ")"
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "buyer_commands" in tables:
+            commands = (
+                "SELECT request_key FROM buyer_commands WHERE session_id IN (" + sessions + ")"
+            )
+            if "buyer_confirmations" in tables:
+                db.execute(
+                    "DELETE FROM buyer_confirmations WHERE request_key IN (" + commands + ")",
+                    owners,
+                )
+            db.execute("DELETE FROM buyer_commands WHERE session_id IN (" + sessions + ")", owners)
+        for table in ("memory_facts", "memory_generations"):
+            if table in tables:
+                db.execute(
+                    "DELETE FROM "
+                    + table
+                    + " WHERE owner IN ("
+                    + ",".join("?" for _ in owners)
+                    + ")",
+                    owners,
+                )
         db.execute("DELETE FROM prepare_intents WHERE session_id IN (" + sessions + ")", owners)
         db.execute("DELETE FROM draft_refs WHERE session_id IN (" + sessions + ")", owners)
         db.execute("DELETE FROM sessions WHERE id IN (" + sessions + ")", owners)

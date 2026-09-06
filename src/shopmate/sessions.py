@@ -9,10 +9,12 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from uuid import uuid4
 
 from fastapi import HTTPException
 from merchant_agent import MerchantSessionState
+from shopping_agent import ShoppingSessionState
 
 
 def now() -> str:
@@ -27,13 +29,14 @@ def dump(value: Any) -> str:
 class SessionRecord:
     session_id: str
     owner: str
-    state: MerchantSessionState = field(default_factory=MerchantSessionState)
+    state: MerchantSessionState | ShoppingSessionState = field(default_factory=MerchantSessionState)
     messages: list[dict] = field(default_factory=list)
     items: list[dict] = field(default_factory=list)
     status: str = "idle"
     updated_at: str = field(default_factory=now)
     turn_id: str | None = None
     version: int = 0
+    role: Literal["merchant", "buyer"] = "merchant"
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,12 @@ class SessionStore:
         if "rejection" not in columns:
             with self.db:
                 self.db.execute("ALTER TABLE prepare_intents ADD COLUMN rejection TEXT")
+        session_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(sessions)")}
+        if "role" not in session_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'merchant'"
+                )
         # A restarted process cannot resume an in-flight model stream.
         with self.db:
             rows = self.db.execute("SELECT * FROM sessions WHERE status='running'").fetchall()
@@ -81,23 +90,31 @@ class SessionStore:
         self.db.close()
 
     def _record(self, row) -> SessionRecord:
+        state_type = {"merchant": MerchantSessionState, "buyer": ShoppingSessionState}[row["role"]]
         return SessionRecord(
             row["id"],
             row["owner"],
-            MerchantSessionState.model_validate_json(row["state"]),
+            state_type.model_validate_json(row["state"]),
             json.loads(row["messages"]),
             json.loads(row["items"]),
             row["status"],
             row["updated_at"],
             row["turn_id"],
             row["version"],
+            row["role"],
         )
 
-    def create(self, owner: str) -> SessionRecord:
-        record = SessionRecord(secrets.token_urlsafe(24), owner)
+    def create(
+        self, owner: str, *, role: Literal["merchant", "buyer"] = "merchant"
+    ) -> SessionRecord:
+        state_type = {"merchant": MerchantSessionState, "buyer": ShoppingSessionState}[role]
+        session_id = "shop-" + str(uuid4()) if role == "buyer" else secrets.token_urlsafe(24)
+        record = SessionRecord(session_id, owner, state=state_type(), role=role)
         with self.db:
             self.db.execute(
-                "INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?)",
+                """INSERT INTO sessions
+                (id,owner,state,messages,items,status,updated_at,turn_id,version,role)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (
                     record.session_id,
                     owner,
@@ -108,21 +125,23 @@ class SessionStore:
                     record.updated_at,
                     None,
                     0,
+                    role,
                 ),
             )
         return record
 
-    def get(self, session_id: str, owner: str) -> SessionRecord:
+    def get(self, session_id: str, owner: str, *, role: str = "merchant") -> SessionRecord:
         row = self.db.execute(
-            "SELECT * FROM sessions WHERE id=? AND owner=?", (session_id, owner)
+            "SELECT * FROM sessions WHERE id=? AND owner=? AND role=?", (session_id, owner, role)
         ).fetchone()
         if row is None:
             raise HTTPException(404, "Session not found")
         return self._record(row)
 
-    def list(self, owner: str) -> list[dict]:
+    def list(self, owner: str, *, role: str = "merchant") -> list[dict]:
         rows = self.db.execute(
-            "SELECT * FROM sessions WHERE owner=? ORDER BY updated_at DESC", (owner,)
+            "SELECT * FROM sessions WHERE owner=? AND role=? ORDER BY updated_at DESC",
+            (owner, role),
         ).fetchall()
         return [
             {
@@ -147,7 +166,7 @@ class SessionStore:
         with self.db:
             result = self.db.execute(
                 """UPDATE sessions SET state=?,messages=?,items=?,status=?,updated_at=?,
-                turn_id=?,version=version+1 WHERE id=? AND owner=? AND version=?""",
+                turn_id=?,version=version+1 WHERE id=? AND owner=? AND version=? AND role=?""",
                 (
                     record.state.model_dump_json(),
                     dump(record.messages),
@@ -158,6 +177,7 @@ class SessionStore:
                     record.session_id,
                     record.owner,
                     record.version,
+                    record.role,
                 ),
             )
             if result.rowcount != 1:
@@ -167,7 +187,7 @@ class SessionStore:
     def begin_turn(self, record: SessionRecord) -> str:
         if record.status == "running":
             raise HTTPException(409, "Session is busy")
-        record.status, record.turn_id = "running", secrets.token_urlsafe(18)
+        record.status, record.turn_id = "running", str(uuid4())
         self.save(record)
         return record.turn_id
 

@@ -283,7 +283,13 @@ async def test_write_prepare_operator_approval_conflict_and_replay_have_sql_trut
     backend = CityBuddyMerchantBackend(auth, store, client, sql)
     # No model/client is constructed. The real host routes still call real Auth and Java services.
     app = create_app(
-        settings, auth=auth, store=store, backend=backend, agent=object(), provider=object()
+        settings,
+        auth=auth,
+        store=store,
+        backend=backend,
+        agent=object(),
+        buyer_agent=object(),
+        provider=object(),
     )
     try:
         async with (
@@ -448,7 +454,13 @@ async def test_committed_approval_recovers_after_host_loses_response(settings, t
     store = SessionStore(tmp_path / "approval-response-loss.sqlite3")
     backend = CityBuddyMerchantBackend(auth, store, client, sql)
     app = create_app(
-        settings, auth=auth, store=store, backend=backend, agent=object(), provider=object()
+        settings,
+        auth=auth,
+        store=store,
+        backend=backend,
+        agent=object(),
+        buyer_agent=object(),
+        provider=object(),
     )
     try:
         await sql.start()

@@ -7,7 +7,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
     const host = process.env.SHOPMATE_API_URL ?? "http://127.0.0.1:8101";
-    return [{ source: "/api/merchant/:path*", destination: `${host}/api/merchant/:path*` }];
+    return [
+      { source: "/api/merchant/:path*", destination: `${host}/api/merchant/:path*` },
+      { source: "/api/buyer/:path*", destination: `${host}/api/buyer/:path*` },
+    ];
   },
   transpilePackages: ["web-shared"],
 };

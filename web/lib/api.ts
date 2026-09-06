@@ -1,7 +1,7 @@
 // Copyright 2026 Anthropic PBC
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AgentEvent, ChatItem } from "web-shared";
+import type { AgentEvent, ChatItem, MemoryFact } from "web-shared";
 import { AgentApi, readChatEventStream } from "web-shared/api.ts";
 import type { Campaign, CampaignsResponse, ChangesResponse, InventoryResponse, ListingDetailResponse, ListingFilters, ListingsResponse, OrderIssuesResponse, OverviewResponse, Promotion, PromotionsResponse } from "./types";
 import { checkedResponse, UNREACHABLE } from "./http.ts";
@@ -15,6 +15,7 @@ export class ShopMateApi extends AgentApi {
   private token: string | null = null;
   private stream: AbortController | null = null;
   onUnauthorized: (() => void) | null = null;
+  onReadError: ((message:string) => void) | null = null;
 
   setToken(token: string | null) { this.token = token; if (!token) { this.stopChat(); this.session = null; } }
   override headers(json = false) {
@@ -39,7 +40,10 @@ export class ShopMateApi extends AgentApi {
     const query = params ? `?${new URLSearchParams(params)}` : "";
     return this.requestJson<T>(`${path}${query}`);
   }
-  override async fetchMemory() { return []; }
+  override async fetchMemory(): Promise<MemoryFact[] | null> {
+    try { return (await this.requestJson<{facts:MemoryFact[]}>("/memory")).facts; }
+    catch(error) { this.onReadError?.(error instanceof Error ? error.message : UNREACHABLE); return null; }
+  }
 
   stopChat() { this.stream?.abort(); }
 

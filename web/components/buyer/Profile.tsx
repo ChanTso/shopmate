@@ -1,0 +1,10 @@
+"use client";
+import { useState } from "react";
+import { Button } from "web-shared";
+import type { BuyerProfile,Policy } from "@/lib/buyer-types";
+import { buyerApi } from "@/lib/buyer-api";
+import { useResource } from "@/lib/use-resource";
+export default function Profile({profile,disabled,onClearMemory}:{profile:BuyerProfile|null;disabled:boolean;onClearMemory:()=>Promise<void>}) {
+ const [confirm,setConfirm]=useState(false);const {data,error}=useResource(()=>buyerApi.get<{policies:Policy[]}>("/policies",{query:""}),[]);
+ return <div className="space-y-4"><h1 className="text-2xl font-semibold">资料、记忆与政策</h1>{profile?<section className="space-y-2 rounded-xl border border-(--line) bg-(--card) p-4"><h2 className="font-semibold">{profile.display_name??profile.user_id}</h2><p>会员：{profile.loyalty_tier??"无记录"}</p><p>常用地点：{profile.default_location??"未设置"}</p><dl className="text-sm">{Object.entries(profile.preferences).map(([key,value])=><div key={key} className="flex gap-2"><dt>{key}</dt><dd>{value}</dd></div>)}</dl><p className="text-xs text-(--ink-soft)">以上来自账户资料，模型不能修改；对话记忆单独管理。</p></section>:<p>账户资料待读取。</p>}<section className="space-y-3 rounded-xl border border-(--line) p-4"><h2 className="font-semibold">对话记忆</h2><p className="text-sm">点击右上角账户头像查看、纠正或忘记单条记忆。记忆按买家身份隔离，保存在服务端。</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={confirm} disabled={disabled} onChange={e=>setConfirm(e.target.checked)}/>我确认清除当前买家身份的全部对话记忆。</label><Button disabled={disabled||!confirm} variant="secondary" onClick={()=>{setConfirm(false);void onClearMemory();}}>清除全部对话记忆</Button></section><h2 className="text-lg font-semibold">本站政策与购买指南</h2>{error?<p role="alert" className="text-(--danger)">{error}</p>:!data?<p>读取政策…</p>:data.policies.map(policy=><details key={policy.policy_id} className="rounded-xl border border-(--line) bg-(--card) p-4"><summary className="cursor-pointer font-semibold">{policy.title}</summary><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{policy.content}</p></details>)}</div>;
+}
