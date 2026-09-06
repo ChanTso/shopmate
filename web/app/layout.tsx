@@ -5,8 +5,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ShopMate 商家工作台",
-  description: "经营分析、商品与人工审批工作台",
+  title: "ShopMate 零售工作台",
+  description: "买家购物、商家经营分析与人工确认工作台",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

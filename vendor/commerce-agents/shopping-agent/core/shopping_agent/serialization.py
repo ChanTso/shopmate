@@ -104,6 +104,8 @@ def search_result_text(
 
 
 def cart_summary(cart: Cart) -> str:
+    if cart.subtotal is None or cart.currency is None:
+        return f"{cart.item_count} item(s), subtotal unavailable; review the current cart quote"
     return f"{cart.item_count} item(s), subtotal {cart.subtotal:.2f} {cart.currency}"
 
 

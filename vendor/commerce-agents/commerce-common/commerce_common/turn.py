@@ -11,6 +11,8 @@ reminder); they never count as the user's words.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 import asyncio
 import hashlib
 import json
@@ -171,6 +173,16 @@ async def fetched(coro: Any) -> Any:
         return None
 
 
+@dataclass(frozen=True)
+class ToolCallContext:
+    tool_use_id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+current_tool_call: ContextVar[ToolCallContext] = ContextVar("commerce_tool_call")
+
+
 class EagerDispatcher:
     """Tool execution started mid-stream. When a ``tool_use`` block's buffered JSON
     parses at ``content_block_stop``, the call's arguments are final — the loop starts
@@ -187,6 +199,13 @@ class EagerDispatcher:
         self._enabled = enabled
         self._tasks: dict[str, asyncio.Future[ToolOutcome]] = {}
 
+    async def _execute_call(self, name: str, tool_use_id: str, args: dict[str, Any]) -> ToolOutcome:
+        token = current_tool_call.set(ToolCallContext(tool_use_id, name, dict(args)))
+        try:
+            return await self._execute(name, args)
+        finally:
+            current_tool_call.reset(token)
+
     def started(self, tool_use_id: str) -> bool:
         return tool_use_id in self._tasks
 
@@ -195,7 +214,7 @@ class EagerDispatcher:
         started, or no parsed args) and the join executes it later."""
         if not self._enabled or args is None or tool_use_id in self._tasks:
             return False
-        self._tasks[tool_use_id] = asyncio.ensure_future(self._execute(name, args))
+        self._tasks[tool_use_id] = asyncio.ensure_future(self._execute_call(name, tool_use_id, args))
         return True
 
     def settle(self, tool_use_id: str, outcome: ToolOutcome) -> None:
@@ -212,7 +231,7 @@ class EagerDispatcher:
             *(
                 self._tasks[block.id]
                 if block.id in self._tasks
-                else self._execute(block.name, dict(block.input or {}))
+                else self._execute_call(block.name, block.id, dict(block.input or {}))
                 for block in tool_uses
             )
         )

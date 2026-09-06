@@ -790,6 +790,8 @@ dependencies = [
     { name = "merchant-agent-core" },
     { name = "merchant-agent-runtime" },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "shopping-agent-core" },
+    { name = "shopping-agent-runtime" },
     { name = "sqlglot" },
     { name = "uvicorn" },
 ]
@@ -800,8 +802,6 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
     { name = "ruff" },
-    { name = "shopping-agent-core" },
-    { name = "shopping-agent-runtime" },
 ]
 
 [package.metadata]
@@ -814,6 +814,8 @@ requires-dist = [
     { name = "merchant-agent-core", editable = "vendor/commerce-agents/merchant-agent/core" },
     { name = "merchant-agent-runtime", editable = "vendor/commerce-agents/merchant-agent/runtime-messages-api" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
+    { name = "shopping-agent-core", editable = "vendor/commerce-agents/shopping-agent/core" },
+    { name = "shopping-agent-runtime", editable = "vendor/commerce-agents/shopping-agent/runtime-messages-api" },
     { name = "sqlglot", specifier = ">=28,<31" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
 ]
@@ -824,8 +826,6 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24,<2" },
     { name = "python-dotenv", specifier = ">=1,<2" },
     { name = "ruff", specifier = ">=0.14,<1" },
-    { name = "shopping-agent-core", editable = "vendor/commerce-agents/shopping-agent/core" },
-    { name = "shopping-agent-runtime", editable = "vendor/commerce-agents/shopping-agent/runtime-messages-api" },
 ]
 
 [[package]]

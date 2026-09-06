@@ -108,7 +108,7 @@ class Provider:
         await self.client.close()
 
 
-def build_agent(settings: Settings, backend, provider: Provider):
+def build_agent(settings: Settings, backend, provider: Provider, *, memory_store=None):
     from merchant_agent_runtime import MerchantAgent
 
     from .backend import ShopMateConfig
@@ -116,6 +116,8 @@ def build_agent(settings: Settings, backend, provider: Provider):
 
     config = ShopMateConfig(
         model=settings.model,
+        enable_memory=memory_store is not None,
+        memory_model=settings.analysis_model,
         analysis_model=settings.analysis_model,
         thinking_effort=None,
         request_timeout_s=min(120, settings.task_timeout_s),
@@ -125,5 +127,56 @@ def build_agent(settings: Settings, backend, provider: Provider):
         analysis_query_timeout_s=settings.sql_timeout_ms / 1000 + 1,
     )
     return MerchantAgent(
-        backend=backend, config=config, client=provider.client, skills_dir=ROOT / "skills"
+        backend=backend,
+        config=config,
+        client=provider.client,
+        skills_dir=ROOT / "skills",
+        memory_store=memory_store,
+    )
+
+
+def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory_store):
+    from shopping_agent import ShoppingAgentConfig
+    from shopping_agent_runtime import ShoppingAgent
+
+    from .buyer_executor import REFUND_TOOL, BuyerToolExecutor
+    from .settings import ROOT
+
+    config = ShoppingAgentConfig(
+        brand_name="ShopMate",
+        assistant_name="买家购物助手",
+        brand_voice="使用中文，清楚区分商品事实、个人偏好、配送估算和实际订单状态",
+        domain_search_notes=(
+            "商品价格与库存以当前目录为准；多规格商品先选择具体规格。结账仅交接至用户确认页，"
+            "配送报价仅供咨询，不计入商品支付金额。退款只准备确认卡片，不替用户确认。"
+            "CNY 的展示价格 price、total 以元计；amount_minor 和所有以 Minor 结尾的金额字段以整数分计。"
+            "用户明确说分时保留分数值，不再次乘100；只有明确说元时才换算为分。"
+            "退款金额必须等于用户请求，不能擅自改成全额或可退上限；金额或单位不明确先询问。"
+        ),
+        model=settings.model,
+        memory_model=settings.analysis_model,
+        thinking_effort=None,
+        enable_memory=True,
+        max_quantity_per_item=24,
+        max_cart_lines=100,
+        max_tool_iterations=12,
+        close_on_presentation=False,
+        request_timeout_s=min(120, settings.task_timeout_s),
+        policy_intent_terms=ShoppingAgentConfig.model_fields["policy_intent_terms"].default
+        + ("退款", "退货", "政策", "运费", "保修"),
+        policy_intent_cues=ShoppingAgentConfig.model_fields["policy_intent_cues"].default
+        + ("怎么", "如何", "能否", "可以", "？"),
+        order_intent_terms=ShoppingAgentConfig.model_fields["order_intent_terms"].default
+        + ("订单", "物流", "包裹", "配送"),
+        order_intent_cues=ShoppingAgentConfig.model_fields["order_intent_cues"].default
+        + ("在哪", "状态", "什么时候", "退款", "延迟", "？"),
+    )
+    return ShoppingAgent(
+        backend=backend,
+        config=config,
+        client=provider.client,
+        skills_dir=ROOT / "vendor/commerce-agents/shopping-agent/skills",
+        memory_store=memory_store,
+        executor_class=BuyerToolExecutor,
+        extra_tools=[REFUND_TOOL],
     )

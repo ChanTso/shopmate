@@ -34,6 +34,8 @@ jobs:
           vendor/commerce-agents/commerce-common/tests
           vendor/commerce-agents/merchant-agent/core/tests
           vendor/commerce-agents/merchant-agent/runtime-messages-api/tests
+          vendor/commerce-agents/shopping-agent/core/tests
+          vendor/commerce-agents/shopping-agent/runtime-messages-api/tests
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 15

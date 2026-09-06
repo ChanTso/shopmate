@@ -111,3 +111,37 @@ async def test_jwks_outage_is_unavailable_not_auth_denial(signer):
     with pytest.raises(HTTPException) as failure:
         await auth.verify(token(signer))
     assert failure.value.status_code == 503
+
+
+async def test_buyer_and_merchant_login_permissions_do_not_substitute(signer):
+    auth = client(signer)
+    buyer = token(signer, permissions=["shopping:session:create"])
+    assert (await auth.verify(buyer, role="buyer")).subject == "operator"
+    with pytest.raises(HTTPException) as failure:
+        await auth.verify(buyer)
+    assert failure.value.status_code == 403
+    with pytest.raises(HTTPException):
+        await auth.verify(token(signer), role="buyer")
+
+
+async def test_shopping_exchange_is_fixed_actor_and_exact_scope(signer):
+    import base64
+
+    def handler(request):
+        actor = base64.b64decode(request.headers["authorization"].split()[1]).decode().split(":")[0]
+        assert actor == "shopping-agent"
+        assert json.loads(request.content) == {
+            "sessionId": "shop-session",
+            "userSubject": "buyer",
+            "scope": "shopping:cart:write",
+        }
+        return httpx.Response(200, json={"accessToken": "shopping-obo"})
+
+    auth = client(signer, handler)
+    buyer = RequestIdentity("buyer", "direct")
+    assert (
+        await auth.exchange_shopping(buyer, "shop-session", "shopping:cart:write") == "shopping-obo"
+    )
+    for scope in ("merchant:change:prepare", "payment:create", "refund:create shopping:cart:write"):
+        with pytest.raises(ValueError):
+            await auth.exchange_shopping(buyer, "shop-session", scope)

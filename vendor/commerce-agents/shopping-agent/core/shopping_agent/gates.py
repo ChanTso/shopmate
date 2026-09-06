@@ -74,6 +74,7 @@ def remember_order_items(state: ShoppingSessionState, orders: Sequence[Order]) -
                 product_id=item.product_id,
                 title=item.title,
                 price=item.price,
+                currency=order.currency,
                 option_values=item.option_values,
                 variant_of=item.variant_of,
             )

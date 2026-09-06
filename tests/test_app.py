@@ -15,6 +15,7 @@ from shopmate.analysis_sql import AnalysisSQL
 from shopmate.app import create_app
 from shopmate.auth import RequestIdentity, current_context
 from shopmate.sessions import SessionStore
+from shopmate.settings import Settings
 
 
 class Auth:
@@ -23,6 +24,8 @@ class Auth:
 
 
 class Provider:
+    client = object()
+
     @asynccontextmanager
     async def task_budget(self):
         yield SimpleNamespace(
@@ -91,7 +94,7 @@ async def rig(tmp_path):
     agent = Agent()
     backend = Backend(store)
     app = create_app(
-        SimpleNamespace(),
+        Settings(),
         auth=Auth(),
         store=store,
         backend=backend,

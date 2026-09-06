@@ -1,4 +1,4 @@
-"""Authenticated merchant portal over the upstream MerchantAgent runtime."""
+"""Authenticated retail portal over the upstream buyer and merchant runtimes."""
 
 from __future__ import annotations
 
@@ -38,8 +38,18 @@ def _json(value):
     )
 
 
-def _context(record: SessionRecord) -> MerchantSessionContext:
+def _context(record: SessionRecord, page=None):
     reference = datetime.now(ZoneInfo("Asia/Shanghai"))
+    if record.role == "buyer":
+        from shopping_agent import PageContext, ShoppingSessionContext
+
+        return ShoppingSessionContext(
+            session_id=record.session_id,
+            user_id=record.owner,
+            now=reference,
+            timezone="Asia/Shanghai",
+            page=page or PageContext(),
+        )
     return MerchantSessionContext(
         session_id=record.session_id,
         merchant_id="citybuddy",
@@ -113,13 +123,29 @@ def _ui_event(record: SessionRecord, event: AgentEvent):
         item["segments"].append({"type": "error", "text": str(data.get("message", "Turn failed"))})
 
 
-def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None, provider=None):
+def create_app(
+    settings=None,
+    *,
+    auth=None,
+    store=None,
+    backend=None,
+    agent=None,
+    provider=None,
+    buyer_backend=None,
+    buyer_agent=None,
+    buyer_client=None,
+    transactions=None,
+):
     resources: dict[str, Any] = {
         "auth": auth,
         "store": store,
         "backend": backend,
         "agent": agent,
         "provider": provider,
+        "buyer_backend": buyer_backend,
+        "buyer_agent": buyer_agent,
+        "buyer_client": buyer_client,
+        "transactions": transactions,
     }
     busy: set[str] = set()
 
@@ -138,6 +164,11 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             if resources["store"] is None:
                 resources["store"] = SessionStore(settings.state_path)
                 owned.append(resources["store"])
+            from .buyer_commands import BuyerCommands
+            from .memory import RetailMemoryStore
+
+            resources["commands"] = BuyerCommands(resources["store"])
+            resources["memory"] = RetailMemoryStore(resources["store"])
             if resources["backend"] is None:
                 from .analysis_sql import AnalysisSQL
                 from .backend import CityBuddyMerchantBackend
@@ -163,7 +194,43 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
                 from .provider import build_agent
 
                 resources["agent"] = build_agent(
-                    settings, resources["backend"], resources["provider"]
+                    settings,
+                    resources["backend"],
+                    resources["provider"],
+                    memory_store=resources["memory"],
+                )
+            if resources["buyer_client"] is None:
+                from .buyer_client import BuyerClient
+
+                resources["buyer_client"] = BuyerClient(settings.commerce_url)
+                owned.append(resources["buyer_client"])
+            if resources["transactions"] is None:
+                from .buyer_transactions import BuyerTransactions
+
+                resources["transactions"] = BuyerTransactions(
+                    resources["auth"],
+                    resources["buyer_client"],
+                    resources["commands"],
+                    settings,
+                )
+            if resources["buyer_backend"] is None:
+                from .buyer_backend import CityBuddyStorefrontBackend
+
+                resources["buyer_backend"] = CityBuddyStorefrontBackend(
+                    resources["auth"],
+                    resources["store"],
+                    resources["buyer_client"],
+                    resources["commands"],
+                )
+            resources["buyer_backend"].transactions = resources["transactions"]
+            if resources["buyer_agent"] is None:
+                from .provider import build_buyer_agent
+
+                resources["buyer_agent"] = build_buyer_agent(
+                    settings,
+                    resources["buyer_backend"],
+                    resources["provider"],
+                    memory_store=resources["memory"],
                 )
             yield
         finally:
@@ -182,8 +249,8 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             content={"detail": error.detail, "category": error.category},
         )
 
-    def context(record):
-        return _context(record)
+    def context(record, page=None):
+        return _context(record, page)
 
     async def identity(authorization: str | None = Header(default=None)) -> RequestIdentity:
         if (
@@ -418,10 +485,11 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
     async def discard(change_id: str, bound=session_dependency):
         return await action(change_id, bound, False)
 
-    @app.post(prefix + "/chat")
-    async def chat(request: ChatRequest, bound=session_dependency):
+    async def run_chat(request, bound, *, role):
         user, record = bound
         acquire(record)
+        session_context = context(record, getattr(request, "page", None))
+        active_agent = resources["buyer_agent" if role == "buyer" else "agent"]
         try:
             record.messages.append({"role": "user", "content": request.message})
             turn = 1 + max((i.get("turn", 0) for i in record.items), default=0)
@@ -453,20 +521,30 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             analysis_queries = []
             try:
                 with (
-                    bind_context(user, record.session_id, turn_id),
+                    bind_context(user, record.session_id, turn_id, role=role),
+                    resources["memory"].turn(),
                     capture_analysis_queries() as analysis_queries,
                 ):
                     async with resources["provider"].task_budget() as budget:
                         async with aclosing(
-                            resources["agent"].stream_turn(
-                                record.messages, context(record), record.state
-                            )
+                            active_agent.stream_turn(record.messages, session_context, record.state)
                         ) as stream:
                             async for event in stream:
                                 _ui_event(record, event)
                                 if event.type in {"turn_complete", "error"}:
                                     if event.type == "turn_complete":
                                         status = "completed"
+                                        if getattr(active_agent, "memory", None) is not None:
+                                            from .memory import extract_memory
+
+                                            event.data["memory_status"] = await extract_memory(
+                                                active_agent,
+                                                record.messages,
+                                                session_context,
+                                            )
+                                            record.items[-1]["memory_status"] = event.data[
+                                                "memory_status"
+                                            ]
                                     event.data["analysis_queries"] = analysis_queries
                                     if budget is not None:
                                         event.data["provider_usage"] = budget.summary()
@@ -520,4 +598,13 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             background=BackgroundTask(finish_unstarted_stream),
         )
 
+    @app.post(prefix + "/chat")
+    async def chat(request: ChatRequest, bound=session_dependency):
+        return await run_chat(request, bound, role="merchant")
+
+    from .buyer_routes import install_buyer_routes
+    from .memory_routes import install_memory_routes
+
+    install_memory_routes(app, prefix, session_dependency, resources, "merchant")
+    install_buyer_routes(app, resources, busy, run_chat, context, LoginRequest)
     return app

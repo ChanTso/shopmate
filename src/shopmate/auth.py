@@ -1,4 +1,4 @@
-"""Direct-user authentication and host-bound merchant delegation."""
+"""Direct-user authentication and host-bound retail delegation."""
 
 from __future__ import annotations
 
@@ -25,6 +25,18 @@ MERCHANT_SCOPES = frozenset(
 )
 
 
+SHOPPING_SCOPES = frozenset(
+    {
+        "shopping:orders:read",
+        "shopping:cart:read",
+        "shopping:cart:write",
+        "shopping:profile:read",
+        "refund:create",
+    }
+)
+ROLE_PERMISSION = {"merchant": "merchant:session:create", "buyer": "shopping:session:create"}
+
+
 @dataclass(frozen=True)
 class RequestIdentity:
     subject: str
@@ -36,6 +48,7 @@ class BoundContext:
     identity: RequestIdentity
     session_id: str
     turn_id: str | None = None
+    role: str = "merchant"
 
 
 _context: ContextVar[BoundContext] = ContextVar("shopmate_request_context")
@@ -46,8 +59,15 @@ def current_context() -> BoundContext:
 
 
 @contextmanager
-def bind_context(identity: RequestIdentity, session_id: str, turn_id: str | None = None):
-    handle = _context.set(BoundContext(identity, session_id, turn_id))
+def bind_context(
+    identity: RequestIdentity,
+    session_id: str,
+    turn_id: str | None = None,
+    *,
+    role: str = "merchant",
+):
+    ROLE_PERMISSION[role]
+    handle = _context.set(BoundContext(identity, session_id, turn_id, role))
     try:
         yield _context.get()
     finally:
@@ -98,7 +118,8 @@ class AuthClient:
         except (KeyError, TypeError, ValueError, jwt.PyJWTError):
             raise HTTPException(503, "Invalid identity key set") from None
 
-    async def verify(self, token: str) -> RequestIdentity:
+    async def verify(self, token: str, *, role: str = "merchant") -> RequestIdentity:
+        permission = ROLE_PERMISSION[role]
         try:
             header = jwt.get_unverified_header(token)
             kid = header.get("kid")
@@ -137,11 +158,11 @@ class AuthClient:
                 raise ValueError()
         except (jwt.PyJWTError, ValueError, TypeError):
             raise HTTPException(401, "Invalid direct user token") from None
-        if "merchant:session:create" not in permissions:
-            raise HTTPException(403, "Merchant permission required")
+        if permission not in permissions:
+            raise HTTPException(403, f"{role.title()} permission required")
         return RequestIdentity(subject, token)
 
-    async def login(self, login_identifier: str, password: str) -> dict:
+    async def login(self, login_identifier: str, password: str, *, role: str = "merchant") -> dict:
         result = await self._request(
             "POST",
             self.settings.auth_url.rstrip("/") + "/auth/login",
@@ -150,7 +171,7 @@ class AuthClient:
         token = result.get("accessToken")
         if not isinstance(token, str):
             raise HTTPException(503, "Invalid identity response")
-        identity = await self.verify(token)
+        identity = await self.verify(token, role=role)
         return {
             "accessToken": token,
             "tokenType": "Bearer",
@@ -165,6 +186,23 @@ class AuthClient:
             "POST",
             self.settings.auth_url.rstrip("/") + "/auth/token/exchange",
             auth=httpx.BasicAuth("merchant-agent", self.settings.merchant_service_secret),
+            headers={"X-User-Authorization": "Bearer " + identity.token},
+            json={"sessionId": session_id, "userSubject": identity.subject, "scope": scope},
+        )
+        token = result.get("accessToken")
+        if not isinstance(token, str) or not token:
+            raise HTTPException(503, "Invalid identity response")
+        return token
+
+    async def exchange_shopping(
+        self, identity: RequestIdentity, session_id: str, scope: str
+    ) -> str:
+        if scope not in SHOPPING_SCOPES:
+            raise ValueError("Unsupported shopping scope")
+        result = await self._request(
+            "POST",
+            self.settings.auth_url.rstrip("/") + "/auth/token/exchange",
+            auth=httpx.BasicAuth("shopping-agent", self.settings.shopping_service_secret),
             headers={"X-User-Authorization": "Bearer " + identity.token},
             json={"sessionId": session_id, "userSubject": identity.subject, "scope": scope},
         )

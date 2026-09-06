@@ -72,7 +72,7 @@ export function StoreShell<V extends string>({
   profileId?: string;
   onSwitchProfile?: (id: string) => void;
   /** `count` is what the bag holds; `noun` names it ("item", "booking"); `figure` is a running total; `extra` a live badge. */
-  bag: { label: string; count: number; noun: string; figure?: string | null; extra?: ReactNode };
+  bag: { label: string; count: number; noun: string; ariaLabel?: string; figure?: string | null; extra?: ReactNode };
   panel: ReactNode;
   panelOpen: boolean;
   onPanelOpenChange: (open: boolean) => void;
@@ -158,7 +158,7 @@ export function StoreShell<V extends string>({
               ref={bagButtonRef}
               type="button"
               onClick={() => onPanelOpenChange(true)}
-              aria-label={`Open ${bag.label.toLowerCase()}, ${bag.count} ${bag.noun}${bag.count === 1 ? "" : "s"}`}
+              aria-label={bag.ariaLabel ?? `Open ${bag.label.toLowerCase()}, ${bag.count} ${bag.noun}${bag.count === 1 ? "" : "s"}`}
               className="flex h-[34px] items-center gap-2 rounded-full bg-(--ink) pl-3 pr-1.5 text-[13px] font-semibold text-(--surface) transition hover:brightness-110 xl:hidden"
             >
               <Icon name="bag" size={16} />

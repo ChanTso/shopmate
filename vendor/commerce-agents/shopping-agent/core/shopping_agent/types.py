@@ -118,6 +118,8 @@ class UserPreferences(BaseModel):
 
 
 class OrderStatus(StrEnum):
+    UNPAID = "unpaid"
+    PAID = "paid"
     PROCESSING = "processing"
     SHIPPED = "shipped"
     OUT_FOR_DELIVERY = "out_for_delivery"

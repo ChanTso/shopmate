@@ -1,8 +1,8 @@
 # ShopMate
 
-连接 CityBuddy 交易后端的零售经营 Agent。当前商家工作台支持经营分析、完整商品与规格目录、库存和订单问题，以及由操作员批准的商品内容、价格、库存、促销和营销计划变更。
+连接 CityBuddy 交易后端的零售 Agent 工作台。商家端支持经营分析、商品与库存、订单问题和审批执行；买家端支持推荐与比较、购物车、本人订单及由用户确认的结账、模拟付款和退款申请。
 
-项目复用 [commerce-agents](vendor/commerce-agents/README.md) 的商家核心、Messages 运行时和零售页面组件；业务工具、身份、持久会话及实际写入接入 CityBuddy。原 [Apache-2.0 许可证](vendor/commerce-agents/LICENSE)、版权声明和[图片来源](web/public/products/IMAGE-CREDITS.md)保留。
+项目复用 [commerce-agents](vendor/commerce-agents/README.md) 的商家与购物核心、Messages 运行时和零售页面组件；业务工具、身份、持久会话及实际写入接入 CityBuddy。原 [Apache-2.0 许可证](vendor/commerce-agents/LICENSE)、版权声明和[图片来源](web/public/products/IMAGE-CREDITS.md)保留。
 
 ## 当前能力
 
@@ -26,7 +26,7 @@ flowchart LR
   Java --> Transaction[实际变更 / 草案回执 / 商品事件]
 ```
 
-当前版本是完整零售接入的 **M1 商家阶段**。买家购物 host、页面及双端记忆尚未接通；CityBuddy 原买家客服入口暂时保留，待新买家入口验证后切换，不是最终保留两套买家运行时的设计。
+商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 原买家客服入口暂时保留，待新买家入口完成验证后切换，不是最终保留两套买家运行时的设计。Web search、独立代码执行沙箱及新版真实模型验收不在本次前端接线完成的声明内。
 
 ## 本地运行
 
