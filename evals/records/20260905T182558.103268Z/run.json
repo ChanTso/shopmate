@@ -1,0 +1,133 @@
+{
+  "metadata": {
+    "citybuddy_commit": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "shopmate_commit": "115b6a360ae502665f88063429e67230ab5ec37d",
+    "suite": "development",
+    "as_of": "2026-09-05T00:00:00Z",
+    "timezone": "UTC",
+    "fixture_source_revision": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "main_model": "gpt-5.6-terra",
+    "analysis_model": "gpt-5.6-terra",
+    "provider": "CLIPROXY /v1/chat/completions via Messages adapter",
+    "task_timeout_s": 300.0,
+    "max_model_calls": 16,
+    "budget_scope": "per chat turn, shared main and analysis calls",
+    "api": "http://127.0.0.1:8101/api/merchant",
+    "repetitions": 1
+  },
+  "data": {
+    "started_at": "2026-09-05T18:25:58.103710+00:00",
+    "finished_at": "2026-09-05T18:36:12.697025+00:00",
+    "stop_reason": null,
+    "executions": [
+      {
+        "task_id": "D01",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:25:58.149903+00:00",
+        "session_id": "-Lr6s2RFmk-G7j97qYx1YLMxYVjpQeW-",
+        "finished_at": "2026-09-05T18:26:19.301505+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D02",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:26:19.349596+00:00",
+        "session_id": "gGquf0kNAH1IwLGYdgRUahQKF2w8u-vR",
+        "finished_at": "2026-09-05T18:27:47.681222+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D03",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:27:47.724250+00:00",
+        "session_id": "-BpRy93GpSK3ZFF56Vu4FvZlA3y7SmAt",
+        "finished_at": "2026-09-05T18:28:31.379027+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D04",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:28:31.422600+00:00",
+        "session_id": "-pFwJEcz1r-NmQdAyjSDogEwIlLCHP7a",
+        "finished_at": "2026-09-05T18:29:39.446448+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D05",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:29:39.489170+00:00",
+        "session_id": "pRvFsTGkqduiEsHP0PuSwvpe0RsZ8xfi",
+        "finished_at": "2026-09-05T18:30:55.146172+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D06",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:30:55.191733+00:00",
+        "session_id": "-Cv1SqZPybqhVdVNuF7yXG0f6KsP0C0x",
+        "finished_at": "2026-09-05T18:31:30.005725+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D07",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:31:30.056168+00:00",
+        "session_id": "6Vi1IVKOfQM5mwX69VwmmfRiTIZPfs-W",
+        "finished_at": "2026-09-05T18:32:26.579365+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D08",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:32:26.626420+00:00",
+        "session_id": "T-RJh8cWa4_PDukkgS7XuATOU51C9Wmp",
+        "finished_at": "2026-09-05T18:33:32.208327+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D09",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:33:32.252770+00:00",
+        "session_id": "gRjhVbuOL3s9CL3U5Q9mZL97pZkC9O1I",
+        "finished_at": "2026-09-05T18:34:05.267816+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D10",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:34:05.313697+00:00",
+        "session_id": "YzyqSfPj26D4d7-mhgLNxSSUU6NW87NN",
+        "finished_at": "2026-09-05T18:34:45.084804+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D11",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:34:45.134268+00:00",
+        "session_id": "PI3o7eGPmThPkOfaW-tzafJdtrNduR8f",
+        "finished_at": "2026-09-05T18:35:36.182196+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D12",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:35:36.226979+00:00",
+        "session_id": "zAz2c3PhexMOF8tUX8J9ZlA8ITRfNSjF",
+        "finished_at": "2026-09-05T18:36:12.696448+00:00",
+        "reset_completed": true
+      }
+    ]
+  }
+}

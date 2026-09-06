@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "citybuddy_commit": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "shopmate_commit": "91347b986fcfc65d08c4012dcaa14e47dd7f0ada",
+    "suite": "formal",
+    "as_of": "2026-09-05T00:00:00Z",
+    "timezone": "UTC",
+    "fixture_source_revision": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "main_model": "gpt-5.6-terra",
+    "analysis_model": "gpt-5.6-terra",
+    "provider": "CLIPROXY /v1/chat/completions via Messages adapter",
+    "task_timeout_s": 300.0,
+    "max_model_calls": 16,
+    "budget_scope": "per chat turn, shared main and analysis calls",
+    "api": "http://127.0.0.1:8101/api/merchant",
+    "repetitions": 1
+  },
+  "data": {
+    "started_at": "2026-09-05T20:45:13.491173+00:00",
+    "finished_at": "2026-09-05T20:49:19.017243+00:00",
+    "stop_reason": null,
+    "executions": [
+      {
+        "task_id": "S03",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T20:45:13.533413+00:00",
+        "session_id": "1U7Bzt2oxYZFMDRl3lwgHXWaAWxmiUo5",
+        "finished_at": "2026-09-05T20:46:04.543240+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S08",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T20:46:04.588296+00:00",
+        "session_id": "Q4USumDGABYkbhDIBUilg--0DuytnDDa",
+        "finished_at": "2026-09-05T20:47:43.800072+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S11",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T20:47:43.843575+00:00",
+        "session_id": "3ZNoYC4frNPvMSehUo8W0rvb0ta5wQv7",
+        "finished_at": "2026-09-05T20:49:19.016681+00:00",
+        "reset_completed": true
+      }
+    ]
+  }
+}

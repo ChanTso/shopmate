@@ -1,0 +1,61 @@
+{
+  "metadata": {
+    "citybuddy_commit": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "shopmate_commit": "0db5538c1d46bf440542c6159323e2bcd2ec755a",
+    "suite": "development",
+    "as_of": "2026-09-05T00:00:00Z",
+    "timezone": "UTC",
+    "fixture_source_revision": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "main_model": "gpt-5.6-terra",
+    "analysis_model": "gpt-5.6-terra",
+    "provider": "CLIPROXY /v1/chat/completions via Messages adapter",
+    "task_timeout_s": 300.0,
+    "max_model_calls": 16,
+    "budget_scope": "per chat turn, shared main and analysis calls",
+    "api": "http://127.0.0.1:8101/api/merchant",
+    "repetitions": 1
+  },
+  "data": {
+    "started_at": "2026-09-05T18:49:22.044398+00:00",
+    "finished_at": "2026-09-05T18:53:36.634244+00:00",
+    "stop_reason": null,
+    "executions": [
+      {
+        "task_id": "D01",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:49:22.088026+00:00",
+        "session_id": "ilG87FGRG-qiTAEM8FcFBL0Uhl9VhqRK",
+        "finished_at": "2026-09-05T18:50:39.002581+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D06",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:50:39.046656+00:00",
+        "session_id": "6a5WU2I0yuNQEGtFcYPzB4hKOvNKNEal",
+        "finished_at": "2026-09-05T18:51:14.523644+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D07",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:51:14.581158+00:00",
+        "session_id": "XCJzj5D4U-F8tcsWj2qca8ssYCvVWLt9",
+        "finished_at": "2026-09-05T18:52:31.052731+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "D10",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T18:52:31.096337+00:00",
+        "session_id": "5-LaGBkAjwtqhZO2G--_3iqKz-oSE8wW",
+        "finished_at": "2026-09-05T18:53:36.633618+00:00",
+        "reset_completed": true
+      }
+    ]
+  }
+}

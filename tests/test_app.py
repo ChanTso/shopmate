@@ -134,6 +134,7 @@ async def test_completed_turn_restores_ui_and_runtime_history(rig):
         "/api/merchant/chat", headers=rig.headers, json={"message": "Analyze revenue"}
     )
     assert response.status_code == 200 and "turn_complete" in response.text
+    assert "no-transform" in response.headers["cache-control"]
     restored = (await rig.client.get("/api/merchant/session", headers=rig.headers)).json()
     assert restored["status"] == "completed"
     assert restored["items"][-1]["provider_usage"]["usage_complete"] is False

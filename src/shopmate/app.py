@@ -411,7 +411,8 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
         return StreamingResponse(
             events(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            # Prevent the frontend proxy from buffering SSE inside a compression stream.
+            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
             background=BackgroundTask(finish_unstarted_stream),
         )
 
