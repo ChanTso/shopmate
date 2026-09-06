@@ -186,8 +186,9 @@ TOOL_OPERATIONS = {"add_to_cart": "ADD", "update_cart_item": "SET", "remove_from
 
 
 class CityBuddyStorefrontBackend(StorefrontBackend):
-    def __init__(self, auth, store, client, commands):
+    def __init__(self, auth, store, client, commands, *, web_search=None):
         self.auth, self.store, self.client, self.commands = auth, store, client, commands
+        self.web_search = web_search
 
     @staticmethod
     def _bound(session):

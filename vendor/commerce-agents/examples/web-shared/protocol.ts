@@ -100,6 +100,8 @@ export interface AssistantChatItem {
   suggestionsStale?: boolean;
   pending: boolean;
   tools: string[];
+  /** The host persists this with the reply, including after a session restore. */
+  memory_status?: string;
   /**
    * Status line for the call in flight; cleared when prose or a card lands, or when the
    * tool a progress line names returns.

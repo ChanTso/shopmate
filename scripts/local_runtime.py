@@ -605,6 +605,11 @@ def main() -> None:
             )
         return
     require_api_stopped()
+    run(
+        ["docker", "build", "--tag", "shopmate-analysis:1", str(ROOT / "infra/analysis-sandbox")],
+        cwd=ROOT,
+        label="Build isolated analysis image from its dedicated context",
+    )
     if not ENV.exists():
         run(
             ["bash", "scripts/init_local.sh"],

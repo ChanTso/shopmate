@@ -135,6 +135,7 @@ def create_app(
     buyer_agent=None,
     buyer_client=None,
     transactions=None,
+    sandbox=None,
 ):
     resources: dict[str, Any] = {
         "auth": auth,
@@ -146,6 +147,7 @@ def create_app(
         "buyer_agent": buyer_agent,
         "buyer_client": buyer_client,
         "transactions": transactions,
+        "sandbox": sandbox,
     }
     busy: set[str] = set()
 
@@ -169,6 +171,17 @@ def create_app(
 
             resources["commands"] = BuyerCommands(resources["store"])
             resources["memory"] = RetailMemoryStore(resources["store"])
+            if resources["provider"] is None:
+                from .provider import Provider
+
+                resources["provider"] = Provider(settings)
+                owned.append(resources["provider"])
+            if resources["sandbox"] is None:
+                from .analysis_sandbox import DockerSandbox
+
+                resources["sandbox"] = DockerSandbox(settings.analysis_sandbox_image)
+                owned.append(resources["sandbox"])
+            web_search = getattr(resources["provider"], "web_search", None)
             if resources["backend"] is None:
                 from .analysis_sql import AnalysisSQL
                 from .backend import CityBuddyMerchantBackend
@@ -184,12 +197,8 @@ def create_app(
                     client,
                     sql,
                     report_as_of=datetime.fromisoformat(settings.as_of) if settings.as_of else None,
+                    web_search=web_search,
                 )
-            if resources["provider"] is None:
-                from .provider import Provider
-
-                resources["provider"] = Provider(settings)
-                owned.append(resources["provider"])
             if resources["agent"] is None:
                 from .provider import build_agent
 
@@ -198,6 +207,7 @@ def create_app(
                     resources["backend"],
                     resources["provider"],
                     memory_store=resources["memory"],
+                    sandbox=resources["sandbox"],
                 )
             if resources["buyer_client"] is None:
                 from .buyer_client import BuyerClient
@@ -221,6 +231,7 @@ def create_app(
                     resources["store"],
                     resources["buyer_client"],
                     resources["commands"],
+                    web_search=web_search,
                 )
             resources["buyer_backend"].transactions = resources["transactions"]
             if resources["buyer_agent"] is None:

@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import { AssistantText, ErrorBubble, UserBubble } from "./MessageBubble";
 import type { AssistantChatItem, ChatItem, UISegment } from "./protocol";
+import { memoryNotice } from "./memory-status";
 import { Suggestions } from "./Suggestions";
 
 export interface TranscriptProps {
@@ -73,6 +74,7 @@ export function Transcript({
             </div>
           );
         })}
+        {memoryNotice(item.memory_status) && <p role="status" className="rounded-lg bg-(--warn-soft) p-3 text-sm leading-relaxed">{memoryNotice(item.memory_status)}</p>}
         {item.pending ? renderPending(item) : null}
         {!item.pending && index === items.length - 1 ? (
           <Suggestions

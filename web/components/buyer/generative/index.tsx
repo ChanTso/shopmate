@@ -4,6 +4,8 @@
 /** One entry per shopping presentation tool. */
 
 import { type GenerativeBlockProps, UnknownBlock } from "web-shared";
+import WebSourcesCard from "@/components/generative/WebSourcesCard";
+import type { WebSourcesPayload } from "@/lib/web-sources";
 import type {
   CheckoutPayload,
   ComparisonPayload,
@@ -35,6 +37,8 @@ export default function GenerativeBlock({
 }) {
   const partial = status !== "final";
   switch (block.component) {
+    case "web_sources":
+      return status === "final" ? <WebSourcesCard payload={block.payload as WebSourcesPayload} /> : null;
     case "products":
       return <ProductCarousel payload={block.payload as ProductsPayload} onAdd={onAdd} partial={partial} />;
     case "comparison":
