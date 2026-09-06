@@ -1,0 +1,94 @@
+{
+  "reset_id": "R0",
+  "as_of": "2026-09-05T00:00:00Z",
+  "operator_subject": "shopmate-fixture-operator",
+  "fixture_generator": "CityBuddy scripts/seed_merchant_fixture.py --as-of 2026-09-05",
+  "products": [
+    {
+      "productId": "shopmate-fixture-coffee",
+      "name": "House coffee beans",
+      "priceMinor": 2400,
+      "currency": "CNY",
+      "stockQuantity": 420,
+      "available": true,
+      "priceEditable": true,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-tea",
+      "name": "Jasmine tea",
+      "priceMinor": 1800,
+      "currency": "CNY",
+      "stockQuantity": 95,
+      "available": true,
+      "priceEditable": true,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-mug",
+      "name": "Ceramic mug",
+      "priceMinor": 3900,
+      "currency": "CNY",
+      "stockQuantity": 18,
+      "available": true,
+      "priceEditable": true,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-tote",
+      "name": "Canvas tote",
+      "priceMinor": 2900,
+      "currency": "CNY",
+      "stockQuantity": 80,
+      "available": true,
+      "priceEditable": true,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-cocoa-usd",
+      "name": "Cocoa gift box",
+      "priceMinor": 1100,
+      "currency": "USD",
+      "stockQuantity": 32,
+      "available": true,
+      "priceEditable": true,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-unavailable",
+      "name": "Seasonal blend",
+      "priceMinor": 3200,
+      "currency": "CNY",
+      "stockQuantity": 0,
+      "available": false,
+      "priceEditable": false,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    },
+    {
+      "productId": "shopmate-fixture-seckill",
+      "name": "Limited coffee set",
+      "priceMinor": 5900,
+      "currency": "CNY",
+      "stockQuantity": 20,
+      "available": true,
+      "priceEditable": false,
+      "publicationState": "PUBLISHED",
+      "publicationVersion": 3
+    }
+  ],
+  "paid_order_kinds_present": [
+    "STANDARD"
+  ],
+  "nonpaid_examples": [
+    "not_started",
+    "PENDING",
+    "FAILED"
+  ],
+  "reference_status": "expected_from_fixture_definition_not_an_execution_result"
+}

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shopmate"
+version = "0.1.0"
+description = "Merchant analysis and operator-approved price changes backed by CityBuddy"
+requires-python = ">=3.11"
+dependencies = [
+  "merchant-agent-runtime==0.1.0.dev0",
+  "merchant-agent-core==0.1.0.dev0",
+  "commerce-common==0.1.0.dev0",
+  "anthropic==0.122.0",
+  "httpx==0.28.1",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "PyJWT[crypto]>=2.10,<3",
+  "aiomysql>=0.2,<1",
+  "sqlglot>=28,<31",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.14,<1", "shopping-agent-core==0.1.0.dev0", "python-dotenv>=1,<2", "shopping-agent-runtime==0.1.0.dev0"]
+
+[tool.uv.sources]
+shopping-agent-runtime = {path = "vendor/commerce-agents/shopping-agent/runtime-messages-api", editable = true}
+shopping-agent-core = {path = "vendor/commerce-agents/shopping-agent/core", editable = true}
+commerce-common = {path = "vendor/commerce-agents/commerce-common", editable = true}
+merchant-agent-core = {path = "vendor/commerce-agents/merchant-agent/core", editable = true}
+merchant-agent-runtime = {path = "vendor/commerce-agents/merchant-agent/runtime-messages-api", editable = true}
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shopmate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["vendor"]

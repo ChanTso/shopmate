@@ -1,0 +1,241 @@
+{
+  "metadata": {
+    "citybuddy_commit": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "shopmate_commit": "02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28",
+    "suite": "formal",
+    "as_of": "2026-09-05T00:00:00Z",
+    "timezone": "UTC",
+    "fixture_source_revision": "69be167a3df030bf45795c49f444d6e7c24d0423",
+    "main_model": "gpt-5.6-terra",
+    "analysis_model": "gpt-5.6-terra",
+    "provider": "CLIPROXY /v1/chat/completions via Messages adapter",
+    "task_timeout_s": 300.0,
+    "max_model_calls": 16,
+    "budget_scope": "per chat turn, shared main and analysis calls",
+    "api": "http://127.0.0.1:8101/api/merchant",
+    "repetitions": 3
+  },
+  "data": {
+    "started_at": "2026-09-05T23:11:13.095965+00:00",
+    "finished_at": "2026-09-05T23:50:13.064537+00:00",
+    "stop_reason": null,
+    "executions": [
+      {
+        "task_id": "S02",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:11:13.139677+00:00",
+        "session_id": "SYMwI8oRQLp7ZAX5BPYIiPSeUyjMx-Qq",
+        "finished_at": "2026-09-05T23:12:20.062861+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S02",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:12:20.117545+00:00",
+        "session_id": "8y7eEUGExvoSKuWQifUi82esyQ_z2B1P",
+        "finished_at": "2026-09-05T23:13:40.420963+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S02",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:13:40.465660+00:00",
+        "session_id": "L-Cm5nL1NH4YCRLyATLnhUK-7XcMm7o9",
+        "finished_at": "2026-09-05T23:14:46.133627+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S07",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:14:46.182084+00:00",
+        "session_id": "Vxlkdeh6pHy2Hqum1LUZaMhSETncd2fG",
+        "finished_at": "2026-09-05T23:15:56.428396+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S07",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:15:56.475638+00:00",
+        "session_id": "D6TNUkB-ubug_ye7DcYq3d3qfxv2UDjC",
+        "finished_at": "2026-09-05T23:17:05.166886+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S07",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:17:05.221798+00:00",
+        "session_id": "kW2pQCgzn8kpWmfq6FCdE_B21eYsDTVQ",
+        "finished_at": "2026-09-05T23:18:12.443634+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S12",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:18:12.491957+00:00",
+        "session_id": "HBaEqwneJ_9HsJpnn3cPX0UC32u9oIYJ",
+        "finished_at": "2026-09-05T23:20:31.450005+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S12",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:20:31.495049+00:00",
+        "session_id": "tXmLBZZWDh34VEFHXNB3Mzu_6if6K_gu",
+        "finished_at": "2026-09-05T23:23:02.198253+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S12",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:23:02.241709+00:00",
+        "session_id": "MlN7T9H91MS41NYRVCFhg9MbJE_pYURA",
+        "finished_at": "2026-09-05T23:25:06.770015+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S13",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:25:06.816252+00:00",
+        "session_id": "4gjTJ9VjSmvOQwStpkNyl5hED37zs0l4",
+        "finished_at": "2026-09-05T23:26:26.830840+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S13",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:26:26.876501+00:00",
+        "session_id": "SodTrJR0dXcgqznv2ePiwTNktLN6PPbf",
+        "finished_at": "2026-09-05T23:27:20.137183+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S13",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:27:20.180716+00:00",
+        "session_id": "-4lLLByHOwl7Ai1DQMDHFzVFJdmlt2ZA",
+        "finished_at": "2026-09-05T23:28:45.329155+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S14",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:28:45.375375+00:00",
+        "session_id": "IF-QSJXxHhrCGplQK-Wf-B69_lxlb4vM",
+        "finished_at": "2026-09-05T23:30:17.903394+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S14",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:30:17.958013+00:00",
+        "session_id": "4HSDwUfIGbQ0bJEOS6c5hZl-AmNdE3GV",
+        "finished_at": "2026-09-05T23:32:10.861920+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S14",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:32:10.908091+00:00",
+        "session_id": "50K6DhJg1l00qNT_laJPaSNfV0SN0MBs",
+        "finished_at": "2026-09-05T23:33:38.417657+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S17",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:33:38.475661+00:00",
+        "session_id": "axakR05nEsE3Dcv9bNyq51KXDe7xvfwy",
+        "finished_at": "2026-09-05T23:35:28.342294+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S17",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:35:28.386606+00:00",
+        "session_id": "2QDuW_NKf6gTShGB8mgG498V9oR0T1e3",
+        "finished_at": "2026-09-05T23:37:58.671309+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S17",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:37:58.715043+00:00",
+        "session_id": "nTGPxqzv87_X5S079lYk9N1ZaMorrXGL",
+        "finished_at": "2026-09-05T23:40:16.581924+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S20",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:40:16.626120+00:00",
+        "session_id": "kNlmqBo6f67P44dO-JvqzczCzP72mPNl",
+        "finished_at": "2026-09-05T23:42:08.772672+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S20",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:42:08.822568+00:00",
+        "session_id": "NP_Es0Hiz5rxwKEajNgRHJAJjsdxrw8h",
+        "finished_at": "2026-09-05T23:44:26.655074+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S20",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:44:26.707284+00:00",
+        "session_id": "IE6o4aOq5f1cHF1shqJK69ColzpnOYFw",
+        "finished_at": "2026-09-05T23:47:14.941906+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S30",
+        "repetition": 1,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:47:14.985237+00:00",
+        "session_id": "UJgUepFeTzOzz1WOeYveuz0ot3JJbCde",
+        "finished_at": "2026-09-05T23:48:10.086096+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S30",
+        "repetition": 2,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:48:10.133226+00:00",
+        "session_id": "aD9rv7NSwnNuLTmbA3PZ3S8Ef7KqK3kh",
+        "finished_at": "2026-09-05T23:49:13.095453+00:00",
+        "reset_completed": true
+      },
+      {
+        "task_id": "S30",
+        "repetition": 3,
+        "execution_status": "executed",
+        "started_at": "2026-09-05T23:49:13.140105+00:00",
+        "session_id": "zVmXDNBLu70V4tFGizpJYjRUn23XcGFC",
+        "finished_at": "2026-09-05T23:50:13.063868+00:00",
+        "reset_completed": true
+      }
+    ]
+  }
+}

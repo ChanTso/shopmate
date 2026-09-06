@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "status": "not_run",
+  "as_of": "2026-09-05T00:00:00Z",
+  "timezone": "UTC",
+  "common_context": "本次对账截止时间为 2026-09-05 00:00 UTC，所有日期按 UTC、区间结束时间不包含。只分析本演示库的7款商品：咖啡=House coffee beans，茶=Jasmine tea，杯=陶瓷杯=Ceramic mug，帆布袋=Canvas tote，可可=Cocoa gift box，季节款=Seasonal blend，限量款=Limited coffee set。成交金额指退款前已支付成交额，人民币和美元分别报告。",
+  "reset_definition": "README.md#r0",
+  "baseline": "baseline.json",
+  "formal_boundary_tests_included": false,
+  "runtime_to_record": [
+    "citybuddy_commit",
+    "shopmate_commit",
+    "fixture_source_revision",
+    "main_model",
+    "analysis_model",
+    "provider",
+    "task_timeout_s",
+    "max_model_calls"
+  ],
+  "tasks": [
+    {
+      "id": "D01",
+      "title": "本期成功支付口径",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "统计最近14个完整UTC日人民币的已支付金额、订单数和件数，说明哪些支付状态计入。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D01.sql"
+        ],
+        "success_criteria": "金额/订单/件数与SQL一致，未成功支付与USD不计入。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D02",
+      "title": "前后两期对比",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "最近14天比前14天，人民币已支付金额和订单数分别变化多少？同时给绝对变化与百分比。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D02.sql"
+        ],
+        "success_criteria": "按前期为分母，金额与订单数分别计算；不把件数当订单数。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D03",
+      "title": "跨月边界",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "查2026年8月28日00:00 UTC起、9月5日00:00 UTC前的人民币成交，按商品列金额、订单与件数。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D03.sql"
+        ],
+        "success_criteria": "严格左闭右开，使用成功付款时间。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D04",
+      "title": "历史价格聚合",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "按商品汇总最近14天人民币成交件数、金额和每件成交均价，再与当前标价对照。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/S11.sql",
+          "sql/S03.sql",
+          "sql/products.sql"
+        ],
+        "success_criteria": "用历史金额除件数，不用当前价格回算过去销售。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D05",
+      "title": "继承期间追问",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "告诉我最近14天人民币已支付总金额和总订单数。"
+        },
+        {
+          "kind": "chat",
+          "message": "沿用刚才的期间，按商品拆开。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D01.sql",
+          "sql/S11.sql"
+        ],
+        "success_criteria": "第二轮保持原期间与币种，各商品合计与首轮一致。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D06",
+      "title": "改变期间重新读取",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "先报最近14天人民币已支付金额和成交件数。"
+        },
+        {
+          "kind": "chat",
+          "message": "现在改成最近7个完整UTC日，重新给金额和件数。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D01.sql",
+          "sql/S13.sql"
+        ],
+        "success_criteria": "第二轮按2026-08-29至09-05查询，不沿用14天总额。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D07",
+      "title": "缺参澄清",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "比较茉莉花茶两个时期的成交，先向我确认日期。"
+        },
+        {
+          "kind": "chat",
+          "message": "比较2026年8月8日至22日前，以及8月22日至9月5日前，UTC；给成交金额与件数的变化。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/S05.sql"
+        ],
+        "success_criteria": "先澄清日期，再回答茶的两期数据，不自行选择期间。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D08",
+      "title": "空数据与因果边界",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "帆布袋最近14天和前14天成交额如何？能不能据此计算增长率，或者确定是广告投放导致没有成交？"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/S08.sql"
+        ],
+        "success_criteria": "两期零成交，零基期百分比不适用；不存在广告数据，不能断言因果。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D09",
+      "title": "单商品批准并读回",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "咖啡当前价格改为人民币25.00元，先准备草案等我批准。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "currency": "CNY",
+            "state": "PREPARED",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "newPriceMinor": 2500
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "请查回刚才的草案状态及咖啡当前售价。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "只有咖啡改为2500分/版本4，APPLIED，历史金额与其他字段不变。",
+        "expected_drafts": [
+          {
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "oldPriceMinor": 2400,
+                "newPriceMinor": 2500,
+                "expectedVersion": 3
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "shopmate-fixture-coffee",
+            "priceMinor": 2500,
+            "publicationVersion": 4
+          }
+        ],
+        "expected_product_event_count": 1,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D10",
+      "title": "三商品整批批准",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "做一张人民币草案：咖啡24.60元、茶18.30元、杯39.50元，等我一次批准。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "currency": "CNY",
+            "state": "PREPARED",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "newPriceMinor": 2460
+              },
+              {
+                "productId": "shopmate-fixture-tea",
+                "newPriceMinor": 1830
+              },
+              {
+                "productId": "shopmate-fixture-mug",
+                "newPriceMinor": 3950
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "读取这张草案的结果和三款商品当前价。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "同一草案3项全部APPLIED/版本4，分别2460/1830/3950分，不拆批。",
+        "expected_drafts": [
+          {
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "oldPriceMinor": 2400,
+                "newPriceMinor": 2460,
+                "expectedVersion": 3
+              },
+              {
+                "productId": "shopmate-fixture-tea",
+                "oldPriceMinor": 1800,
+                "newPriceMinor": 1830,
+                "expectedVersion": 3
+              },
+              {
+                "productId": "shopmate-fixture-mug",
+                "oldPriceMinor": 3900,
+                "newPriceMinor": 3950,
+                "expectedVersion": 3
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "shopmate-fixture-coffee",
+            "priceMinor": 2460,
+            "publicationVersion": 4
+          },
+          {
+            "productId": "shopmate-fixture-tea",
+            "priceMinor": 1830,
+            "publicationVersion": 4
+          },
+          {
+            "productId": "shopmate-fixture-mug",
+            "priceMinor": 3950,
+            "publicationVersion": 4
+          }
+        ],
+        "expected_product_event_count": 3,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D11",
+      "title": "批准前改意图",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "咖啡25元，先给待审草案。"
+        },
+        {
+          "kind": "chat",
+          "message": "取消上一份，改成25.50元，重新准备草案。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "currency": "CNY",
+            "state": "PREPARED",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "newPriceMinor": 2550
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "查询两份草案状态及咖啡最终价格。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "旧草案CANCELLED仍保留2500目标；新草案APPLIED2550/版本4，只产生一次价格修改。",
+        "expected_drafts": [
+          {
+            "state": "CANCELLED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "oldPriceMinor": 2400,
+                "newPriceMinor": 2500,
+                "expectedVersion": 3
+              }
+            ]
+          },
+          {
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "shopmate-fixture-coffee",
+                "oldPriceMinor": 2400,
+                "newPriceMinor": 2550,
+                "expectedVersion": 3
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "shopmate-fixture-coffee",
+            "priceMinor": 2550,
+            "publicationVersion": 4
+          }
+        ],
+        "expected_product_event_count": 1,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    },
+    {
+      "id": "D12",
+      "title": "操作员取消后读回",
+      "reset": "R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "茶改为人民币17.50元，请准备草案但不要执行。"
+        },
+        {
+          "kind": "operator",
+          "action": "discard",
+          "draft_match": {
+            "currency": "CNY",
+            "state": "PREPARED",
+            "items": [
+              {
+                "productId": "shopmate-fixture-tea",
+                "newPriceMinor": 1750
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "请查询该草案状态和茶当前售价。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "草案CANCELLED，茶仍1800分/版本3，无商品发布事件。",
+        "expected_drafts": [
+          {
+            "state": "CANCELLED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "shopmate-fixture-tea",
+                "oldPriceMinor": 1800,
+                "newPriceMinor": 1750,
+                "expectedVersion": 3
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_R0; applied products change price/version only; stock/name/description/availability/currency/publicationState unchanged"
+      }
+    }
+  ],
+  "suite": "development",
+  "repetitions": 1,
+  "planned_executions": 12,
+  "counts_toward_formal": false
+}
