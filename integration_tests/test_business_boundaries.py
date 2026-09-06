@@ -1,7 +1,7 @@
 """Explicit real-service checks: run with pytest integration_tests, never by default.
 
 Requires the isolated Java/Auth/SQL fixture and private .run credentials. The write test
-changes only the fixture coffee/tea products through actual operator approval. It does not
+changes only the reserved retail products through actual operator approval. It does not
 reset them: the environment owner resets the fixture before model acceptance.
 """
 
@@ -12,13 +12,13 @@ import json
 import os
 import subprocess
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import aiomysql
 import httpx
 import pytest
 from merchant_agent import MerchantSessionContext
-from merchant_agent.types import PriceUpdateItem
+from merchant_agent.types import CampaignDraft, InventoryActionItem, PriceUpdateItem, PromotionDraft
 
 from shopmate.analysis_sql import AnalysisQueryError, AnalysisSQL, capture_analysis_queries
 from shopmate.app import create_app
@@ -28,8 +28,8 @@ from shopmate.commerce_client import CommerceClient
 from shopmate.sessions import SessionStore
 from shopmate.settings import ROOT, Settings
 
-COFFEE = "shopmate-fixture-coffee"
-TEA = "shopmate-fixture-tea"
+COFFEE = "AR-1001"
+TEA = "AR-1004"
 
 
 @pytest.fixture
@@ -68,12 +68,19 @@ async def sql(settings):
         await value.close()
 
 
-async def test_sql_account_has_three_views_but_no_base_table_or_write_privilege(settings):
+async def test_sql_account_has_six_views_but_no_base_table_or_write_privilege(settings):
     # Do not set transaction_read_only here: this check exercises the account grants themselves.
     connection = await _analysis_connection(settings)
     try:
         async with connection.cursor() as cursor:
-            for view in ("merchant_products", "merchant_paid_orders", "merchant_daily_sales"):
+            for view in (
+                "merchant_products",
+                "merchant_paid_orders",
+                "merchant_daily_sales",
+                "merchant_listing_facts",
+                "merchant_store_traffic_daily",
+                "merchant_campaign_facts",
+            ):
                 await cursor.execute(f"SELECT COUNT(*) FROM {view}")
                 assert (await cursor.fetchone())[0] > 0
             for table in ("product", "standard_order", "merchant_price_draft"):
@@ -94,7 +101,7 @@ async def test_sql_real_error_can_be_corrected_and_result_truncation_is_explicit
     with pytest.raises(AnalysisQueryError, match="Unknown column"):
         await sql.query("SELECT missing_business_column FROM merchant_products")
     corrected = await sql.query("SELECT COUNT(*) AS product_count FROM merchant_products")
-    assert corrected.rows == [[7]] and not corrected.truncated
+    assert corrected.rows == [[104]] and not corrected.truncated
     limited = AnalysisSQL(replace(settings, sql_max_rows=2))
     await limited.start()
     try:
@@ -105,7 +112,7 @@ async def test_sql_real_error_can_be_corrected_and_result_truncation_is_explicit
         assert len(result.model_dump_json().encode()) <= settings.sql_max_bytes
         # The capped unbuffered connection is discarded; a subsequent acquisition is still usable.
         after = await limited.query("SELECT COUNT(*) AS product_count FROM merchant_products")
-        assert after.rows == [[7]] and not after.truncated
+        assert after.rows == [[104]] and not after.truncated
     finally:
         await limited.close()
 
@@ -132,12 +139,12 @@ async def test_sql_real_server_execution_limit_and_host_deadline(settings):
         with pytest.raises(AnalysisQueryError, match="deadline"):
             await limited.query(_expensive_select())
         result = await limited.query("SELECT COUNT(*) AS product_count FROM merchant_products")
-        assert result.rows == [[7]]
+        assert result.rows == [[104]]
     finally:
         await limited.close()
 
 
-async def test_running_host_http_reads_use_real_business_data():
+async def test_running_host_http_reads_use_real_business_data(truth, settings):
     base = os.environ.get("SHOPMATE_BASE_URL", "http://127.0.0.1:8101")
     async with httpx.AsyncClient(base_url=base, timeout=30, follow_redirects=False) as http:
         login = await http.post(
@@ -155,13 +162,56 @@ async def test_running_host_http_reads_use_real_business_data():
         overview = await http.get("/api/merchant/overview", headers=headers)
         assert overview.status_code == 200
         snapshot = overview.json()["snapshot"]
-        assert snapshot["currency"] == "CNY" and snapshot["sales"] == 2304
-        assert snapshot["units"] == 96 and snapshot["traffic"] is None
-        products = await http.get("/api/merchant/listings", headers=headers)
-        assert products.status_code == 200 and products.json()["total"] == 7
+        end = datetime.fromisoformat(settings.as_of)
+        start = end - timedelta(days=14)
+        expected = (
+            await _rows(
+                truth,
+                "SELECT SUM(total_price_minor) AS amount, SUM(quantity) AS units, COUNT(*) AS orders "
+                "FROM merchant_paid_orders WHERE currency='CNY' AND succeeded_at>=%s AND succeeded_at<%s",
+                (
+                    start.astimezone(UTC).replace(tzinfo=None),
+                    end.astimezone(UTC).replace(tzinfo=None),
+                ),
+            )
+        )[0]
+        visits = (
+            await _rows(
+                truth,
+                "SELECT SUM(visits) AS visits FROM retail_store_traffic_daily WHERE local_date>=%s AND local_date<%s",
+                (start.date(), end.date()),
+            )
+        )[0]["visits"]
+        assert (
+            snapshot["currency"] == "CNY" and snapshot["sales"] == float(expected["amount"]) / 100
+        )
+        assert snapshot["units"] == expected["units"] and snapshot["orders"] == expected["orders"]
+        assert snapshot["traffic"] == visits
+        products, offset = [], 0
+        while offset is not None:
+            page = await http.get(
+                "/api/merchant/listings", headers=headers, params={"limit": 50, "offset": offset}
+            )
+            assert page.status_code == 200
+            products.extend(page.json()["listings"])
+            offset = page.json()["next_offset"]
+        assert len(products) == len({row["listing_id"] for row in products}) == 87
         detail = await http.get(f"/api/merchant/listings/{COFFEE}", headers=headers)
         assert detail.status_code == 200
-        assert detail.json()["listing"]["attributes"]["price_editable"] == "true"
+        assert detail.json()["listing"]["price_editable"] is True
+        issues = await http.get("/api/merchant/order-issues", headers=headers)
+        assert issues.status_code == 200
+        issue = next(row for row in issues.json()["order_issues"] if row["issue_id"] == "ISS-101")
+        expected_issue = (
+            await _rows(
+                truth,
+                "SELECT order_id, buyer_message_excerpt FROM retail_order_issue WHERE issue_id='ISS-101'",
+            )
+        )[0]
+        assert issue["order_id"] == expected_issue["order_id"]
+        assert issue["buyer_message_excerpt"] == expected_issue["buyer_message_excerpt"]
+        assert issue["listing_id"] == "AR-1804" and issue["refund_requested_order_count"] == 6
+        assert issue["source_kind"] == "FIXTURE" and issue["source_ref"]
 
 
 @pytest.fixture
@@ -470,7 +520,7 @@ async def test_committed_approval_recovers_after_host_loses_response(settings, t
             finally:
                 store.finish_turn(current, "completed")
             assert await snapshot() == before
-            apply_path = f"/api/merchant/price-drafts/{change.change_id}/apply"
+            apply_path = f"/api/merchant/changes/{change.change_id}/apply"
             host_path = f"/api/merchant/changes/{change.change_id}"
             unavailable = await http.post(host_path + "/apply", headers=headers)
             assert lost and unavailable.status_code == 503
@@ -540,3 +590,217 @@ async def test_unsigned_subtraction_reports_code_and_signed_query_recovers(sql):
     assert corrected.rows == [[-1]] and not corrected.truncated
     assert records[0]["status"] == "error" and records[0]["mysql_error_code"] == 1690
     assert records[1]["status"] == "success" and records[1]["result"]["rows"] == [[-1]]
+
+
+async def test_full_retail_changes_apply_to_live_authority_and_restore(settings, truth, tmp_path):
+    auth, client, sql = (
+        AuthClient(settings),
+        CommerceClient(settings.commerce_url),
+        AnalysisSQL(settings),
+    )
+    store = SessionStore(tmp_path / "retail-actions.sqlite3")
+    backend = CityBuddyMerchantBackend(
+        auth, store, client, sql, datetime.fromisoformat(settings.as_of)
+    )
+    await sql.start()
+    try:
+        login = await auth.login("shopmate-fixture-operator", _password())
+        identity = RequestIdentity(login["subject"], login["accessToken"])
+        record = store.create(identity.subject)
+        session = MerchantSessionContext(
+            session_id=record.session_id,
+            merchant_id="citybuddy",
+            operator=identity.subject,
+            now=datetime.now(UTC),
+            timezone="Asia/Shanghai",
+        )
+
+        async def stage(call):
+            record = store.get(session.session_id, identity.subject)
+            turn = store.begin_turn(record)
+            try:
+                with bind_context(identity, session.session_id, turn):
+                    return await call()
+            finally:
+                store.finish_turn(record, "completed")
+
+        with bind_context(identity, session.session_id):
+            family_before = await backend.get_listing(session, "AR-1606")
+        change = await stage(
+            lambda: backend.stage_listing_update(
+                session, "AR-1606", {"material": "Silk fixture approval"}
+            )
+        )
+        with bind_context(identity, session.session_id):
+            assert (await backend.apply_by_operator(session, change.change_id))["ok"]
+            for variant in family_before.variants:
+                actual = await backend.get_listing(session, variant.listing_id)
+                assert actual.attributes["material"] == "Silk fixture approval"
+            paused = await backend.get_listing(session, "AR-1207")
+        change = await stage(
+            lambda: backend.stage_inventory_action(
+                session, [InventoryActionItem(listing_id="AR-1207", action="restock", quantity=5)]
+            )
+        )
+        with bind_context(identity, session.session_id):
+            assert (await backend.apply_by_operator(session, change.change_id))["ok"]
+            stocked = await backend.get_listing(session, "AR-1207")
+            assert stocked.stock == paused.stock + 5 and stocked.status == "paused"
+
+        now = datetime.now(UTC)
+        future = await stage(
+            lambda: backend.stage_promotion(
+                session,
+                PromotionDraft(
+                    name="Future sale",
+                    listing_ids=["AR-1806"],
+                    discount_pct=10,
+                    starts=(now + timedelta(days=1)).isoformat(),
+                    ends=(now + timedelta(days=2)).isoformat(),
+                ),
+            )
+        )
+        from shopmate.commerce_client import CommerceError
+
+        with bind_context(identity, session.session_id):
+            with pytest.raises(CommerceError) as early:
+                await backend.apply_by_operator(session, future.change_id)
+            assert early.value.category == "promotion_not_started"
+            assert (await backend.get_change(session, future.change_id)).status == "staged"
+            assert (await backend.discard_by_operator(session, future.change_id))["ok"]
+            before = await backend.get_listing(session, "AR-1806")
+        sale = await stage(
+            lambda: backend.stage_promotion(
+                session,
+                PromotionDraft(
+                    name="Current sale",
+                    listing_ids=["AR-1806"],
+                    discount_pct=10,
+                    starts=(now - timedelta(minutes=1)).isoformat(),
+                    ends=(now + timedelta(days=1)).isoformat(),
+                ),
+            )
+        )
+        with bind_context(identity, session.session_id):
+            result = await backend.apply_by_operator(session, sale.change_id)
+            assert result["ok"]
+            after = await backend.get_listing(session, "AR-1806")
+            assert round(after.price * 100) == round(before.price * 90)
+            promotions = await backend.promotions_page(session)
+            promotion = next(
+                row for row in promotions["items"] if row["sourceChangeId"] == sale.change_id
+            )
+            assert promotion["state"] == "active"
+            assert promotion["targets"][0]["currentPriceMinor"] == round(after.price * 100)
+            assert not promotion["targets"][0]["overridden"]
+            assert await backend.promotion_detail(session, promotion["promotionId"]) == promotion
+            assert (await backend.apply_by_operator(session, sale.change_id))["receipt"] == result[
+                "receipt"
+            ]
+
+        observed = await _rows(
+            truth,
+            "SELECT revenue_minor,spend_minor,observation_source_ref FROM retail_campaign WHERE campaign_id='C-203'",
+        )
+        campaign = await stage(
+            lambda: backend.stage_campaign(
+                session,
+                CampaignDraft(
+                    campaign_id="C-203",
+                    name="Local approved plan",
+                    budget=None,
+                    copy_text="Review in local workspace",
+                ),
+            )
+        )
+        with bind_context(identity, session.session_id):
+            assert (await backend.apply_by_operator(session, campaign.change_id))["ok"]
+            reread = await backend.get_campaign_performance(session)
+            target = next(row for row in reread if row.campaign_id == "C-203")
+            assert target.budget is None and target.revenue is None
+            record = store.get(session.session_id, identity.subject)
+            record.state.seen_campaigns["C-203"] = target
+            store.save(record)
+            assert (
+                store.get(session.session_id, identity.subject).state.seen_campaigns["C-203"].budget
+                is None
+            )
+        assert (
+            await _rows(
+                truth,
+                "SELECT revenue_minor,spend_minor,observation_source_ref FROM retail_campaign WHERE campaign_id='C-203'",
+            )
+            == observed
+        )
+        rows = await _rows(
+            truth,
+            "SELECT kind,state FROM merchant_price_draft WHERE session_id=%s",
+            (session.session_id,),
+        )
+        assert {row["kind"] for row in rows if row["state"] == "APPLIED"} == {
+            "LISTING_UPDATE",
+            "INVENTORY_ACTION",
+            "PROMOTION",
+            "CAMPAIGN",
+        }
+    finally:
+        store.close()
+        await sql.close()
+        await client.close()
+        await auth.close()
+
+
+def test_fixture_preflight_protects_exact_owners_and_unrelated_change_records(monkeypatch):
+    import importlib
+    from uuid import uuid4
+
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    runtime = importlib.import_module("local_runtime")
+    retail = importlib.import_module("retail_fixture")
+    queries = retail.preflight_queries()
+    assert all(runtime.sql(query) == "0" for query in queries.values())
+    # Exercise the real ai_ci order column; a differently cased subject is not our fixture owner.
+    case = runtime.sql(
+        "START TRANSACTION; UPDATE standard_order SET user_subject='Shopmate-retail-history' "
+        "WHERE user_subject='shopmate-retail-history' LIMIT 1; "
+        + queries["non-fixture order references"]
+        + "ROLLBACK;"
+    )
+    assert case == "1"
+    statements = []
+    for kind, item, payload in (
+        ("PRICE_UPDATE", {"productId": "AR-1001"}, None),
+        (
+            "LISTING_UPDATE",
+            {"target": "AR-1606", "field": "material", "before": "a", "after": "b"},
+            {},
+        ),
+        (
+            "INVENTORY_ACTION",
+            {"target": "AR-1207", "field": "stock", "before": 64, "after": 69},
+            {},
+        ),
+    ):
+        statements.append(
+            retail.insert(
+                "merchant_price_draft",
+                draft_id=str(uuid4()),
+                operator_subject="Shopmate-fixture-operator",
+                session_id="maintenance-reference",
+                request_key=str(uuid4()),
+                intent_hash="a" * 64,
+                currency="CNY",
+                state="PREPARED",
+                kind=kind,
+                items=[item],
+                payload=payload,
+            )
+        )
+    changes = runtime.sql(
+        "START TRANSACTION;"
+        + "".join(statements)
+        + queries["non-fixture product changes"]
+        + "ROLLBACK;"
+    )
+    assert changes == "3"
+    assert all(runtime.sql(query) == "0" for query in queries.values())

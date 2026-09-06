@@ -1,5 +1,23 @@
 # ShopMate 业务任务与评测记录
 
+执行前先停止手工启动的8101 API，保留ShopMate数据与Java服务。驱动只支持固定本机地址，自持正式API子进程，在每题重置前确认静默并恢复本人旧会话的prepare，然后停API、重置、重启并重新登录。它不按端口杀进程，不管理外部API；停止、恢复或写状态不明则保留夹具并停批。`--describe`不启动进程、不读取运行配置。
+
+当前默认协议是 [`retail/development.json`](retail/development.json)：完整零售目录的12个开发任务，使用90个上海自然日、CNY合成定价。迁移后的任务、参考SQL和待采集基线独立放在 [`retail/`](retail/README.md)，没有复用旧成绩；当前 `not_run` 不表示通过。12题保留经营问答、历史价格、追问、澄清、真实批准与取消的原业务意图，不代表完整零售工具验收，也不计入未来正式场景分母。
+
+```sh
+uv run python scripts/run_tasks.py --describe
+uv run python scripts/run_tasks.py --suite retail/development
+uv run python scripts/run_tasks.py --suite evals/formal.json --describe
+```
+
+新驱动执行前从本次权威SQL记录获得目标SKU旧价和版本，并记录相对版本预期；不会猜测固定3→4，也不自动把执行完成算成业务通过。通用变更接口中的价格审批仍需 `PRICE_UPDATE`、CNY、PREPARED和完整商品／目标分金额集合唯一匹配。实际调用和状态不明时停止、保留夹具的规则不变。
+
+旧 `development.json`、`formal.json`、`baseline.json`、`sql/` 和 `records/` 原件继续保留。当前驱动只允许通过 `--describe` 读取旧协议，拒绝用新零售重置执行旧题；旧实验重现需使用各记录中的原始双仓库提交，不能把新夹具产生的运行并入旧78/90或定向21/24。
+
+## 历史七商品协议与成绩
+
+以下数据、执行命令、R0和固定版本描述属于旧七商品实现，仅适用于记录对应的历史源码。当前零售执行以 [retail/README.md](retail/README.md) 为准。
+
 `development.json` 定义12个开发任务，`formal.json` 定义30个正式业务场景、每个重复3次。JSON中的规划状态不表示最新运行状态；实际结果见[记录索引](records/README.md)。`baseline.json` 是合成夹具定义，业务判定以数据库原始输出为准。
 
 最近完整批次为 **78/90**（ShopMate `9173037d6eb43d295f6ccb5876fa6284e882dfdb`）；修改后选取8个已知失败场景回归为 **21/24**（`02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`）。两批CityBuddy均为 `69be167a3df030bf45795c49f444d6e7c24d0423`。原选集13/24与新选集21/24单独对照，不替换旧失败，不称单变量实验或新完整90次结果。旧84/90及开发、调试记录也独立保留。

@@ -9,26 +9,28 @@ import GenerativeBlock from "./generative";
 
 const COPY = {
   title: "ShopMate 经营助手",
-  intro: "从已支付订单看经营变化，追问原因，再准备需要你批准的调价草案。",
+  intro: "结合成交、流量、商品和库存分析经营，再准备需要你批准的方案。",
   starters: [
-    "最近 7 个完整 UTC 日的 CNY 销售额，相比前 7 天有什么变化？",
+    "当前报告期间的成交、流量和转化，相比上一期间有什么变化？",
     "哪些商品贡献了最多成交额？请给出依据。",
-    "查看可调价商品，并为其中一个准备降价 5% 的草案。",
-    "查看本会话上次草案的执行结果。",
+    "检查库存提醒和商品内容，提出有依据的改进方案。",
+    "分析已有营销计划的同期 ROAS，并提出预算或文案调整建议。",
   ],
   label: "向经营助手发送消息",
-  placeholder: "分析期间、商品贡献，或准备调价草案…",
+  placeholder: "分析经营、商品、库存，或准备经营方案…",
 };
 
 export default function AssistantPanel({
   chat,
   prefill,
   onPrefill,
+  actionsDisabled,
   ...shell
 }: {
   chat: MerchantChat<StagedChange>;
   prefill: Prefill | null;
   onPrefill: (text: string) => void;
+  actionsDisabled?: boolean;
   newMemoryCount: number;
   onOpenActivity: () => void;
   onClose: () => void;
@@ -44,7 +46,7 @@ export default function AssistantPanel({
         <GenerativeBlock
           block={segment.block}
           status={segment.status}
-          onChangeAction={chat.busy ? undefined : chat.actOnChange}
+          onChangeAction={chat.busy || actionsDisabled ? undefined : chat.actOnChange}
           onPrefill={onPrefill}
         />
       )}

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import aclosing, asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from commerce_common.streaming import AgentEvent, to_sse
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
-from merchant_agent import MerchantSessionContext
+from merchant_agent import ListingFilters, MerchantSessionContext
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
@@ -37,15 +38,14 @@ def _json(value):
     )
 
 
-def _context(record: SessionRecord, as_of: str | None = None) -> MerchantSessionContext:
-    reference = datetime.fromisoformat(as_of) if as_of else datetime.now(UTC)
-    if reference.tzinfo is None:
-        raise ValueError("Report reference date must include a timezone")
+def _context(record: SessionRecord) -> MerchantSessionContext:
+    reference = datetime.now(ZoneInfo("Asia/Shanghai"))
     return MerchantSessionContext(
         session_id=record.session_id,
         merchant_id="citybuddy",
         operator=record.owner,
-        now=reference.astimezone(UTC),
+        now=reference,
+        timezone="Asia/Shanghai",
     )
 
 
@@ -148,7 +148,11 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
                 owned.extend([client, sql])
                 await sql.start()
                 resources["backend"] = CityBuddyMerchantBackend(
-                    resources["auth"], resources["store"], client, sql
+                    resources["auth"],
+                    resources["store"],
+                    client,
+                    sql,
+                    report_as_of=datetime.fromisoformat(settings.as_of) if settings.as_of else None,
                 )
             if resources["provider"] is None:
                 from .provider import Provider
@@ -179,7 +183,7 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
         )
 
     def context(record):
-        return _context(record, getattr(settings, "as_of", None))
+        return _context(record)
 
     async def identity(authorization: str | None = Header(default=None)) -> RequestIdentity:
         if (
@@ -248,14 +252,114 @@ def create_app(settings=None, *, auth=None, store=None, backend=None, agent=None
             return await resources["backend"].overview(context(record))
 
     @app.get(prefix + "/listings")
-    async def listings(query: str = "", limit: int = 100, bound=session_dependency):
+    async def listings(
+        query: str = Query(default="", max_length=256),
+        limit: int = Query(default=20, ge=1, le=50),
+        offset: int = Query(default=0, ge=0, le=10000),
+        status: str | None = None,
+        category: str | None = Query(default=None, max_length=100),
+        max_stock: int | None = Query(default=None, ge=0),
+        content_quality: str | None = None,
+        sort: str = "relevance",
+        bound=session_dependency,
+    ):
+        user, record = bound
+        try:
+            filters = ListingFilters(
+                status=status,
+                category=category,
+                max_stock=max_stock,
+                content_quality=content_quality,
+                sort=sort,
+            )
+        except ValueError:
+            raise HTTPException(422, "Invalid listing filters") from None
+        with bind_context(user, record.session_id):
+            page = await resources["backend"].listings_page(
+                context(record), query, filters, limit, offset
+            )
+        return {
+            "listings": page["items"],
+            "next_offset": page["nextOffset"],
+            "window": page["window"],
+        }
+
+    @app.get(prefix + "/inventory")
+    async def inventory(
+        limit: int = Query(default=20, ge=1, le=50),
+        offset: int = Query(default=0, ge=0, le=10000),
+        bound=session_dependency,
+    ):
         user, record = bound
         with bind_context(user, record.session_id):
-            results = await resources["backend"].search_listings(context(record), query, None, 100)
+            page = await resources["backend"].inventory_page(context(record), limit, offset)
         return {
-            "total": len(results),
-            "listings": [_json(r) for r in results[: max(1, min(limit, 100))]],
+            "inventory": page["items"],
+            "next_offset": page["nextOffset"],
+            "window": page["window"],
         }
+
+    @app.get(prefix + "/order-issues")
+    async def order_issues(limit: int = Query(default=100, ge=1, le=100), bound=session_dependency):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            page = await resources["backend"].order_issues_page(context(record), limit)
+        return {
+            "order_issues": page["items"],
+            "limit": page["limit"],
+            "truncated": page["truncated"],
+        }
+
+    @app.get(prefix + "/campaigns")
+    async def campaigns(
+        limit: int = Query(default=20, ge=1, le=50),
+        offset: int = Query(default=0, ge=0, le=10000),
+        bound=session_dependency,
+    ):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            page = await resources["backend"].campaigns_page(context(record), limit, offset)
+        return {"campaigns": page["items"], "next_offset": page["nextOffset"]}
+
+    @app.get(prefix + "/promotions")
+    async def promotions(
+        limit: int = Query(default=20, ge=1, le=50),
+        offset: int = Query(default=0, ge=0, le=10000),
+        bound=session_dependency,
+    ):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            page = await resources["backend"].promotions_page(context(record), limit, offset)
+        return {"promotions": page["items"], "next_offset": page["nextOffset"]}
+
+    @app.get(prefix + "/campaigns/{campaign_id}")
+    async def campaign_detail(campaign_id: str, bound=session_dependency):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            campaign = await resources["backend"].campaign_detail(context(record), campaign_id)
+        if campaign is None:
+            raise HTTPException(404, "Campaign not found")
+        return {"campaign": campaign}
+
+    @app.get(prefix + "/promotions/{promotion_id}")
+    async def promotion_detail(promotion_id: str, bound=session_dependency):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            promotion = await resources["backend"].promotion_detail(context(record), promotion_id)
+        if promotion is None:
+            raise HTTPException(404, "Promotion not found")
+        return {"promotion": promotion}
+
+    @app.get(prefix + "/changes")
+    async def changes(
+        limit: int = Query(default=20, ge=1, le=50),
+        offset: int = Query(default=0, ge=0, le=10000),
+        bound=session_dependency,
+    ):
+        user, record = bound
+        with bind_context(user, record.session_id):
+            page = await resources["backend"].changes_page(context(record), limit, offset)
+        return {"changes": page["items"], "next_offset": page["nextOffset"]}
 
     @app.get(prefix + "/listings/{listing_id}")
     async def listing_detail(listing_id: str, bound=session_dependency):

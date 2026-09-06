@@ -74,7 +74,7 @@ export function AssistantPanel({
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold leading-tight text-(--ink)">{copy.title}</div>
-          <div className="truncate text-[11.5px] text-(--ink-soft)">调价由你通过按钮批准</div>
+          <div className="truncate text-[11.5px] text-(--ink-soft)">业务变更由你通过按钮批准</div>
         </div>
         <ActivityButton streaming={chat.streaming} newMemoryCount={newMemoryCount} onClick={onOpenActivity} />
         {onToggleFullscreen ? (

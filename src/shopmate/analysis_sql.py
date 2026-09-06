@@ -1,4 +1,4 @@
-"""Bounded queries over three granted views; database privileges remain the write boundary."""
+"""Bounded queries over granted merchant views; database privileges remain the write boundary."""
 
 from __future__ import annotations
 
@@ -17,13 +17,36 @@ from merchant_agent.types import AnalysisTable
 from sqlglot import exp
 from sqlglot.optimizer.scope import traverse_scope
 
-VIEWS = frozenset({"merchant_products", "merchant_paid_orders", "merchant_daily_sales"})
+VIEWS = frozenset(
+    {
+        "merchant_products",
+        "merchant_paid_orders",
+        "merchant_daily_sales",
+        "merchant_listing_facts",
+        "merchant_store_traffic_daily",
+        "merchant_campaign_facts",
+    }
+)
 SCHEMA = """MySQL 8; connections and all timestamps are UTC. Only these views are available:
 merchant_products(product_id,name,price_minor,currency,publication_version,available,
  publication_state,stock_quantity,price_editable)
 merchant_paid_orders(order_kind,order_id,product_id,product_name,quantity,total_price_minor,
  currency,succeeded_at)
 merchant_daily_sales(sale_date,product_id,currency,amount_minor,order_count,units)
+merchant_listing_facts(product_id,family_id,listing_id,name,currency,price_minor,stock_quantity,
+ publication_state,available,publication_version,category,unit_cost_minor,low_stock_threshold,
+ content_quality,missing_attributes,facts_version,observed_at,source_ref)
+merchant_store_traffic_daily(local_date,visits,observed_at,source_ref,fixture_version)
+merchant_campaign_facts(campaign_id,name,objective,channel,currency,budget_minor,starts_at,
+ ends_at,state,version,spend_minor,revenue_minor,observation_start,observation_end,
+ observation_source_kind,observation_source_ref,observed_at,fixture_version)
+Reporting calendar is Asia/Shanghai. SQL timestamps remain UTC; convert requested local
+boundaries to UTC before comparing succeeded_at. Group local days with
+DATE(DATE_ADD(succeeded_at, INTERVAL 8 HOUR)). merchant_daily_sales.sale_date is the older UTC
+aggregation, not a Shanghai daily rollup; use merchant_paid_orders for Shanghai day/week/month.
+Explicit timestamps with offsets retain their actual instants. The host supplies a fixed
+report_as_of and fixture coverage separately from the real current operation date.
+Do not count periods outside the declared coverage as observed zero sales.
 Resolve the requested product set against merchant_products and keep its actual product_id.
 Names in the question may be shorthand, translated labels, or annotations: they are not join
 keys. Read the name/id mapping when needed; do not invent a literal name list as a catalog.
@@ -44,7 +67,22 @@ beside them, with distinct aliases for each metric, currency, and period. For a 
 nonzero baseline, percentage change is 100.0 * (current_value - prior_value) /
 NULLIF(prior_value, 0). Never calculate these numbers mentally or copy another metric's
 change. Query a missing calculation before submitting it; otherwise report it as unknown.
-No customer identities, traffic, acquisition, campaign, cost, margin, or refund-net metrics.
+Traffic local_date is an observed Shanghai day, never derive visits from sales. Missing
+observations are unknown, not zero; require every day of a complete-day window before
+reporting its total or conversion. Conversion = paid order count / visits * 100; orders
+are paid per-SKU child orders, not unique buyers or checkout headers. Sum numerators and
+denominators before calculating weekly/monthly conversion, never average daily rates.
+Category/family mappings in merchant_listing_facts are current catalog assignments; sales
+amounts still come from historical paid orders. kids-room filters current category; there
+is no category/SKU traffic denominator. Family id is display aggregation, product_id is SKU.
+Unit cost and content quality are nullable observed facts. Gross margin (price-cost)/price
+is an estimate at current price, not accounting profit or a cost-based hard price floor.
+Campaign budget is a plan, spend/revenue are separately dated nullable attribution
+observations. ROAS = revenue_minor / NULLIF(spend_minor,0), only when both observations
+exist for the same campaign/window/currency. Never add campaign attributed revenue to
+store paid sales, and never change observed spend when changing the budget.
+No customer identities, acquisition attribution beyond those campaign observations,
+physical-return rates, refund-net revenue, or unobserved profit metrics.
 Use SELECT/CTE/joins/aggregates/window functions over these views. No writes, other schemas,
 locking SELECTs, stored functions, system metadata, or comments. Keep results small; queries
 have an execution deadline, row and byte caps. A truncated result is not a complete dataset.
@@ -123,7 +161,7 @@ def validate_sql(sql: str) -> str:
                 if isinstance(source, exp.Table) and (
                     source.db or source.catalog or source.name.lower() not in VIEWS
                 ):
-                    raise AnalysisQueryError("Queries may read only the three merchant views")
+                    raise AnalysisQueryError("Queries may read only granted merchant views")
         return statement.sql(dialect="mysql")
     except sqlglot.errors.SqlglotError:
         raise AnalysisQueryError("Invalid MySQL SELECT; consult the provided schema") from None

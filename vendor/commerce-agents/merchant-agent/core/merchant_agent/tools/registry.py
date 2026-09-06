@@ -56,6 +56,11 @@ def _listing_filters_schema() -> dict[str, Any]:
                 "enum": ["active", "paused", "draft", "out_of_stock"],
                 "description": "Listing status to match.",
             },
+            "category": {"type": "string", "description": "Actual catalog category to match."},
+            "content_quality": {
+                "type": "string", "enum": ["good", "needs_work", "poor"],
+                "description": "Recorded content quality; unknown is not a matching rating.",
+            },
             "max_stock": {
                 "type": "integer",
                 "minimum": 0,
@@ -63,7 +68,7 @@ def _listing_filters_schema() -> dict[str, Any]:
             },
             "sort": {
                 "type": "string",
-                "enum": ["relevance", "stock_asc", "price_desc", "price_asc"],
+                "enum": ["relevance", "stock_asc", "price_desc", "price_asc", "sales_desc"],
                 "description": "Result order; relevance when omitted.",
             },
         },
@@ -201,7 +206,7 @@ def build_tools(
             "description": (
                 "Search the listings by name or id; returns title, status, current price, "
                 "currency and stock. Omit filters unless the operator requested a constraint. "
-                "Use an empty query to browse; use run_analysis for sales rankings."
+                "Use an empty query to browse; sales_desc sorts recorded 30-day units, one family per row."
             ),
             "input_schema": {
                 "type": "object",

@@ -96,9 +96,7 @@ class CompatibilityTests(unittest.IsolatedAsyncioTestCase):
             self.assertIs(function["strict"], False)
             self.assertEqual(function["parameters"], tool["input_schema"])
             self.assertNotIn("filters", function["parameters"]["required"])
-            self.assertNotIn(
-                "category", function["parameters"]["properties"]["filters"]["properties"]
-            )
+            self.assertIn("category", function["parameters"]["properties"]["filters"]["properties"])
             return httpx.Response(
                 200,
                 json={
