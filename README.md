@@ -98,6 +98,6 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-真实 Java/数据库边界检查使用 `uv run pytest integration_tests -q`，会修改保留的演示业务数据，应与其他任务串行运行。需要恢复夹具时，先停止 API 和全部写入、保存所需记录，再按[手工重置流程](docs/retail-fixture.md#手工重置)执行。
+真实 Java/数据库边界检查使用 `uv run pytest integration_tests -q`，会修改保留的演示业务数据，应与其他任务串行运行。每次完整运行前，先停止 API 和全部写入、保存所需记录，按[手工重置流程](docs/retail-fixture.md#手工重置)恢复夹具后重新启动 API；正常 `up` 会保留已批准的变更，不能代替重置。直接重复写入套件可能触发无变更草案拒绝，或继续改变测试商品的价格和库存。
 
 [历史评测索引](evals/records/README.md)保留旧七商品/42 日 UTC 版本的完整 **78/90** 与后续定向 **21/24**；版本与分母不同，均不是当前 M1 的成绩。[历史浏览器演示、截图和 SQL](docs/demo-20260906/README.md)也对应旧版，未替换原件。新版业务验收需使用当前业务口径、参考 SQL 和实际写入终态另行执行，不能直接把旧任务矩阵或完成执行数当作新版通过率。
