@@ -1,0 +1,20 @@
+{
+  "reset_id": "retail-R0",
+  "fixture_version": "shopmate-retail-v1",
+  "as_of": "2026-09-05T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "operator_subject": "shopmate-fixture-operator",
+  "fixture_generator": "ShopMate scripts/retail_fixture.py via scripts/reset_fixture.py",
+  "reference_status": "awaiting_authoritative_SQL_capture_not_an_execution_result",
+  "catalog_definition": {
+    "display_roots": 87,
+    "transaction_skus": 104,
+    "report_days": 90,
+    "currency": "CNY"
+  },
+  "version_basis": "Each run captures all actual products before the first model call. Expected oldPriceMinor/expectedVersion come from that SQL; terminal version is baseline plus publicationVersionDelta.",
+  "products": null,
+  "paid_history_totals": null,
+  "traffic_totals": null,
+  "result_boundary": "This definition and planned prices are not measured results. Freeze actual raw SQL separately after the complete fixture is imported."
+}

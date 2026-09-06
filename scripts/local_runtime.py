@@ -6,14 +6,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
+import socket
+import sqlite3
 import subprocess
 import sys
 import time
+from datetime import UTC, date, datetime
 from http.client import RemoteDisconnected
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
+
+import retail_fixture as retail
 
 ROOT = Path(__file__).resolve().parents[1]
 CITY = Path(os.environ.get("CITYBUDDY_DIR", ROOT.parent / "citybuddy")).resolve()
@@ -21,7 +27,23 @@ RUN = ROOT / ".run"
 ENV = RUN / "citybuddy.env"
 PROJECT = "shopmate"
 JRE = "eclipse-temurin:21.0.8_9-jre-noble@sha256:20e7f7288e1c18eebe8f06a442c9f7183342d9b022d3b9a9677cae2b558ddddd"
-SCOPES = ["merchant:read", "merchant:price:prepare", "merchant:price:read", "merchant:price:cancel"]
+MERCHANT_SCOPES = [
+    "merchant:read",
+    "merchant:price:prepare",
+    "merchant:price:read",
+    "merchant:price:cancel",
+    "merchant:change:prepare",
+    "merchant:change:read",
+    "merchant:change:cancel",
+]
+SHOPPING_SCOPES = [
+    "shopping:orders:read",
+    "shopping:cart:read",
+    "shopping:cart:write",
+    "shopping:profile:read",
+    "refund:create",
+]
+SCOPES = MERCHANT_SCOPES + SHOPPING_SCOPES
 SUBJECT = "shopmate-fixture-operator"
 TOPIC = "shopmate-catalog"
 GROUP = "shopmate-catalog-consumer"
@@ -185,14 +207,14 @@ VALUES ('shopmate-current','CURRENT',CURRENT_TIMESTAMP(6))
 ON DUPLICATE KEY UPDATE state='CURRENT';
 INSERT INTO auth_user_principal(principal_id,subject,login_identifier,state,permissions)
 VALUES ('00000000-0000-0000-0000-0000000a0001','{SUBJECT}','{SUBJECT}','ACTIVE',
-        'catalog:read merchant:session:create merchant:price:apply')
+        'catalog:read merchant:session:create merchant:price:apply merchant:change:apply')
 ON DUPLICATE KEY UPDATE state='ACTIVE',permissions=VALUES(permissions);
 INSERT INTO auth_login_credential(principal_id,password_hash)
 VALUES ('00000000-0000-0000-0000-0000000a0001','{verifier}')
 ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash);
 INSERT INTO auth_service_identity(service_id,client_id,credential_hash,state,allowed_scopes)
 VALUES ('00000000-0000-0000-0000-0000000a0002','merchant-agent','{digest}',
-        'ACTIVE','{" ".join(SCOPES)}')
+        'ACTIVE','{" ".join(MERCHANT_SCOPES)}')
 ON DUPLICATE KEY UPDATE credential_hash=VALUES(credential_hash),state='ACTIVE',
                        allowed_scopes=VALUES(allowed_scopes);
 CREATE USER IF NOT EXISTS 'shopmate_analysis'@'%' IDENTIFIED BY '{analysis_password}';
@@ -201,6 +223,45 @@ REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'shopmate_analysis'@'%';
 GRANT SELECT ON commerce_db.merchant_products TO 'shopmate_analysis'@'%';
 GRANT SELECT ON commerce_db.merchant_paid_orders TO 'shopmate_analysis'@'%';
 GRANT SELECT ON commerce_db.merchant_daily_sales TO 'shopmate_analysis'@'%';
+GRANT SELECT ON commerce_db.merchant_listing_facts TO 'shopmate_analysis'@'%';
+GRANT SELECT ON commerce_db.merchant_store_traffic_daily TO 'shopmate_analysis'@'%';
+GRANT SELECT ON commerce_db.merchant_campaign_facts TO 'shopmate_analysis'@'%';
+""")
+    shopping_secret = generated("shopping_service_secret", "cbsvc_v1_")
+    shopping_digest = run(
+        [sys.executable, "scripts/service_credential.py", "hash", "shopping-agent"],
+        stdin=shopping_secret,
+        log=False,
+    )
+    sql(f"""
+INSERT INTO auth_service_identity(service_id,client_id,credential_hash,state,allowed_scopes)
+VALUES ('00000000-0000-0000-0000-0000000a0003','shopping-agent','{shopping_digest}',
+        'ACTIVE','{" ".join(SHOPPING_SCOPES)}')
+ON DUPLICATE KEY UPDATE credential_hash=VALUES(credential_hash),state='ACTIVE',
+                       allowed_scopes=VALUES(allowed_scopes);
+""")
+    for index, buyer in enumerate(retail.BUYERS):
+        password = generated(f"buyer_{index + 1}_password", "sm-")
+        verifier = run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                "import bcrypt,sys; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt(rounds=12)).decode())",
+            ],
+            stdin=password,
+            log=False,
+        )
+        principal = retail.identity("principal/" + buyer)
+        sql(f"""
+INSERT INTO auth_user_principal(principal_id,subject,login_identifier,state,permissions)
+VALUES ('{principal}','{buyer}','{buyer}','ACTIVE',
+        'catalog:read shopping:session:create order:create payment:create')
+ON DUPLICATE KEY UPDATE state='ACTIVE',permissions=VALUES(permissions);
+INSERT INTO auth_login_credential(principal_id,password_hash)
+VALUES ('{principal}','{verifier}')
+ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash);
 """)
     port = int(compose("port", "mysql", "3306").rsplit(":", 1)[1])
     truth_password = generated("truth_password")
@@ -218,6 +279,28 @@ GRANT SELECT ON commerce_db.merchant_daily_sales TO 'shopmate_analysis'@'%';
         "merchant_products",
         "merchant_paid_orders",
         "merchant_daily_sales",
+        "merchant_listing_facts",
+        "merchant_store_traffic_daily",
+        "merchant_campaign_facts",
+        "retail_product_family",
+        "retail_product_metadata",
+        "retail_product_operations",
+        "retail_store_traffic_daily",
+        "retail_campaign",
+        "retail_promotion",
+        "retail_promotion_item",
+        "retail_order_fulfillment",
+        "retail_order_issue",
+        "retail_fulfillment_config",
+        "shopping_cart",
+        "shopping_cart_item",
+        "shopping_cart_command",
+        "shopping_checkout",
+        "shopping_checkout_order",
+        "pending_action",
+        "action_receipt",
+        "mock_refund",
+        "faq_source",
     )
     sql(
         f"CREATE USER IF NOT EXISTS 'shopmate_truth'@'%' IDENTIFIED BY '{truth_password}';"
@@ -247,16 +330,126 @@ GRANT SELECT ON commerce_db.merchant_daily_sales TO 'shopmate_analysis'@'%';
         "commerce_url": "http://127.0.0.1:9082",
         "jwks_url": "http://127.0.0.1:9081/auth/jwks",
         "merchant_service_secret": merchant_secret,
+        "shopping_service_secret": shopping_secret,
+        "payment_callback_secret": generated("payment_callback_secret"),
         "sql_port": port,
         "sql_password": analysis_password,
         "state_path": str(RUN / "sessions.sqlite3"),
-        "as_of": AS_OF + "T00:00:00+00:00",
+        "as_of": AS_OF + "T00:00:00+08:00",
     }
 
 
+def require_api_stopped() -> None:
+    # The single local host owns action retries; maintenance must not race its writers.
+    with socket.socket() as connection:
+        connection.settimeout(1)
+        if connection.connect_ex(("127.0.0.1", 8101)) == 0:
+            raise RuntimeError("Stop the ShopMate API on port 8101 before local maintenance")
+
+
+def wait_catalog_drained() -> None:
+    deadline = time.monotonic() + 90
+    while True:
+        pending = int(
+            sql(
+                "SELECT COUNT(*) FROM commerce_outbox WHERE aggregate_type='PRODUCT' "
+                "AND publication_state='PENDING';"
+            )
+        )
+        progress = compose(
+            "run",
+            "--rm",
+            "--no-deps",
+            "rocketmq-admin",
+            "consumerProgress",
+            "--namesrvAddr",
+            "rocketmq-namesrv:9876",
+            "--groupName",
+            GROUP,
+            "--topic",
+            TOPIC,
+        )
+        diff = re.search(r"Consume Diff Total:\s*(\d+)", progress)
+        inflight = re.search(r"Consume Inflight Total:\s*(\d+)", progress)
+        if not diff or not inflight:
+            raise RuntimeError("Catalog consumer progress unavailable; fixture was not reset")
+        if pending == 0 and int(diff[1]) == 0 and int(inflight[1]) == 0:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Catalog delivery did not drain; fixture was not reset")
+        time.sleep(1)
+
+
+def reset_fixture_sessions() -> None:
+    path = RUN / "sessions.sqlite3"
+    if not path.exists():
+        return
+    backup_dir = RUN / "backups"
+    backup_dir.mkdir(mode=0o700, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+    with (
+        sqlite3.connect(path) as db,
+        sqlite3.connect(backup_dir / f"sessions-{stamp}.sqlite3") as backup,
+    ):
+        db.backup(backup)
+        db.execute("PRAGMA foreign_keys=ON")
+        owners = retail.fixture_owners()
+        sessions = "SELECT id FROM sessions WHERE owner IN (" + ",".join("?" for _ in owners) + ")"
+        db.execute("DELETE FROM prepare_intents WHERE session_id IN (" + sessions + ")", owners)
+        db.execute("DELETE FROM draft_refs WHERE session_id IN (" + sessions + ")", owners)
+        db.execute("DELETE FROM sessions WHERE id IN (" + sessions + ")", owners)
+
+
+def publish_policies() -> None:
+    values = read_env()
+    env_file = RUN / "faq-publisher.env"
+    private(
+        env_file,
+        "SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/commerce_db?useSSL=false&allowPublicKeyRetrieval=true\n"
+        "SPRING_DATASOURCE_USERNAME=commerce_app\n"
+        f"SPRING_DATASOURCE_PASSWORD={values['MYSQL_COMMERCE_APP_PASSWORD']}\n",
+    )
+    jar = CITY / "commerce-service/target/commerce-service-0.0.1-SNAPSHOT.jar"
+    run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--interactive",
+            "--network",
+            "shopmate_default",
+            "--env-file",
+            str(env_file),
+            "--volume",
+            f"{jar}:/opt/shopmate/service.jar:ro",
+            JRE,
+            "java",
+            "-Dloader.main=io.citybuddy.commerce.faq.FaqFixturePublisherCli",
+            "-cp",
+            "/opt/shopmate/service.jar",
+            "org.springframework.boot.loader.launch.PropertiesLauncher",
+        ],
+        stdin=json.dumps(retail.policy_entries(), ensure_ascii=False),
+        label="Publish retail policies",
+    )
+
+
 def seed_business() -> None:
-    fixture = run([sys.executable, "scripts/seed_merchant_fixture.py", "--as-of", AS_OF], log=False)
-    sql(fixture)
+    for query in retail.preflight_queries().values():
+        if int(sql(query)):
+            raise RuntimeError("Fixture products have non-fixture references; maintenance stopped")
+    sql(retail.fixture_sql(date.fromisoformat(AS_OF)))
+    # SQL and SQLite do not share a transaction; a failure keeps this host unready.
+    reset_fixture_sessions()
+    publish_policies()
+
+
+def reset_business() -> None:
+    require_api_stopped()
+    wait_catalog_drained()
+    stop_java()
+    seed_business()
+    start_java()
 
 
 def stop_java() -> None:
@@ -291,6 +484,10 @@ def start_java() -> None:
         env_values = {"SPRING_DATASOURCE_PASSWORD": values[f"MYSQL_{account}_APP_PASSWORD"]}
         if service == "commerce":
             env_values["SPRING_DATA_REDIS_URL"] = values["COMMERCE_REDIS_URL"]
+            env_values["CITYBUDDY_MOCK_PAYMENT_CALLBACK_KEY_ID"] = "shopmate-local-payment"
+            env_values["CITYBUDDY_MOCK_PAYMENT_CALLBACK_SECRET"] = generated(
+                "payment_callback_secret"
+            )
         private(RUN / f"{service}.env", "".join(f"{k}={v}\n" for k, v in env_values.items()))
         jar = CITY / f"{service}-service/target/{service}-service-0.0.1-SNAPSHOT.jar"
         if not jar.is_file():
@@ -351,6 +548,10 @@ def start_java() -> None:
                 "--citybuddy.obo.issuer=https://identity.citybuddy.test",
                 "--citybuddy.obo.jwks-url=http://shopmate-auth:8080/auth/jwks",
                 "--citybuddy.merchant.enabled=true",
+                "--citybuddy.orders.enabled=true",
+                "--citybuddy.mock-payment.enabled=true",
+                "--citybuddy.refund.enabled=true",
+                "--citybuddy.actions.enabled=true",
             ]
         run(args, label=f"Start shopmate-{service}")
         path = "/auth/jwks" if service == "auth" else "/api/products"
@@ -382,6 +583,7 @@ def main() -> None:
                 label="Stop ShopMate data services; preserve volumes",
             )
         return
+    require_api_stopped()
     if not ENV.exists():
         run(
             ["bash", "scripts/init_local.sh"],
@@ -428,10 +630,20 @@ def main() -> None:
         )
     stop_java()
     settings = seed_identity()
-    if sql("SELECT COUNT(*) FROM product WHERE product_id='shopmate-fixture-coffee';") == "0":
-        seed_business()
     private(RUN / "settings.json", json.dumps(settings, indent=2) + "\n")
     start_java()
+    initialized = (
+        sql(
+            "SELECT EXISTS(SELECT 1 FROM retail_store_traffic_daily WHERE fixture_version="
+            + retail.encoded(retail.VERSION)
+            + ");"
+        )
+        == "1"
+    )
+    if not initialized:
+        reset_business()
+    else:
+        publish_policies()
     print(
         "Java services ready on 9081/9082. Login: shopmate-fixture-operator; password in .run/operator_password."
     )

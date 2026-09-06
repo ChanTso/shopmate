@@ -301,7 +301,7 @@ class Campaign(BaseModel):
     status: Literal["draft", "active", "paused", "ended"]
     objective: str | None = None
     channel: str | None = None
-    budget: float
+    budget: float | None = None
     spend: float | None = None
     revenue: float | None = None
     currency: str = "USD"

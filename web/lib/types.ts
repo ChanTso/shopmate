@@ -25,16 +25,25 @@ export interface Listing {
   /** A variant's value for each option, and its family's id. */
   option_values?: Record<string, string>;
   variant_of?: string | null;
+  publication_version?: number | null;
+  metadata_version?: number;
+  family_metadata_version?: number | null;
+  price_editable?: boolean;
+  publication_state?: string;
 }
 
 export interface ListingDetails extends Listing {
   long_description?: string | null;
+  content?: { brand?: string; specs?: Record<string, unknown>; [key: string]: unknown };
   /** Buyer-authored; render as a quotation. */
   review_snippets?: string[];
   sales_last_30d?: number | null;
   return_rate_pct?: number | null;
   missing_attributes?: string[];
   variants?: Listing[];
+  operations?: { unitCostMinor: number | null; lowStockThreshold: number; contentQuality: string | null; missingAttributes: string[]; factsVersion: number; observedAt: string; sourceRef: string } | null;
+  window?: ReportingWindow;
+  refund_requested_order_pct?: number | null;
 }
 
 export interface PricingContext {
@@ -120,6 +129,12 @@ export interface OrderIssue {
   /** Buyer-authored; render as a quotation. */
   buyer_message_excerpt?: string | null;
   opened_at?: string | null;
+  fulfillment?: { method: string; stage: string; promisedDeliveryAt: string | null; estimatedDeliveryAt: string | null; packedAt: string | null; shippedAt: string | null; deliveredAt: string | null; delayReason: string | null; sourceKind: string; sourceRef: string; observedAt: string } | null;
+  refund_requested_order_count?: number | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  source_kind?: string;
+  source_ref?: string;
 }
 
 // --- Staged changes (propose → preview → approve → apply) ---
@@ -151,7 +166,7 @@ export interface DraftReceipt {
 }
 
 export interface StagedChange {
-  receipt?: DraftReceipt | null;
+  receipt?: DraftReceipt | ChangeReceipt | null;
   change_id: string;
   kind: ChangeKind;
   status: ChangeStatus;
@@ -209,6 +224,8 @@ export interface ListingsResponse {
   /** Count before paging. */
   total?: number;
   listings: Listing[];
+  next_offset: number | null;
+  window: ReportingWindow;
 }
 
 export interface ListingDetailResponse {
@@ -264,4 +281,52 @@ export interface ChangePreviewPayload {
   headline?: string | null;
   note?: string | null;
   change: StagedChange;
+}
+
+
+export interface ReportingWindow { start: string; end: string; timeZone: string; }
+export interface InventoryResponse { inventory: InventoryAlert[]; next_offset: number | null; window: ReportingWindow; }
+export interface OrderIssuesResponse { order_issues: OrderIssue[]; limit: number; truncated: boolean; }
+export interface ChangesResponse { changes: StagedChange[]; next_offset: number | null; }
+export interface ChangeReceipt {
+  changeId: string;
+  kind: string;
+  state: DraftReceipt["state"];
+  currency: string | null;
+  items: unknown[];
+  payload: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
+export interface Campaign {
+  campaignId: string; name: string; objective: string | null; audience: string | null;
+  copyText: string | null; channel: string | null; currency: string; budgetMinor: number | null;
+  startsAt: string | null; endsAt: string | null; state: string; version: number;
+  createdAt: string; updatedAt: string; sourceChangeId: string | null;
+  spendMinor: number | null; revenueMinor: number | null;
+  observationSourceKind: string | null; observationSourceRef: string | null;
+  observedAt: string | null; observationStart: string | null; observationEnd: string | null;
+  fixtureVersion: string | null;
+}
+export interface PromotionTarget {
+  productId: string; approvedBasePriceMinor: number; promotionPriceMinor: number;
+  beforeVersion: number; afterVersion: number; eventId: string;
+  currentPriceMinor: number; currentCurrency: string; currentVersion: number; overridden: boolean;
+}
+export interface Promotion {
+  promotionId: string; name: string; currency: string; discountBasisPoints: number;
+  startsAt: string; endsAt: string; state: string; version: number;
+  createdAt: string; updatedAt: string; appliedAt: string; sourceChangeId: string;
+  targets: PromotionTarget[];
+}
+export interface CampaignsResponse { campaigns: Campaign[]; next_offset: number | null; }
+export interface PromotionsResponse { promotions: Promotion[]; next_offset: number | null; }
+
+export interface ListingFilters {
+  status?: ListingStatus;
+  category?: string;
+  max_stock?: string;
+  content_quality?: ContentQuality;
+  sort?: "relevance" | "sales_desc" | "stock_asc" | "price_desc" | "price_asc";
 }

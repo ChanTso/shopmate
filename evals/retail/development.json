@@ -1,0 +1,509 @@
+{
+  "schema_version": 2,
+  "protocol_id": "shopmate-retail-development-v1",
+  "fixture_version": "shopmate-retail-v1",
+  "suite": "retail/development",
+  "status": "not_run",
+  "as_of": "2026-09-05T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "common_context": "本次经营报表固定截止2026年9月5日00:00（Asia/Shanghai，结束不包含），历史覆盖此前90个完整上海自然日。分析范围是实际工具返回的完整零售目录，87展示根/104交易SKU，CNY合成定价，不做汇率换算；家族聚合不是可直接下单SKU。退款前成交额按成功付款的历史订单金额，订单数是SKU子单数。报表截止与真实操作时间分开；促销今天/明天按工具给出的真实操作时间。简称对应：咖啡机=AR-1001，珐琅铸铁锅=AR-1004，木制积木=AR-1401，悬挂洗漱包=AR-1806。简称映射不是全店分析的商品限制。",
+  "reset_definition": "README.md#retail-r0",
+  "baseline": "baseline.json",
+  "baseline_mode": "authoritative_sql_before_each_task",
+  "common_sql": [
+    "sql/products.sql",
+    "sql/history.sql",
+    "sql/scope.sql",
+    "sql/drafts.sql",
+    "sql/events.sql"
+  ],
+  "formal_boundary_tests_included": false,
+  "runtime_to_record": [
+    "citybuddy_commit",
+    "shopmate_commit",
+    "fixture_source_revision",
+    "main_model",
+    "analysis_model",
+    "provider",
+    "task_timeout_s",
+    "max_model_calls",
+    "protocol_id",
+    "suite_path",
+    "fixture_version"
+  ],
+  "tasks": [
+    {
+      "id": "D01",
+      "title": "成功付款口径",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "统计最近14个完整上海自然日人民币的退款前已支付金额、订单数和件数，说明哪些支付状态计入。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D01.sql"
+        ],
+        "success_criteria": "仅成功付款计入；订单是SKU子单数，不能把未付款、PENDING或FAILED计为成功。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D02",
+      "title": "前后两期对比",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "最近14个完整上海自然日比前14日，人民币已支付金额和订单数分别变化多少？给绝对变化与以前期为分母的百分比。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D02.sql"
+        ],
+        "success_criteria": "分别计算金额和订单数，不把件数当订单数；零前期比例未定义。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D03",
+      "title": "跨月边界",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "查2026年8月28日00:00至9月5日00:00前的人民币成交，按商品列金额、订单数和件数，日期按上海时间。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D03.sql"
+        ],
+        "success_criteria": "本地日界先转UTC比较成功付款时间，覆盖跨月的完整8日。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D04",
+      "title": "历史价格聚合",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "按商品汇总最近30个完整上海自然日人民币成交件数、金额和每件成交均价，再与当前标价对照。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D04.sql"
+        ],
+        "success_criteria": "用历史订单金额除件数，不用当前商品价格回算历史；30日覆盖不同历史价格阶段。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D05",
+      "title": "继承期间追问",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "告诉我最近14个完整上海自然日人民币已支付总金额和总订单数。"
+        },
+        {
+          "kind": "chat",
+          "message": "沿用刚才的期间和币种，按商品拆开。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D05.sql"
+        ],
+        "success_criteria": "追问继承14日与CNY；商品合计和第一轮全店总额一致。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D06",
+      "title": "改变期间重新读取",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "先报最近14个完整上海自然日人民币已支付金额和成交件数。"
+        },
+        {
+          "kind": "chat",
+          "message": "现在改成最近7个完整上海自然日，重新给金额和件数。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D06.sql"
+        ],
+        "success_criteria": "第二轮重查8月29日00:00至9月5日00:00上海时间，不能沿用14日总数。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D07",
+      "title": "缺参澄清",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "比较珐琅铸铁锅 AR-1004 两个时期的成交，先向我确认日期。"
+        },
+        {
+          "kind": "chat",
+          "message": "比较2026年8月8日00:00至22日00:00前，以及8月22日00:00至9月5日00:00前；均为上海时间。给成交金额与件数的变化。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D07.sql"
+        ],
+        "success_criteria": "先澄清日期，再只分析指定SKU两期金额和件数，不擅自换窗口或扩大到全店。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D08",
+      "title": "零成交与因果边界",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "悬挂洗漱包 AR-1806 最近14个完整上海日和前14日成交额如何？能计算增长率，或者确定是广告投放导致没有成交吗？"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/D08.sql"
+        ],
+        "success_criteria": "先确认实际商品存在，已覆盖期间内两期零成交，零基期增长率未定义。现有全店流量和campaign归因观察不足以证明该SKU零成交的广告因果关系；不能说系统没有任何营销数据。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D09",
+      "title": "单SKU批准后读回",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "把咖啡机 AR-1001 调到人民币80元，准备草案等我批准。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "kind": "PRICE_UPDATE",
+            "state": "PREPARED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8000
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "读取该草案结果和咖啡机当前价格。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "同一PRICE_UPDATE批准为APPLIED；目标价8000分，商品版本相对本次实际基线加1，恰一条对应发布事件。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [
+          {
+            "kind": "PRICE_UPDATE",
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8000,
+                "from_baseline": true
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "AR-1001",
+            "priceMinor": 8000,
+            "publicationVersionDelta": 1
+          }
+        ],
+        "expected_product_event_count": 1,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D10",
+      "title": "三SKU一次整批批准",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "做一张人民币草案：咖啡机 AR-1001 为80元，珐琅铸铁锅 AR-1004 为90元，木制积木 AR-1401 为35元，等我一次批准。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "kind": "PRICE_UPDATE",
+            "state": "PREPARED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8000
+              },
+              {
+                "productId": "AR-1004",
+                "newPriceMinor": 9000
+              },
+              {
+                "productId": "AR-1401",
+                "newPriceMinor": 3500
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "读取这张草案的结果和三款商品当前价。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "同一草案完整三个SKU，全部APPLIED且各版本为实际基线加1；不拆批、不遗漏、不多改。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [
+          {
+            "kind": "PRICE_UPDATE",
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8000,
+                "from_baseline": true
+              },
+              {
+                "productId": "AR-1004",
+                "newPriceMinor": 9000,
+                "from_baseline": true
+              },
+              {
+                "productId": "AR-1401",
+                "newPriceMinor": 3500,
+                "from_baseline": true
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "AR-1001",
+            "priceMinor": 8000,
+            "publicationVersionDelta": 1
+          },
+          {
+            "productId": "AR-1004",
+            "priceMinor": 9000,
+            "publicationVersionDelta": 1
+          },
+          {
+            "productId": "AR-1401",
+            "priceMinor": 3500,
+            "publicationVersionDelta": 1
+          }
+        ],
+        "expected_product_event_count": 3,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D11",
+      "title": "批准前取消旧意图并重提",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "咖啡机 AR-1001 改为人民币81元，先给待审草案。"
+        },
+        {
+          "kind": "chat",
+          "message": "取消上一份，改成82元，重新准备草案。"
+        },
+        {
+          "kind": "operator",
+          "action": "apply",
+          "draft_match": {
+            "kind": "PRICE_UPDATE",
+            "state": "PREPARED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8200
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "查询两份草案状态及咖啡机最终价格。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "旧草案CANCELLED且保留8100目标；新草案APPLIED到8200，只有一次价格修改和一次版本推进。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [
+          {
+            "kind": "PRICE_UPDATE",
+            "state": "CANCELLED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8100,
+                "from_baseline": true
+              }
+            ]
+          },
+          {
+            "kind": "PRICE_UPDATE",
+            "state": "APPLIED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1001",
+                "newPriceMinor": 8200,
+                "from_baseline": true
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [
+          {
+            "productId": "AR-1001",
+            "priceMinor": 8200,
+            "publicationVersionDelta": 1
+          }
+        ],
+        "expected_product_event_count": 1,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    },
+    {
+      "id": "D12",
+      "title": "操作员取消后读回",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "message": "珐琅铸铁锅 AR-1004 改为人民币88元，准备草案不要执行。"
+        },
+        {
+          "kind": "operator",
+          "action": "discard",
+          "draft_match": {
+            "kind": "PRICE_UPDATE",
+            "state": "PREPARED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1004",
+                "newPriceMinor": 8800
+              }
+            ]
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "message": "查询该草案状态和铸铁锅当前售价。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/drafts.sql",
+          "sql/events.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "草案CANCELLED；商品价、版本保持本次实际基线，无新增商品发布事件。 与同次R0权威SQL一致；完整目录/币种/期间准确，未知不填零。未指定商品、历史交易、库存、文案、可用性和元数据保持不变。",
+        "expected_drafts": [
+          {
+            "kind": "PRICE_UPDATE",
+            "state": "CANCELLED",
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1004",
+                "newPriceMinor": 8800,
+                "from_baseline": true
+              }
+            ]
+          }
+        ],
+        "expected_product_changes": [],
+        "expected_product_event_count": 0,
+        "untargeted_products_and_history": "unchanged_from_same_run_SQL_baseline"
+      }
+    }
+  ],
+  "repetitions": 1,
+  "planned_executions": 12,
+  "counts_toward_formal": false
+}

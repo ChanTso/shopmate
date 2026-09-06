@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
@@ -14,7 +15,16 @@ from merchant_agent.types import (
 
 from shopmate.auth import RequestIdentity, bind_context
 from shopmate.backend import CityBuddyMerchantBackend, ShopMateConfig, reporting_period
-from shopmate.commerce_client import CommerceError, DraftView, ProductView, SummaryView
+from shopmate.commerce_client import (
+    ChangeView,
+    CommerceError,
+    InventoryView,
+    ListingView,
+    PageView,
+    ProductView,
+    SummaryView,
+    WindowView,
+)
 from shopmate.sessions import SessionStore
 
 
@@ -36,6 +46,8 @@ class SQL:
 
     async def query(self, sql):
         self.calls.append(sql)
+        if "SUM(visits)" in sql:
+            return AnalysisTable(columns=["visits", "observed_days"], rows=[[None, 0]], row_count=1)
         return AnalysisTable(columns=["bucket", "value"], rows=[["2026-08-22", 11500]], row_count=1)
 
 
@@ -71,14 +83,92 @@ class Client:
     async def products(self, token, session_id):
         return list(self.products_by_id.values())
 
+    async def listing(self, product_id, token, session_id, as_of=None):
+        product = await self.product(product_id, token, session_id)
+        if not product:
+            return None
+        return ListingView(
+            id=product.productId,
+            kind="plain",
+            variantOf=None,
+            title=product.name,
+            shortDescription=None,
+            priceMinor=product.priceMinor,
+            currency=product.currency,
+            stockQuantity=product.stockQuantity,
+            available=product.available,
+            publicationState=product.publicationState,
+            status="active",
+            publicationVersion=product.publicationVersion,
+            metadataVersion=0,
+            familyMetadataVersion=None,
+            content={},
+            options=[],
+            optionValues={},
+            contentQuality=None,
+            operations=None,
+            salesLast30d={
+                "orderCount": 0,
+                "units": 0,
+                "refundRequestedOrderCount": 0,
+                "refundRequestedOrderPct": None,
+            },
+            marginPct=None,
+            priceEditable=product.priceEditable,
+            window=WindowView(
+                start="2026-08-05T16:00:00Z", end="2026-09-04T16:00:00Z", timeZone="Asia/Shanghai"
+            ),
+            variants=[],
+        )
+
+    async def listings(self, token, session_id, **params):
+        rows = [await self.listing(key, token, session_id) for key in self.products_by_id]
+        if params.get("query"):
+            rows = [row for row in rows if params["query"] in row.title]
+        if params.get("maxStock") is not None:
+            rows = [row for row in rows if row.stockQuantity <= params["maxStock"]]
+        if params.get("contentQuality"):
+            rows = [row for row in rows if row.contentQuality == params["contentQuality"]]
+        rows = rows[params.get("offset", 0) : params.get("offset", 0) + params.get("limit", 20)]
+        window = WindowView(
+            start="2026-08-05T16:00:00Z", end="2026-09-04T16:00:00Z", timeZone="Asia/Shanghai"
+        )
+        return PageView[ListingView](items=rows, nextOffset=None, window=window)
+
+    async def inventory(self, token, session_id, **params):
+        return PageView[InventoryView](
+            items=[],
+            nextOffset=None,
+            window=WindowView(
+                start="2026-08-05T16:00:00Z", end="2026-09-04T16:00:00Z", timeZone="Asia/Shanghai"
+            ),
+        )
+
+    async def issues(self, token, session_id, limit=100):
+        return []
+
+    async def changes(self, token, session_id, limit=100, offset=0, state=None):
+        return (
+            [self.receipt]
+            if self.receipt
+            and session_id == self.receipt_session
+            and offset == 0
+            and (state is None or state == self.receipt.state)
+            else []
+        )
+
     async def prepare(self, body, key, token, session_id):
         self.prepares.append((body, key, token, session_id))
+        body = body.get("payload", body)
+        self.receipt_session = session_id
         if self.fail_prepare_once:
             error, self.fail_prepare_once = self.fail_prepare_once, None
             raise error
-        self.receipt = DraftView.model_validate(
+        self.receipt = ChangeView.model_validate(
             {
-                "draftId": "draft-1",
+                "changeId": "draft-1",
+                "kind": "PRICE_UPDATE",
+                "payload": body,
                 "currency": body["currency"],
                 "state": "PREPARED",
                 "items": [
@@ -100,7 +190,9 @@ class Client:
         return self.receipt
 
     async def draft(self, draft_id, token, session_id):
-        assert draft_id == self.receipt.draftId
+        if session_id != self.receipt_session:
+            raise CommerceError(404, "NOT_FOUND", "Unknown change in this session")
+        assert draft_id == self.receipt.changeId
         return self.receipt
 
     def resolved(self, state):
@@ -122,7 +214,7 @@ class Client:
         return self.receipt
 
     async def summary(self, start, end, token, session_id):
-        current = end.day == 5 and end.month == 9
+        current = end.astimezone(ZoneInfo("Asia/Shanghai")).day == 5 and end.month == 9
         return SummaryView(
             start=start,
             end=end,
@@ -169,33 +261,34 @@ def item(product="coffee", price=25.2):
     return PriceUpdateItem(listing_id=product, new_price=price)
 
 
-def test_config_removes_unimplemented_and_operator_only_tools():
+def test_config_enables_full_retail_and_keeps_operator_only_approval():
     config = ShopMateConfig()
     names = {
         tool["name"] for tool in build_tools(config, ["performance-insights", "pricing-promotions"])
     }
-    assert {"stage_price_update", "discard_change", "run_analysis"} <= names
-    assert (
-        not {
-            "apply_change",
-            "stage_promotion",
-            "stage_inventory_action",
-            "get_order_issues",
-            "stage_listing_update",
-            "get_campaign_performance",
-        }
-        & names
-    )
+    assert {
+        "stage_price_update",
+        "stage_promotion",
+        "stage_campaign",
+        "stage_listing_update",
+        "stage_inventory_action",
+        "get_order_issues",
+        "get_campaign_performance",
+        "discard_change",
+        "run_analysis",
+    } <= names
+    assert "apply_change" not in names
+    assert config.max_items_per_change == 25
 
 
-def test_periods_preserve_utc_half_open_calendar_and_previous_windows(rig):
+def test_periods_use_shanghai_days_and_preserve_explicit_utc_instants(rig):
     recent = reporting_period(rig.session, "last_14_days")
-    assert recent.start == datetime(2026, 8, 22, tzinfo=UTC)
-    assert recent.end == datetime(2026, 9, 5, tzinfo=UTC)
+    assert recent.start == datetime(2026, 8, 21, 16, tzinfo=UTC)
+    assert recent.end == datetime(2026, 9, 4, 16, tzinfo=UTC)
     assert reporting_period(rig.session, "previous_14_days") == recent.previous()
     august = reporting_period(rig.session, "last_month")
-    assert august.start == datetime(2026, 8, 1, tzinfo=UTC)
-    assert august.end == datetime(2026, 9, 1, tzinfo=UTC)
+    assert august.start == datetime(2026, 7, 31, 16, tzinfo=UTC)
+    assert august.end == datetime(2026, 8, 31, 16, tzinfo=UTC)
     cutoff = reporting_period(rig.session, "2026-08-22T10:17:00Z/2026-08-23T10:17:00Z")
     assert cutoff.start.hour == cutoff.end.hour == 10
     with pytest.raises(ChangeNotApplicable):
@@ -210,14 +303,15 @@ async def test_staging_uses_persisted_canonical_intent_and_integer_prices(rig):
     assert first.change_id == second.change_id
     assert len(rig.client.prepares) == 1
     body, key, token, session_id = rig.client.prepares[0]
-    assert body == {
+    assert body["kind"] == "PRICE_UPDATE"
+    assert body["payload"] == {
         "currency": "CNY",
         "items": [
             {"productId": "coffee", "newPriceMinor": 2520},
             {"productId": "tea", "newPriceMinor": 1890},
         ],
     }
-    assert token == "obo:merchant:price:prepare" and session_id == rig.session.session_id
+    assert token == "obo:merchant:change:prepare" and session_id == rig.session.session_id
     assert rig.store.intent_rows(session_id)[0].key == key
     assert rig.store.owns_draft(session_id, first.change_id)
     assert "direct-test-token" not in first.model_dump_json()
@@ -297,7 +391,7 @@ async def test_snapshot_does_not_sum_currencies_or_invent_unknown_metrics(rig):
     assert snapshot.sales == 2304 and snapshot.units == 96 and snapshot.orders == 32
     assert snapshot.currency == "CNY" and snapshot.sales_change_pct == 17.79
     assert snapshot.traffic is None and snapshot.conversion_rate is None
-    assert snapshot.alerts.low_stock is None and snapshot.alerts.order_issues is None
+    assert snapshot.alerts.low_stock == 0 and snapshot.alerts.order_issues == 0
     series = await rig.backend.query_metrics(rig.session, "sales", segment="USD")
     assert series.unit == "USD" and "'USD'" in rig.sql.calls[-1]
     assert series.points[0].value == 115
@@ -309,12 +403,19 @@ async def test_catalog_name_lookup_omits_filters_and_supported_filters_remain_ef
     tool = next(t for t in build_tools(ShopMateConfig(), []) if t["name"] == "search_listings")
     schema = tool["input_schema"]
     filters = schema["properties"]["filters"]
-    assert set(filters["properties"]) == {"status", "max_stock", "sort"}
+    assert set(filters["properties"]) == {
+        "status",
+        "category",
+        "content_quality",
+        "max_stock",
+        "sort",
+    }
     assert set(filters["properties"]["sort"]["enum"]) == {
         "relevance",
         "stock_asc",
         "price_desc",
         "price_asc",
+        "sales_desc",
     }
     assert "filters" not in schema["required"]
     assert not filters.get("required")
@@ -328,7 +429,9 @@ async def test_catalog_name_lookup_omits_filters_and_supported_filters_remain_ef
         rig.session, "", ListingFilters(status="active", max_stock=3, sort="price_asc")
     )
     assert [row.listing_id for row in rows] == ["tea"]
-    with pytest.raises(ChangeNotApplicable):
+    assert (
         await rig.backend.search_listings(
             rig.session, "coffee", ListingFilters(content_quality="good")
         )
+        == []
+    )

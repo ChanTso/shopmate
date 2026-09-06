@@ -13,7 +13,15 @@ import jwt
 from fastapi import HTTPException
 
 MERCHANT_SCOPES = frozenset(
-    {"merchant:read", "merchant:price:prepare", "merchant:price:read", "merchant:price:cancel"}
+    {
+        "merchant:read",
+        "merchant:price:prepare",
+        "merchant:price:read",
+        "merchant:price:cancel",
+        "merchant:change:prepare",
+        "merchant:change:read",
+        "merchant:change:cancel",
+    }
 )
 
 

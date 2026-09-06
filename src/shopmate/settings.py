@@ -20,6 +20,8 @@ class Settings:
     issuer: str = "https://identity.citybuddy.test"
     user_audience: str = "citybuddy-web"
     merchant_service_secret: str = field(default="", repr=False)
+    shopping_service_secret: str = field(default="", repr=False)
+    payment_callback_secret: str = field(default="", repr=False)
     sql_host: str = "127.0.0.1"
     sql_port: int = 3306
     sql_user: str = "shopmate_analysis"

@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import copy
 import fcntl
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -15,7 +17,7 @@ from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 import pymysql
@@ -26,12 +28,88 @@ from shopmate.settings import Settings
 ROOT = Path(__file__).resolve().parents[1]
 SUBJECT = "shopmate-fixture-operator"
 COMMON_SQL = ("products.sql", "history.sql", "scope.sql", "drafts.sql", "events.sql")
+LOCAL_API = "http://127.0.0.1:8101/api/merchant"
+HOST_TIMEOUT_S = 30
 
 
 class TaskFailure(RuntimeError):
     def __init__(self, reason: str, *, provider: bool = False, unsafe: bool = False):
         super().__init__(reason)
         self.provider, self.unsafe = provider, unsafe
+
+
+def load_suite(selection: str) -> dict:
+    path = Path(selection)
+    if path.suffix != ".json":
+        path = path.with_suffix(".json")
+    if not path.is_absolute():
+        path = ROOT / path if path.parts[0] == "evals" else ROOT / "evals" / path
+    path = path.resolve()
+    if not path.is_relative_to((ROOT / "evals").resolve()):
+        raise ValueError("Suite must be a committed file under evals/")
+    suite = json.loads(path.read_text())
+    suite["_source_path"] = str(path)
+    return suite
+
+
+def task_sql_paths(task: dict, suite: dict) -> list[Path]:
+    directory = Path(suite.get("_source_path", ROOT / "evals/development.json")).parent
+    common = suite.get("common_sql", ["sql/" + name for name in COMMON_SQL])
+    return list(
+        dict.fromkeys(directory / name for name in common + task["evaluator"]["reference_sql"])
+    )
+
+
+def materialize_expectations(evaluator: dict, baseline: dict) -> dict:
+    """Attach the observed old price/version; SQL and human review still decide business success."""
+    expected = copy.deepcopy(evaluator)
+    products = {}
+    for result in baseline["products"]:
+        columns = result["columns"]
+        if {"product_id", "price_minor", "publication_version"}.issubset(columns):
+            for values in result["rows"]:
+                item = dict(zip(columns, values, strict=True))
+                products[item["product_id"]] = (
+                    item["product_id"],
+                    item["price_minor"],
+                    item["publication_version"],
+                )
+            break
+
+    def product(product_id: str) -> tuple:
+        if product_id not in products:
+            raise TaskFailure(
+                "Approved target is absent from authoritative SQL baseline", unsafe=True
+            )
+        return products[product_id]
+
+    for draft in expected["expected_drafts"]:
+        for item in draft["items"]:
+            if item.pop("from_baseline", False):
+                _, price, version = product(item["productId"])
+                item.update(oldPriceMinor=price, expectedVersion=version)
+    for item in expected["expected_product_changes"]:
+        _, _, version = product(item["productId"])
+        item["publicationVersion"] = version + item.pop("publicationVersionDelta")
+    return expected
+
+
+def receipt_id(receipt: dict) -> str:
+    change_id, draft_id = receipt.get("changeId"), receipt.get("draftId")
+    if change_id is not None and draft_id is not None and change_id != draft_id:
+        raise TaskFailure("Conflicting authoritative change and draft IDs")
+    identifier = change_id if change_id is not None else draft_id
+    if not isinstance(identifier, str) or not identifier:
+        raise TaskFailure("Missing authoritative draft ID")
+    if change_id is not None and receipt.get("kind") not in {
+        "PRICE_UPDATE",
+        "LISTING_UPDATE",
+        "INVENTORY_ACTION",
+        "PROMOTION",
+        "CAMPAIGN",
+    }:
+        raise TaskFailure("Unknown authoritative change kind")
+    return identifier
 
 
 def now() -> str:
@@ -128,14 +206,18 @@ def item_prices(items: Any) -> dict[str, int]:
 
 def unique_draft(receipts: list[dict], match: dict) -> str:
     """Only the explicit operator step authorizes currency and the complete target-price set."""
+    if match.get("kind", "PRICE_UPDATE") != "PRICE_UPDATE":
+        raise TaskFailure("This operator protocol only authorizes PRICE_UPDATE")
     wanted = item_prices(match["items"])
     candidates: set[str] = set()
     seen: set[str] = set()
     for receipt in receipts:
-        draft_id = receipt.get("draftId")
-        if not isinstance(draft_id, str) or not draft_id or draft_id in seen:
+        draft_id = receipt_id(receipt)
+        if draft_id in seen:
             raise TaskFailure("Missing or duplicate authoritative draft ID")
         seen.add(draft_id)
+        if receipt.get("kind", "PRICE_UPDATE") != "PRICE_UPDATE":
+            continue
         prices = item_prices(receipt.get("items"))
         currency = receipt.get("currency")
         if any(item.get("currency") != currency for item in receipt["items"]):
@@ -185,7 +267,160 @@ class Evidence:
         return stream
 
 
-def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str) -> None:
+class OwnedHost:
+    """Only the Popen handle created here may be stopped; an existing listener is never killed."""
+
+    def __init__(self, evidence: Evidence):
+        self.evidence = evidence
+        self.process: subprocess.Popen | None = None
+        self.log: BinaryIO | None = None
+        self.generation = 0
+
+    def require_stopped(self) -> None:
+        try:
+            connection = socket.create_connection(("127.0.0.1", urlsplit(LOCAL_API).port), 0.5)
+        except ConnectionRefusedError:
+            return
+        except OSError as error:
+            raise TaskFailure(
+                "Local API port state is unknown; fixture retained", unsafe=True
+            ) from error
+        connection.close()
+        raise TaskFailure(
+            "Stop the manually started local API before evaluation; no process was killed",
+            unsafe=True,
+        )
+
+    def start(self) -> None:
+        if self.process is not None:
+            raise RuntimeError("Owned API is already started")
+        self.require_stopped()
+        self.generation += 1
+        self.log = self.evidence.stream(f"host/api-{self.generation:02d}.log")
+        try:
+            self.process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "shopmate.app:create_app",
+                    "--factory",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(urlsplit(LOCAL_API).port),
+                ],
+                cwd=ROOT,
+                stdout=self.log,
+                stderr=subprocess.STDOUT,
+            )
+        except BaseException:
+            self.log.close()
+            self.log = None
+            raise
+        self.evidence.json(
+            f"host/api-{self.generation:02d}-process.json",
+            {
+                "pid": self.process.pid,
+                "started_at": now(),
+                "api": LOCAL_API,
+            },
+        )
+        deadline = time.monotonic() + HOST_TIMEOUT_S
+        with httpx.Client(trust_env=False, timeout=1) as client:
+            while time.monotonic() < deadline:
+                if self.process.poll() is not None:
+                    raise TaskFailure(
+                        "Owned API exited before health readiness; inspect host log", unsafe=True
+                    )
+                try:
+                    response = client.get(LOCAL_API + "/health")
+                except httpx.HTTPError:
+                    time.sleep(0.1)
+                    continue
+                if (
+                    response.is_success
+                    and response.json() == {"ok": True, "role": "merchant"}
+                    and self.process.poll() is None
+                ):
+                    return
+                time.sleep(0.1)
+        raise TaskFailure("Owned API health readiness timed out; fixture retained", unsafe=True)
+
+    def stop(self) -> None:
+        if self.process is None:
+            return
+        process = self.process
+        if process.poll() is None:
+            process.terminate()
+        try:
+            code = process.wait(timeout=HOST_TIMEOUT_S)
+        except subprocess.TimeoutExpired as error:
+            raise TaskFailure(
+                "Owned API did not stop; no reset is allowed and fixture is retained", unsafe=True
+            ) from error
+        self.evidence.json(
+            f"host/api-{self.generation:02d}-stop.json",
+            {
+                "pid": process.pid,
+                "stopped_at": now(),
+                "returncode": code,
+            },
+        )
+        self.process = None
+        if self.log is not None:
+            self.log.close()
+            self.log = None
+        if code not in (0, -15):
+            raise TaskFailure("Owned API exited abnormally; fixture retained", unsafe=True)
+        self.require_stopped()
+
+
+def authenticate(client: httpx.Client) -> None:
+    # Neither the login response nor an Authorization header enters an evidence file.
+    client.headers.pop("Authorization", None)
+    password = (ROOT / ".run/operator_password").read_text().strip()
+    response = client.post("login", json={"loginIdentifier": SUBJECT, "password": password})
+    if not response.is_success:
+        raise TaskFailure(f"Login HTTP {response.status_code}", unsafe=True)
+    login = response.json()
+    if login.get("subject") != SUBJECT or not isinstance(login.get("accessToken"), str):
+        raise TaskFailure("Login returned an unexpected identity", unsafe=True)
+    client.headers["Authorization"] = "Bearer " + login["accessToken"]
+
+
+def recover_before_reset(client: httpx.Client, evidence: Evidence, sessions: list[dict]) -> None:
+    try:
+        for index, session in enumerate(sessions):
+            identifier = session.get("session_id")
+            if not isinstance(identifier, str) or not identifier:
+                raise TaskFailure("Session identity is unknown; fixture retained", unsafe=True)
+            client.headers["X-Session-Id"] = identifier
+            evidence.json(
+                f"pre-reset/session-{index:03d}.json",
+                {
+                    "session_id": identifier,
+                    "operator_subject": SUBJECT,
+                },
+            )
+            request_json(
+                client,
+                evidence,
+                f"pre-reset/overview-{index:03d}.json",
+                "GET",
+                "overview",
+                write=True,
+            )
+        wait_quiet(client, evidence, "pre-reset/sessions-after-recovery.json")
+    except TaskFailure as error:
+        error.unsafe = True
+        raise
+    finally:
+        client.headers.pop("X-Session-Id", None)
+
+
+def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str) -> dict:
+    results: dict[str, list[dict]] = {}
     config = json.loads((ROOT / ".run/truth-settings.json").read_text())
     with (
         pymysql.connect(
@@ -204,6 +439,7 @@ def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str)
     ):
         cursor.execute("SET @session_id=%s", (session_id,))
         for path in paths:
+            results[path.stem] = []
             source = path.read_text()
             # Execute the committed reference verbatim with the restricted truth account.
             with evidence.stream(f"sql/{stage}/{path.stem}.jsonl") as stream:
@@ -216,12 +452,14 @@ def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str)
                             "columns": [column[0] for column in cursor.description],
                             "rows": cursor.fetchall(),
                         }
+                        results[path.stem].append(result)
                         stream.write(
                             (json.dumps(result, ensure_ascii=False, default=str) + "\n").encode()
                         )
                         stream.flush()
                     if not cursor.nextset():
                         break
+    return results
 
 
 def request_json(
@@ -262,7 +500,7 @@ def request_json(
     return result
 
 
-def wait_quiet(client: httpx.Client, evidence: Evidence, name: str) -> None:
+def wait_quiet(client: httpx.Client, evidence: Evidence, name: str) -> list[dict]:
     deadline = time.monotonic() + 20
     while True:
         value = request_json(client, evidence, name, "GET", "sessions")
@@ -274,7 +512,7 @@ def wait_quiet(client: httpx.Client, evidence: Evidence, name: str) -> None:
         ):
             raise TaskFailure("Session execution state is unknown; fixture retained", unsafe=True)
         if all(s["status"] != "running" for s in sessions):
-            return
+            return sessions
         if time.monotonic() >= deadline:
             raise TaskFailure("A session is still running; fixture retained", unsafe=True)
         time.sleep(0.5)
@@ -348,7 +586,7 @@ def operator(
             "changes/" + quote(draft_id, safe=""),
         )
         receipt = value["receipt"]
-        if receipt.get("draftId") != draft_id:
+        if receipt_id(receipt) != draft_id:
             raise TaskFailure("GET receipt returned a different draft ID")
         receipts.append(receipt)
     draft_id = unique_draft(receipts, step["draft_match"])
@@ -368,15 +606,21 @@ def operator(
         raise TaskFailure("Operator endpoint did not accept the requested action")
 
 
-def run_task(task: dict, suite: dict, evidence: Evidence, settings: Settings, api: str) -> dict:
+def run_task(
+    task: dict,
+    suite: dict,
+    evidence: Evidence,
+    settings: Settings,
+    api: str,
+    *,
+    host: OwnedHost | None = None,
+) -> dict:
     record = {"execution_status": "failed", "started_at": now(), "session_id": None}
     session_id = None
     reset_done = False
     failure: TaskFailure | None = None
     unknown: BaseException | None = None
-    paths = [ROOT / "evals/sql" / name for name in COMMON_SQL]
-    paths += [ROOT / "evals" / name for name in task["evaluator"]["reference_sql"]]
-    paths = list(dict.fromkeys(paths))
+    paths = task_sql_paths(task, suite)
     with httpx.Client(
         base_url=api.rstrip("/") + "/",
         follow_redirects=False,
@@ -384,17 +628,11 @@ def run_task(task: dict, suite: dict, evidence: Evidence, settings: Settings, ap
         timeout=httpx.Timeout(settings.task_timeout_s + 30, connect=10),
     ) as client:
         try:
-            # Neither the login response nor an Authorization header enters an evidence file.
-            password = (ROOT / ".run/operator_password").read_text().strip()
-            response = client.post("login", json={"loginIdentifier": SUBJECT, "password": password})
-            if not response.is_success:
-                raise TaskFailure(f"Login HTTP {response.status_code}", unsafe=True)
-            login = response.json()
-            if login.get("subject") != SUBJECT or not isinstance(login.get("accessToken"), str):
-                raise TaskFailure("Login returned an unexpected identity", unsafe=True)
-            client.headers["Authorization"] = "Bearer " + login["accessToken"]
-            del login, response, password
-            wait_quiet(client, evidence, "sessions-before-reset.json")
+            authenticate(client)
+            sessions = wait_quiet(client, evidence, "sessions-before-reset.json")
+            if host is not None:
+                recover_before_reset(client, evidence, sessions)
+                host.stop()
             with evidence.stream("reset.log") as stream:
                 process = subprocess.run(
                     [sys.executable, str(ROOT / "scripts/reset_fixture.py")],
@@ -407,11 +645,18 @@ def run_task(task: dict, suite: dict, evidence: Evidence, settings: Settings, ap
             if process.returncode:
                 raise TaskFailure("Fixture reset failed; inspect reset.log", unsafe=True)
             reset_done = True
+            if host is not None:
+                host.start()
+                authenticate(client)
             value = request_json(client, evidence, "new-session.json", "POST", "session")
             session_id = value["session_id"]
             record["session_id"] = session_id
             client.headers["X-Session-Id"] = session_id
-            snapshot(evidence, "before", paths, session_id)
+            baseline = snapshot(evidence, "before", paths, session_id)
+            if suite.get("baseline_mode") == "authoritative_sql_before_each_task":
+                evidence.json(
+                    "expectations.json", materialize_expectations(task["evaluator"], baseline)
+                )
             request_json(client, evidence, "visible-listings.json", "GET", "listings")
             first_chat = True
             for number, step in enumerate(task["steps"], 1):
@@ -483,21 +728,54 @@ def run_task(task: dict, suite: dict, evidence: Evidence, settings: Settings, ap
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("development", "formal"), default="development")
+    parser.add_argument(
+        "--suite", default="retail/development", help="Suite name or evals JSON path"
+    )
+    parser.add_argument(
+        "--describe", action="store_true", help="Read a protocol without executing it"
+    )
     parser.add_argument("--tasks", help="Comma-separated task IDs; omitted means the full suite")
     parser.add_argument("--repetitions", type=int)
-    parser.add_argument("--api", default="http://127.0.0.1:8101/api/merchant")
+    parser.add_argument("--api", default=LOCAL_API)
     args = parser.parse_args()
+    try:
+        suite = load_suite(args.suite)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    if args.describe:
+        print(
+            json.dumps(
+                {
+                    "suite_path": str(Path(suite["_source_path"]).relative_to(ROOT)),
+                    "protocol_id": suite.get("protocol_id", "historical"),
+                    "fixture_version": suite.get("fixture_version", "historical-seven-product"),
+                    "as_of": suite["as_of"],
+                    "timezone": suite["timezone"],
+                    "tasks": [
+                        {"id": task["id"], "title": task["title"]} for task in suite["tasks"]
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    if suite.get("fixture_version") != "shopmate-retail-v1" or suite.get("schema_version") != 2:
+        parser.error(
+            "Historical protocol cannot execute against the current retail reset; "
+            "use --describe or the original recorded source revisions"
+        )
+    if args.api.rstrip("/") != LOCAL_API:
+        parser.error("Execution only supports the owned local API at " + LOCAL_API)
     settings = Settings.load()  # Does not call provider_credentials or read the model key.
     revisions = {
         "citybuddy_commit": source_revision(settings.citybuddy_dir, "bench/results/"),
         "shopmate_commit": source_revision(ROOT, "evals/results/"),
     }
-    suite = json.loads((ROOT / "evals" / (args.suite + ".json")).read_text())
     if not settings.as_of or datetime.fromisoformat(settings.as_of) != datetime.fromisoformat(
         suite["as_of"]
     ):
-        parser.error("Configured as_of must equal the suite's fixed UTC cutoff")
+        parser.error("Configured as_of must equal the suite's fixed report cutoff instant")
     repetitions = args.repetitions if args.repetitions is not None else suite["repetitions"]
     if repetitions < 1:
         parser.error("repetitions must be positive")
@@ -506,10 +784,13 @@ def main() -> int:
         parser.error("Unknown task ID in --tasks")
     selected = [task for task in suite["tasks"] if task["id"] in wanted]
     metadata = revisions | {
-        "suite": args.suite,
+        "suite": suite["suite"],
+        "suite_path": str(Path(suite["_source_path"]).relative_to(ROOT)),
+        "protocol_id": suite["protocol_id"],
+        "fixture_version": suite["fixture_version"],
         "as_of": suite["as_of"],
         "timezone": suite["timezone"],
-        "fixture_source_revision": revisions["citybuddy_commit"],
+        "fixture_source_revision": revisions["shopmate_commit"],
         "main_model": settings.model,
         "analysis_model": settings.analysis_model,
         "provider": "CLIPROXY /v1/chat/completions via Messages adapter",
@@ -535,7 +816,10 @@ def main() -> int:
         evidence.json("run.json", {"started_at": started_at, "executions": entries})
         consecutive_provider_failures = 0
         stop_reason = None
+        cleanup_failed = False
+        host = OwnedHost(evidence)
         try:
+            host.start()
             for entry in entries:
                 verify_sources(settings, revisions)
                 task = next(task for task in selected if task["id"] == entry["task_id"])
@@ -544,7 +828,9 @@ def main() -> int:
                     metadata | {"task_id": entry["task_id"], "repetition": entry["repetition"]},
                 )
                 try:
-                    entry.update(run_task(task, suite, task_evidence, settings, args.api))
+                    entry.update(
+                        run_task(task, suite, task_evidence, settings, args.api, host=host)
+                    )
                 except BaseException:
                     # The per-task record is written before unexpected errors are re-raised.
                     saved = task_evidence.path / "execution.json"
@@ -570,6 +856,11 @@ def main() -> int:
             stop_reason = "Execution stopped: " + type(error).__name__
             raise
         finally:
+            try:
+                host.stop()
+            except TaskFailure as error:
+                cleanup_failed = True
+                stop_reason = str(error)
             evidence.json(
                 "run.json",
                 {
@@ -580,7 +871,7 @@ def main() -> int:
                 },
             )
             print(f"Evidence: {directory}", flush=True)
-    return 1 if any(e["execution_status"] != "executed" for e in entries) else 0
+    return 1 if cleanup_failed or any(e["execution_status"] != "executed" for e in entries) else 0
 
 
 if __name__ == "__main__":
