@@ -161,7 +161,8 @@ async def test_running_host_http_reads_use_real_business_data(truth, settings):
         headers["X-Session-Id"] = session.json()["session_id"]
         overview = await http.get("/api/merchant/overview", headers=headers)
         assert overview.status_code == 200
-        snapshot = overview.json()["snapshot"]
+        home = overview.json()
+        snapshot = home["snapshot"]
         end = datetime.fromisoformat(settings.as_of)
         start = end - timedelta(days=14)
         expected = (
@@ -187,6 +188,90 @@ async def test_running_host_http_reads_use_real_business_data(truth, settings):
         )
         assert snapshot["units"] == expected["units"] and snapshot["orders"] == expected["orders"]
         assert snapshot["traffic"] == visits
+        expected_orders = await _rows(
+            truth,
+            "WITH orders AS (SELECT 'STANDARD' AS kind,order_id,status,created_at,quantity,"
+            "total_price_minor,currency FROM standard_order WHERE sandbox_id IS NULL UNION ALL "
+            "SELECT 'SECKILL',order_id,status,created_at,quantity,total_price_minor,currency FROM seckill_order) "
+            "SELECT * FROM orders ORDER BY created_at DESC,order_id DESC,kind LIMIT 6",
+        )
+        assert len(home["recent_orders"]) == len(expected_orders) == 6
+        for order, expected_order in zip(home["recent_orders"], expected_orders, strict=True):
+            assert (order["orderKind"], order["orderId"], order["status"]) == (
+                expected_order["kind"],
+                expected_order["order_id"],
+                expected_order["status"],
+            )
+            assert (
+                datetime.fromisoformat(order["createdAt"]).astimezone(UTC).replace(tzinfo=None)
+                == expected_order["created_at"]
+            )
+            assert order["product"]["quantity"] == expected_order["quantity"]
+            assert order["product"]["totalPriceMinor"] == expected_order["total_price_minor"]
+            assert order["product"]["currency"] == expected_order["currency"]
+            payments = await _rows(
+                truth,
+                "SELECT state,amount_minor,refunded_amount_minor FROM mock_payment_attempt "
+                "WHERE order_kind=%s AND order_id=%s AND sandbox_id IS NULL",
+                (order["orderKind"], order["orderId"]),
+            )
+            if payments:
+                assert order["payment"]["state"] == payments[0]["state"]
+                assert order["payment"]["amountMinor"] == payments[0]["amount_minor"]
+                assert (
+                    order["payment"]["refundedAmountMinor"] == payments[0]["refunded_amount_minor"]
+                )
+            else:
+                assert order["payment"] is None
+            fulfillment = (
+                await _rows(
+                    truth,
+                    "SELECT stage,source_ref FROM retail_order_fulfillment WHERE order_id=%s",
+                    (order["orderId"],),
+                )
+                if order["orderKind"] == "STANDARD"
+                else []
+            )
+            if fulfillment:
+                assert order["fulfillment"]["stage"] == fulfillment[0]["stage"]
+                assert order["fulfillment"]["sourceRef"] == fulfillment[0]["source_ref"]
+            else:
+                assert order["fulfillment"] is None
+        daily = await _rows(
+            truth,
+            "SELECT DATE(DATE_ADD(succeeded_at,INTERVAL 8 HOUR)) AS day, "
+            "SUM(total_price_minor)/100 AS sales,COUNT(*) AS orders,AVG(total_price_minor)/100 AS aov "
+            "FROM merchant_paid_orders WHERE currency='CNY' AND succeeded_at>=%s AND succeeded_at<%s "
+            "GROUP BY day ORDER BY day",
+            (start.astimezone(UTC).replace(tzinfo=None), end.astimezone(UTC).replace(tzinfo=None)),
+        )
+        for name, column in (
+            ("sales", "sales"),
+            ("orders", "orders"),
+            ("average_order_value", "aov"),
+        ):
+            actual = {point["date"]: point["value"] for point in home["trends"][name]}
+            assert actual == pytest.approx({str(row["day"]): float(row[column]) for row in daily})
+        conversion = await _rows(
+            truth,
+            "SELECT t.local_date AS day,100.0*COALESCE(p.orders,0)/NULLIF(t.visits,0) AS value "
+            "FROM retail_store_traffic_daily t LEFT JOIN "
+            "(SELECT DATE(DATE_ADD(succeeded_at,INTERVAL 8 HOUR)) AS day,COUNT(*) AS orders "
+            "FROM merchant_paid_orders WHERE currency='CNY' AND succeeded_at>=%s AND succeeded_at<%s "
+            "GROUP BY day) p ON p.day=t.local_date WHERE t.local_date>=%s AND t.local_date<%s ORDER BY day",
+            (
+                start.astimezone(UTC).replace(tzinfo=None),
+                end.astimezone(UTC).replace(tzinfo=None),
+                start.date(),
+                end.date(),
+            ),
+        )
+        assert {
+            point["date"]: point["value"] for point in home["trends"]["conversion"]
+        } == pytest.approx(
+            {str(row["day"]): float(row["value"]) for row in conversion if row["value"] is not None}
+        )
+        assert home["prior_window"]["end"] == home["window"]["start"]
         products, offset = [], 0
         while offset is not None:
             page = await http.get(

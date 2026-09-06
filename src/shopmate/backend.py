@@ -297,7 +297,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             return None
         return int(table.rows[0][0])
 
-    async def _snapshot(self, session, window, pending_count):
+    async def _snapshot(self, session, window, pending_count, inventory, issues):
         token = await self._token(session, "merchant:read")
         if not self._covered(session, window):
             raise ChangeNotApplicable(
@@ -313,8 +313,6 @@ class CityBuddyMerchantBackend(MerchantBackend):
         traffic, prior_traffic = await self._traffic(window), await self._traffic(prior)
         conversion = now.orderCount * 100 / traffic if traffic else None
         prior_conversion = before.orderCount * 100 / prior_traffic if prior_traffic else None
-        inventory = await self.get_inventory_alerts(session)
-        issues = await self.client.issues(token, session.session_id, limit=100)
         return BusinessSnapshot(
             period=window.label,
             compare_to=prior.label,
@@ -349,7 +347,11 @@ class CityBuddyMerchantBackend(MerchantBackend):
 
     async def get_business_snapshot(self, session, period=None):
         drafts = await self._drafts(session, "PREPARED")
-        return await self._snapshot(session, self._period(session, period), len(drafts))
+        inventory = await self.get_inventory_alerts(session)
+        issues = await self.get_order_issues(session)
+        return await self._snapshot(
+            session, self._period(session, period), len(drafts), inventory, issues
+        )
 
     async def query_metrics(self, session, metric, period=None, granularity="day", segment=None):
         token = await self._token(session, "merchant:read")
@@ -753,16 +755,26 @@ class CityBuddyMerchantBackend(MerchantBackend):
     async def overview(self, session):
         drafts = await self._drafts(session)
         window = self._period(session)
+        prior_window = window.previous()
+        inventory = await self.get_inventory_alerts(session)
+        issues = await self.get_order_issues(session)
         snapshot = await self._snapshot(
-            session, window, sum(row.state == "PREPARED" for row in drafts)
+            session, window, sum(row.state == "PREPARED" for row in drafts), inventory, issues
         )
-        current = await self.query_metrics(session, "sales", window.label)
-        prior = await self.query_metrics(session, "sales", window.previous().label)
+        current, prior = {}, {}
+        for name, metric in (
+            ("sales", "sales"),
+            ("orders", "orders"),
+            ("conversion", "conversion"),
+            ("average_order_value", "aov"),
+        ):
+            current[name] = await self.query_metrics(session, metric, window.label)
+            prior[name] = await self.query_metrics(session, metric, prior_window.label)
         changes = [
             presentation.change(row, session.operator).model_dump(mode="json") for row in drafts
         ]
-        inventory = await self.get_inventory_alerts(session)
-        issues = await self.get_order_issues(session)
+        token = await self._token(session, "merchant:read")
+        orders = await self.client.recent_orders(token, session.session_id, limit=6)
         return {
             "snapshot": snapshot.model_dump(mode="json"),
             "window": {
@@ -770,8 +782,22 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 "end": window.end.isoformat(),
                 "timeZone": "Asia/Shanghai",
             },
-            "trends": {"sales": [point.model_dump() for point in current.points]},
-            "trends_prior": {"sales": [point.model_dump() for point in prior.points]},
+            "prior_window": {
+                "start": prior_window.start.isoformat(),
+                "end": prior_window.end.isoformat(),
+                "timeZone": "Asia/Shanghai",
+            },
+            "trends": {
+                name: [point.model_dump() for point in series.points]
+                for name, series in current.items()
+            },
+            "trends_prior": {
+                name: [point.model_dump() for point in series.points]
+                for name, series in prior.items()
+            },
+            "trend_notes": {name: series.note for name, series in current.items()},
+            "trend_notes_prior": {name: series.note for name, series in prior.items()},
+            "recent_orders": [row.model_dump(mode="json") for row in orders],
             "needs_attention": {
                 "pending_changes": [row for row in changes if row["status"] == "staged"],
                 "low_stock": [
@@ -781,6 +807,8 @@ class CityBuddyMerchantBackend(MerchantBackend):
                     row.model_dump(mode="json") for row in inventory if row.kind == "slow_mover"
                 ],
                 "order_issues": [row.model_dump(mode="json") for row in issues],
+                "order_issues_limit": 100,
+                "order_issues_may_have_more": len(issues) == 100,
             },
             "recent_changes": changes[:10],
         }

@@ -240,7 +240,7 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return {"profile": value.model_dump(mode="json")}
 
     @app.get(prefix + "/policies")
-    async def policies(query: str = Query(default="", max_length=500), bound=session_dependency):
+    async def policies(query: str = Query(min_length=1, max_length=200), bound=session_dependency):
         user, record = bound
         with bind_context(user, record.session_id, role="buyer"):
             values = await resources["buyer_backend"].search_policies(context(record), query)

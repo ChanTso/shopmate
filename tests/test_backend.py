@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,10 +16,12 @@ from merchant_agent.types import (
 
 from shopmate.auth import RequestIdentity, bind_context
 from shopmate.backend import CityBuddyMerchantBackend, ShopMateConfig, reporting_period
+from shopmate.buyer_client import OrderView
 from shopmate.commerce_client import (
     ChangeView,
     CommerceError,
     InventoryView,
+    IssueView,
     ListingView,
     PageView,
     ProductView,
@@ -145,6 +148,9 @@ class Client:
         )
 
     async def issues(self, token, session_id, limit=100):
+        return []
+
+    async def recent_orders(self, token, session_id, *, limit=6):
         return []
 
     async def changes(self, token, session_id, limit=100, offset=0, state=None):
@@ -435,3 +441,149 @@ async def test_catalog_name_lookup_omits_filters_and_supported_filters_remain_ef
         )
         == []
     )
+
+
+class OverviewSQL(SQL):
+    async def query(self, sql):
+        self.calls.append(sql)
+        if "AS observed_days" in sql:
+            return AnalysisTable(
+                columns=["visits", "observed_days"], rows=[[1000, 14]], row_count=1
+            )
+        current = ">= '2026-08-21" in sql
+        amount = 230400 if current else 195600
+        if "WITH traffic AS" in sql:
+            value = 3.2
+        elif "COUNT(*) AS value" in sql:
+            value = 32
+        elif "SUM(total_price_minor) / NULLIF" in sql:
+            value = amount / 32
+        elif "SUM(total_price_minor) AS value" in sql:
+            value = amount
+        else:
+            raise AssertionError("Unexpected overview query: " + sql)
+        return AnalysisTable(
+            columns=["bucket", "value"],
+            rows=[["2026-08-22" if current else "2026-08-08", value]],
+            row_count=1,
+        )
+
+
+def overview_issue():
+    return IssueView(
+        issueId="issue-one",
+        orderId="order-one",
+        kind="buyer_message",
+        summary="核对买家问题",
+        listingId="coffee",
+        buyerMessageExcerpt="请核对包装",
+        openedAt="2026-09-08T00:00:00Z",
+        fulfillment=None,
+        refundRequestedOrderCount=None,
+        windowStart=None,
+        windowEnd=None,
+        sourceKind="FIXTURE",
+        sourceRef="issue-fixture",
+    )
+
+
+async def test_overview_uses_one_alert_read_and_distinct_real_metric_series(rig):
+    rig.backend.sql = OverviewSQL()
+    alerts = [
+        InventoryView(
+            listingId=key,
+            title=key,
+            kind=kind,
+            variantOf=None,
+            optionValues={},
+            stock=stock,
+            threshold=5,
+            salesLast30d=sales,
+            daysOfCover=None,
+            storefrontVisible=True,
+        )
+        for key, kind, stock, sales in (
+            ("coffee", "low_stock", 2, 10),
+            ("tea", "slow_mover", 40, 0),
+        )
+    ]
+    rig.client.inventory = AsyncMock(
+        return_value=PageView[InventoryView](
+            items=alerts,
+            nextOffset=None,
+            window=WindowView(
+                start="2026-08-05T16:00:00Z", end="2026-09-04T16:00:00Z", timeZone="Asia/Shanghai"
+            ),
+        )
+    )
+    rig.client.issues = AsyncMock(return_value=[overview_issue()])
+    order = OrderView(
+        orderKind="STANDARD",
+        orderId="new-unpaid",
+        status="UNPAID",
+        stateVersion=1,
+        createdAt="2026-09-08T00:00:00Z",
+        unpaidDeadline=None,
+        product={
+            "productId": "coffee",
+            "name": "Historical name",
+            "unitPriceMinor": 1250,
+            "currency": "CNY",
+            "quantity": 2,
+            "totalPriceMinor": 2500,
+            "productVersion": 7,
+        },
+        payment=None,
+        refunds={"reservedAmountMinor": 0, "byState": []},
+        fulfillment=None,
+    )
+    rig.client.recent_orders = AsyncMock(return_value=[order])
+    result = await rig.backend.overview(rig.session)
+    rig.client.inventory.assert_awaited_once()
+    rig.client.issues.assert_awaited_once_with(
+        "obo:merchant:read", rig.record.session_id, limit=100
+    )
+    rig.client.recent_orders.assert_awaited_once_with(
+        "obo:merchant:read", rig.record.session_id, limit=6
+    )
+    assert result["snapshot"]["alerts"] == {
+        "low_stock": 1,
+        "slow_movers": 1,
+        "order_issues": 1,
+        "pending_changes": 0,
+    }
+    attention = result["needs_attention"]
+    assert attention["low_stock"][0]["listing_id"] == "coffee"
+    assert attention["slow_movers"][0]["listing_id"] == "tea"
+    assert attention["order_issues"][0]["buyer_message_excerpt"] == "请核对包装"
+    assert attention["order_issues_limit"] == 100 and not attention["order_issues_may_have_more"]
+    assert result["trends"] == {
+        name: [{"date": "2026-08-22", "value": value}]
+        for name, value in (
+            ("sales", 2304),
+            ("orders", 32),
+            ("conversion", 3.2),
+            ("average_order_value", 72),
+        )
+    }
+    assert result["trends_prior"]["sales"] == [{"date": "2026-08-08", "value": 1956}]
+    assert result["prior_window"]["end"] == result["window"]["start"]
+    assert datetime.fromisoformat(result["window"]["end"]) == datetime(2026, 9, 4, 16, tzinfo=UTC)
+    assert result["recent_orders"][0]["createdAt"].startswith("2026-09-08")
+    assert result["recent_orders"][0]["status"] == "UNPAID"
+    assert result["recent_orders"][0]["payment"] is None
+    assert result["recent_orders"][0]["product"]["totalPriceMinor"] == 2500
+
+
+async def test_overview_keeps_capped_issue_counts_unknown_and_propagates_order_read_failure(rig):
+    rig.client.issues = AsyncMock(return_value=[overview_issue()] * 100)
+    result = await rig.backend.overview(rig.session)
+    assert result["snapshot"]["alerts"]["order_issues"] is None
+    assert result["needs_attention"]["order_issues_may_have_more"] is True
+    assert result["trends"]["conversion"] == []
+    assert "未知" in result["trend_notes"]["conversion"]
+    rig.client.recent_orders = AsyncMock(
+        side_effect=CommerceError(502, "INVALID_RESPONSE", "Invalid order response")
+    )
+    with pytest.raises(CommerceError, match="Invalid order response"):
+        await rig.backend.overview(rig.session)

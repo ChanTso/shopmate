@@ -1,5 +1,6 @@
 import importlib
 import sqlite3
+import sys
 from pathlib import Path
 
 from shopmate.sessions import SessionStore
@@ -76,3 +77,33 @@ async def test_retail_reset_removes_only_fixture_buyer_commands_and_memories(tmp
         assert db.execute("SELECT owner FROM memory_generations").fetchall() == [
             ("Shopmate-retail-buyer",)
         ]
+
+
+def test_command_diagnostics_do_not_pollute_returned_value(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    runtime = importlib.import_module("local_runtime")
+    monkeypatch.setattr(runtime, "RUN", tmp_path)
+    monkeypatch.setattr(runtime, "redactions", {"private-marker"})
+    value = runtime.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print('value'); print('diagnostic private-marker', file=sys.stderr)",
+        ],
+        cwd=tmp_path,
+    )
+    assert value == "value"
+    log = (tmp_path / "runtime.log").read_text()
+    assert "diagnostic [REDACTED]" in log
+    assert "value" in log
+    assert "private-marker" not in log
+    before = log
+    assert (
+        runtime.run(
+            [sys.executable, "-c", "import sys; print('secret'); print('detail', file=sys.stderr)"],
+            cwd=tmp_path,
+            log=False,
+        )
+        == "secret"
+    )
+    assert (tmp_path / "runtime.log").read_text() == before
