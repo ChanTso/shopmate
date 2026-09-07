@@ -182,6 +182,8 @@ class AnalysisResult(BaseModel):
     derived_series: list[MetricSeries] = Field(default_factory=list)
     caveats: list[str] = Field(default_factory=list)
     method_note: str | None = None
+    # Set by the runner from this call's complete SQL result, never from submit input.
+    table: AnalysisTable | None = None
 
     @field_validator("findings", "figures", "derived_series", "caveats")
     @classmethod

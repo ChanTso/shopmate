@@ -120,6 +120,8 @@ def build_submit_analysis_tool() -> dict[str, Any]:
             "When SQL or Python tools are available, every derived number must be an explicitly "
             "returned calculation for that exact metric, currency and period, from actual SQL "
             "or successful controlled Python output, not mental arithmetic. "
+            "To show a full table, pass the table_ref returned by a complete SQL query in "
+            "this run; the host attaches its original rows. Do not copy rows into findings. "
             "Calling this ends the analysis."
         ),
         "input_schema": {
@@ -183,6 +185,10 @@ def build_submit_analysis_tool() -> dict[str, Any]:
                     "maxItems": 4,
                 },
                 "method_note": {"type": "string", "maxLength": 300},
+                "table_ref": {
+                    "type": "string",
+                    "description": "One complete SQL result reference returned in this run.",
+                },
             },
             "required": ["question", "headline", "findings"],
             "additionalProperties": False,
@@ -314,6 +320,7 @@ def build_analysis_system_prompt(config: MerchantAgentConfig) -> str:
 - You have no write access. When the analysis suggests an action, submit it as a finding.
 - Between tool calls, write at most one short line of notes. You may call {REPORT_PROGRESS_TOOL} once, in the same response as your next read, to say what you are doing next; findings and figures leave only through {SUBMIT_ANALYSIS_TOOL}.
 - Finish by calling {SUBMIT_ANALYSIS_TOOL} exactly once: a short headline, the findings that answer the question, the figures with units, any series worth charting, and the caveats (missing segments, short windows, capped results). When the data cannot answer the question, submit that as the headline with what would be needed.
+- When a full detail table is requested, query all requested columns together and submit its returned table_ref. The host displays that exact complete table; findings explain it rather than repeat its rows. Truncated results have no attachable reference: narrow or aggregate the query, or state the limitation.
 - Keep it small: at most 8 findings and figures, series only when a trend supports the answer, downsampled to about 40 points (weekly buckets beyond 60 days). The submission is the only thing that leaves this context."""
 
 
@@ -360,6 +367,8 @@ def derive_metrics_payload(result: AnalysisResult) -> dict[str, Any]:
         },
         "suggestions": [],
     }
+    if result.table is not None:
+        payload["analysis"]["table"] = result.table.model_dump(mode="json", exclude_none=True)
     if result.analysis_id:
         payload["analysis_id"] = result.analysis_id
     periods = {s.period for s in result.derived_series if s.period}
@@ -371,7 +380,14 @@ def derive_metrics_payload(result: AnalysisResult) -> dict[str, Any]:
 def summarize_result_for_model(result: AnalysisResult) -> dict[str, Any]:
     """The tool result the orchestrator's model reads back. Derived series are reduced to
     their shape; the points are already on the card and stay out of the conversation."""
-    summary = result.model_dump(mode="json", exclude_none=True, exclude={"derived_series"})
+    summary = result.model_dump(
+        mode="json", exclude_none=True, exclude={"derived_series", "table"}
+    )
+    if result.table is not None:
+        summary["table"] = {
+            "columns": result.table.columns,
+            "row_count": result.table.row_count,
+        }
     if result.derived_series:
         summary["derived_series"] = [
             {

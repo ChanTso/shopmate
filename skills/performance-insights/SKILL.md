@@ -10,6 +10,7 @@ description: 对已支付成交、订单、件数、流量、转化和客单价�
 ## 数据与期间
 
 - `get_merchant_context` 提供真实 operation_time 与独立 report_as_of。相对报表词以 report_as_of 为准，促销“今天／明天”按真实操作日；两者不可混用。默认近14个完整上海自然日，前期为紧邻等长窗口。
+- 相对报表请求委派给 run_analysis 时保留 last_30_days 等原期间标签，使用后端提供的 periods_utc 边界，不手工换成 UTC 日期；用户明确给出的起止日期和 offset 则原样保留。
 - period 可为 last_14_days、previous_14_days、last_90_days、yesterday、last_month 或 ISO开始/结束；裸日期为上海午夜，明确offset的时间保留真实瞬间，左闭右开。SQL连接和付款时间仍是UTC，须换算边界，再以 DATE(DATE_ADD(succeeded_at, INTERVAL 8 HOUR)) 分上海日；旧merchant_daily_sales是UTC汇总，不能直接改标签。
 - 历史覆盖外没有记录不表示已确认零成交。成交额是退款前已支付订单历史金额，按成功付款时间筛选，不能用订单创建日、商品现价重算或称净收入。订单数按实际SKU子单计，不是checkout数或人数。
 - query_metrics支持sales/revenue、orders、units、traffic、conversion/conversion_rate、aov，按day/week/month；segment支持实际SKU/家族ID、kids-room分类和币种。分类是当前目录分类，历史价仍来自订单。无成交时间桶未补零，不能把返回点等同逐日连续数据。

@@ -46,3 +46,15 @@ test("missing and partial provider usage cannot be displayed as measured totals"
   assert.equal(formatTurnUsage({ provider_usage: { ...complete, cache_read_usage_complete: true, calls_with_cache_read_usage: 2 } }), "in 125 · out 30 · cache read 0");
   assert.equal(formatTurnUsage({ provider_usage: { ...complete, cache_read_usage_complete: false, calls_with_cache_read_usage: 1, known_cache_read_input_tokens: 20 } }), "in 125 · out 30 · cache read known 20 (1/2 calls reported; total unknown)");
 });
+
+
+test("an attached SQL table survives streamed chunks without dropping trailing rows or NULL", async () => {
+  const { readChatEventStream } = await import("../../vendor/commerce-agents/examples/web-shared/api.ts");
+  const rows = Array.from({ length: 87 }, (_, index) => [`sku-${index + 1}`, `商品 ${index + 1}`, "12.50", "CNY", null]);
+  const payload = { metrics: [], analysis: { headline: "87 个商品", findings: [], caveats: [], table: { columns: ["sku", "name", "price", "currency", "unknown"], rows, row_count: 87, truncated: false } } };
+  const bytes = new TextEncoder().encode(`event: ui\ndata: ${JSON.stringify({ component: "metrics", payload })}\n\nevent: turn_complete\ndata: {}\n\n`);
+  const chunks = Array.from({ length: Math.ceil(bytes.length / 37) }, (_, index) => bytes.slice(index * 37, (index + 1) * 37));
+  const events = await Array.fromAsync(readChatEventStream(stream(chunks)));
+  assert.deepEqual(events[0], { type: "ui", data: { component: "metrics", payload } });
+  assert.equal(events.at(-1)?.type, "turn_complete");
+});

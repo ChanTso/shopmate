@@ -70,3 +70,44 @@ def test_analysis_figures_publish_units_without_inferring_currency_from_labels()
     ]
     assert metrics[0]["value"] == 280
     assert metrics[2]["value"] == 12.5
+
+
+def test_full_analysis_table_and_rendered_card_survive_real_session_store_restart(
+    tmp_path,
+):
+    from commerce_common.streaming import AgentEvent
+    from merchant_agent.types import AnalysisTable
+
+    from shopmate.app import _ui_event
+    from shopmate.sessions import SessionStore
+
+    path = tmp_path / "analysis.sqlite3"
+    store = SessionStore(path)
+    record = store.create("merchant-owner")
+    rows = [[f"sku-{i}", str(i / 100), "CNY", None] for i in range(1, 88)]
+    result = AnalysisResult(
+        question="列出所有商品",
+        headline="87 个商品",
+        findings=["完整明细见表格。"],
+        table=AnalysisTable(
+            columns=["sku", "amount", "currency", "unknown"], rows=rows, row_count=87
+        ),
+    )
+    record.state.remember_analysis(result)
+    payload = derive_metrics_payload(result)
+    record.items = [{"kind": "assistant", "segments": [], "turn": "turn-1", "changeIds": []}]
+    _ui_event(record, AgentEvent.ui("metrics", payload))
+    store.save(record)
+    store.close()
+    store = SessionStore(path)
+    try:
+        restored = store.get(record.session_id, "merchant-owner")
+        assert restored.state.seen_analyses[result.analysis_id].table.rows == rows
+        assert (
+            restored.items[0]["segments"][0]["block"]["payload"]["analysis"]["table"]["rows"]
+            == rows
+        )
+        assert not restored.state.seen_listings and not restored.state.read_listings
+        assert not restored.state.seen_campaigns
+    finally:
+        store.close()

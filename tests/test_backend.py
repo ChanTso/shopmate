@@ -587,3 +587,57 @@ async def test_overview_keeps_capped_issue_counts_unknown_and_propagates_order_r
     )
     with pytest.raises(CommerceError, match="Invalid order response"):
         await rig.backend.overview(rig.session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operator", ["operator", "x" * 128])
+async def test_reporting_clock_reaches_main_and_analysis_within_context_cap(operator):
+    import json
+
+    from merchant_agent.prompt import build_dynamic_context
+    from merchant_agent_runtime.analysis import AnalysisRunner
+
+    session = MerchantSessionContext(
+        session_id="reporting-clock-session",
+        merchant_id="citybuddy",
+        operator=operator,
+        now=datetime(2026, 9, 7, 5, 37, tzinfo=UTC),
+    )
+    backend = CityBuddyMerchantBackend(
+        Auth(),
+        None,
+        Client(),
+        SQL(),
+        report_as_of=datetime(2026, 9, 5, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    config = ShopMateConfig()
+    with bind_context(RequestIdentity(operator, "unit-test-only"), session.session_id):
+        context = await backend.get_merchant_context(session)
+        schema = await backend.get_analysis_schema(session)
+        runner = AnalysisRunner(client=object(), backend=backend, config=config)
+        brief = await runner._task_brief(
+            session,
+            {"question": "Last 30 complete Shanghai days by product", "period": "last_30_days"},
+        )
+    clock = json.loads(schema.split("\n\n", 1)[0])
+    for key, value in clock.items():
+        assert context[key] == value
+    assert clock["periods_utc"]["last_30_days"] == "2026-08-05T16:00:00Z/2026-09-04T16:00:00Z"
+    assert clock["periods_utc"]["last_14_days"] == "2026-08-21T16:00:00Z/2026-09-04T16:00:00Z"
+    assert clock["periods_utc"]["previous_14_days"] == "2026-08-07T16:00:00Z/2026-08-21T16:00:00Z"
+    assert clock["periods_utc"]["last_7_days"] == "2026-08-28T16:00:00Z/2026-09-04T16:00:00Z"
+    assert context["operation_time"] == "2026-09-07T13:37:00+08:00"
+    assert clock["report_as_of"] == "2026-09-05T00:00:00+08:00"
+    assert len(json.dumps(context, ensure_ascii=False)) <= config.max_context_chars
+    rendered = build_dynamic_context(
+        merchant_context=context,
+        memory_facts=[],
+        now=session.local_now(),
+        merchant_context_max_chars=config.max_context_chars,
+    )
+    assert "merchant context omitted" not in rendered
+    for value in [context["operation_time"], clock["report_as_of"], *clock["periods_utc"].values()]:
+        assert value in rendered
+    assert clock["report_as_of"] in brief
+    assert clock["periods_utc"]["last_30_days"] in brief
+    assert "[truncated]" not in brief

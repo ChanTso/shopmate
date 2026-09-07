@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any, cast
 
 from anthropic import AsyncAnthropic
@@ -182,6 +183,8 @@ class AnalysisRunner:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": await self._task_brief(context.session, args)}
         ]
+        # A shared runner may serve concurrent sessions; references belong to this call only.
+        tables: dict[str, AnalysisTable] = {}
         nudged = False
         # Once a response has run code, later requests must name its container.
         container_id: str | None = None
@@ -270,7 +273,18 @@ class AnalysisRunner:
                 tool_input = dict(block.input or {})
                 if block.name == SUBMIT_ANALYSIS_TOOL:
                     try:
+                        if "table" in tool_input:
+                            raise ValueError("table rows are host-owned; submit a table_ref instead")
+                        table = None
+                        if "table_ref" in tool_input:
+                            reference = tool_input.pop("table_ref")
+                            if not isinstance(reference, str) or reference not in tables:
+                                raise ValueError(
+                                    "unknown table_ref; use a complete SQL result from this run"
+                                )
+                            table = tables[reference].model_copy(deep=True)
                         submitted = AnalysisResult.model_validate(tool_input)
+                        submitted.table = table
                         result_text, is_error = "Analysis submitted.", False
                     except ValidationError as invalid:
                         issues = "; ".join(
@@ -279,9 +293,12 @@ class AnalysisRunner:
                         )
                         result_text = f"Invalid submission — {issues}. Fix and submit again."
                         is_error = True
+                    except ValueError as invalid:
+                        result_text = f"Invalid submission — {invalid}. Fix and submit again."
+                        is_error = True
                 else:
                     result_text, is_error = await self._execute(
-                        context, block.name, tool_input, series_names
+                        context, block.name, tool_input, series_names, tables
                     )
                 tool_results.append(
                     {
@@ -343,6 +360,7 @@ class AnalysisRunner:
         name: str,
         tool_input: dict[str, Any],
         series_names: list[str],
+        tables: dict[str, AnalysisTable],
     ) -> tuple[str, bool]:
         if name == REPORT_PROGRESS_TOOL:
             # Sanitized here; the executor's status channel applies the display clamp.
@@ -355,7 +373,9 @@ class AnalysisRunner:
         if name != ANALYSIS_QUERY_TOOL or not self._sql_supported:
             return f"Unknown tool in the analysis context: {name}", True
         try:
-            return await self._run_query(context.session, str(tool_input.get("sql", "")))
+            return await self._run_query(
+                context.session, str(tool_input.get("sql", "")), tables
+            )
         except TimeoutError:
             return (
                 f"{name} timed out after {self._config.analysis_query_timeout_s:g}s. "
@@ -366,7 +386,9 @@ class AnalysisRunner:
             logger.warning("analysis tool %s failed", name, exc_info=True)
             return f"{name} failed: {self._sanitize(str(error), 200) or 'unavailable'}", True
 
-    async def _run_query(self, session: Any, sql: str) -> tuple[str, bool]:
+    async def _run_query(
+        self, session: Any, sql: str, tables: dict[str, AnalysisTable]
+    ) -> tuple[str, bool]:
         if reason := check_analysis_sql(sql):
             return (
                 f"Query refused: {reason}. Analysis queries are a single read-only "
@@ -383,4 +405,10 @@ class AnalysisRunner:
             table if isinstance(table, AnalysisTable) else AnalysisTable.model_validate(table),
             self._config,
         )
-        return self._fence(capped.model_dump(mode="json", exclude_none=True)), False
+        payload = capped.model_dump(mode="json", exclude_none=True)
+        if not capped.truncated:
+            reference = f"table_{uuid.uuid4().hex}"
+            tables[reference] = capped.model_copy(deep=True)
+            # Keep the reference ahead of rows even if the model-facing fence clips its preview.
+            payload = {"table_ref": reference, **payload}
+        return self._fence(payload), False

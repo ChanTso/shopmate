@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -719,30 +720,42 @@ class CityBuddyMerchantBackend(MerchantBackend):
         await self._token(session, "merchant:read")
         return await self.sql.query(sql)
 
+    def _reporting_context(self, session):
+        reference = self._report_now(session)
+        labels = ("last_7_days", "last_14_days", "last_28_days", "last_30_days", "previous_14_days")
+        windows = {label: reporting_period(session, label, reference) for label in labels}
+        coverage = reporting_period(session, "last_90_days", reference)
+        return {
+            "report_as_of": reference.isoformat(),
+            "timezone": "Asia/Shanghai",
+            "default_period": windows["last_14_days"].label,
+            "periods_utc": {
+                label: window.label.replace("+00:00", "Z") for label, window in windows.items()
+            },
+            "fixture_coverage": {
+                "start": coverage.start.isoformat(),
+                "end": coverage.end.isoformat(),
+            }
+            if self.report_as_of
+            else None,
+        }
+
     async def get_analysis_schema(self, session):
         self._bound(session)
-        return SCHEMA
+        clock = json.dumps(self._reporting_context(session), ensure_ascii=False)
+        return clock + "\n\n" + SCHEMA
 
     async def get_merchant_context(self, session):
         self._bound(session)
-        report_now = self._report_now(session)
         return {
             "merchant": "CityBuddy",
             "operator": session.operator,
             "default_currency": "CNY",
-            "default_period": self._period(session).label,
-            "report_as_of": report_now.isoformat(),
+            **self._reporting_context(session),
             "operation_time": (session.local_now() or datetime.now(SHANGHAI))
             .astimezone(SHANGHAI)
             .isoformat(),
-            "timezone": "Asia/Shanghai",
             "period_syntax": "相对报表期间以report_as_of为准，裸日期是上海午夜；带offset的ISO时间保留瞬间，左闭右开。促销今天/明天按operation_time。",
-            "fixture_coverage": {
-                "start": (self._period(session, "last_90_days").start.isoformat()),
-                "end": self._period(session, "last_90_days").end.isoformat(),
-            }
-            if self.report_as_of
-            else None,
             "metrics": ["sales", "orders", "units", "traffic", "conversion", "aov"],
             "limitations": [
                 "退款前成交按历史付款；退款申请比例不是实物退货率。零基期变化率、未知成本或缺失流量不填零。",
