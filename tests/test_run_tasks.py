@@ -591,3 +591,108 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
     raw = (evidence.path / "merchant/pre-reset/overview-000.json").read_text()
     assert '"path": "overview"' in raw
     assert "test-token" not in raw and "test-password" not in raw
+
+
+@pytest.fixture
+def timed_chat(tmp_path, monkeypatch):
+    clock = [1_000_000_000]
+    monkeypatch.setattr(driver.time, "monotonic_ns", lambda: clock[0])
+    evidence = driver.Evidence(tmp_path / "evidence", {"protocol_id": "timing-test"})
+
+    def execute(events, *, close_ms=80, connect_error=False):
+        class TimedStream(httpx.SyncByteStream):
+            def __iter__(self):
+                for milliseconds, value in events:
+                    clock[0] = 1_000_000_000 + milliseconds * 1_000_000
+                    if isinstance(value, Exception):
+                        raise value
+                    yield value
+
+            def close(self):
+                clock[0] = 1_000_000_000 + close_ms * 1_000_000
+
+        def handle(request):
+            assert request.method == "POST" and request.url.path == "/chat"
+            if connect_error:
+                raise httpx.ConnectError("connection unavailable")
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, stream=TimedStream()
+            )
+
+        with httpx.Client(base_url="http://test/", transport=httpx.MockTransport(handle)) as client:
+            return driver.chat(client, evidence, 1, "Read the current order")
+
+    def timing():
+        return json.loads((evidence.path / "step-01-chat-timing.json").read_text())["data"]
+
+    return execute, timing
+
+
+def test_chat_timing_uses_observed_content_final_ui_terminal_and_closed_response(timed_chat):
+    execute, timing = timed_chat
+    events = [
+        (5, b'event: text_delta\ndata: {"text":""}\n\n'),
+        (10, b'event: text_delta\ndata: {"text":"  "}\n\n'),
+        (15, b'event: ui_partial\ndata: {"component":"order_status","payload":{}}\n\n'),
+        (20, b'event: text_delta\ndata: {"text":"Ready"}\n\n'),
+        (30, b'event: ui\ndata: {"component":"order_status","payload":{}}\n\n'),
+        (40, b'event: text_delta\ndata: {"text":" now"}\n\n'),
+        (50, b'event: turn_complete\ndata: {"stop_reason":"end_turn"}\n\n'),
+    ]
+    result = execute(events, close_ms=65)
+    assert result["type"] == "turn_complete"
+    assert timing() == {
+        "clock": "monotonic_ns",
+        "start_monotonic_ns": 1_000_000_000,
+        "first_text_delta_ms": 20.0,
+        "first_ui_ms": 30.0,
+        "first_ui_component": "order_status",
+        "terminal_ms": 50.0,
+        "terminal_type": "turn_complete",
+        "stream_closed_ms": 65.0,
+    }
+
+
+@pytest.mark.parametrize("connect_error", [False, True])
+def test_chat_timing_preserves_partial_samples_and_unknown_transport_failure(
+    timed_chat, connect_error
+):
+    execute, timing = timed_chat
+    events = [
+        (12, b'event: text_delta\ndata: {"text":"Ready"}\n\n'),
+        (25, httpx.ReadError("connection lost")),
+    ]
+    with pytest.raises(driver.TaskFailure, match="transport failed") as raised:
+        execute(events, close_ms=30, connect_error=connect_error)
+    assert raised.value.unsafe is True
+    assert timing()["first_text_delta_ms"] == (None if connect_error else 12.0)
+    assert timing()["first_ui_ms"] is None
+    assert timing()["terminal_ms"] is None
+    assert timing()["stream_closed_ms"] == (None if connect_error else 30.0)
+
+
+@pytest.mark.parametrize(
+    ("events", "unsafe", "terminal_type"),
+    [
+        ([], True, None),
+        ([(10, b'event: error\ndata: {"message":"unavailable"}\n\n')], False, "error"),
+        (
+            [
+                (10, b'event: turn_complete\ndata: {"stop_reason":"end_turn"}\n\n'),
+                (15, b'event: text_delta\ndata: {"text":"too late"}\n\n'),
+            ],
+            True,
+            "turn_complete",
+        ),
+    ],
+)
+def test_chat_timing_does_not_relax_terminal_failures(timed_chat, events, unsafe, terminal_type):
+    execute, timing = timed_chat
+    with pytest.raises(driver.TaskFailure) as raised:
+        execute(events, close_ms=20)
+    assert raised.value.unsafe is unsafe
+    assert timing()["terminal_type"] == terminal_type
+    assert timing()["terminal_ms"] == (10.0 if terminal_type else None)
+    assert timing()["first_text_delta_ms"] is None
+    assert timing()["first_ui_ms"] is None
+    assert timing()["stream_closed_ms"] == 20.0

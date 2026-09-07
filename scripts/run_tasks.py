@@ -632,6 +632,17 @@ def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) ->
     evidence.json(f"step-{number:02d}-chat-request.json", {"message": message})
     terminal = None
     events = []
+    timing = {
+        "clock": "monotonic_ns",
+        "start_monotonic_ns": time.monotonic_ns(),
+        "first_text_delta_ms": None,
+        "first_ui_ms": None,
+        "first_ui_component": None,
+        "terminal_ms": None,
+        "terminal_type": None,
+        "stream_closed_ms": None,
+    }
+    response = None
     try:
         with client.stream("POST", "chat", json={"message": message}) as response:
             evidence.json(
@@ -652,8 +663,24 @@ def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) ->
                         events.append(event)
                         if terminal is not None:
                             raise TaskFailure("SSE event received after terminal event")
+                        elapsed_ms = (
+                            time.monotonic_ns() - timing["start_monotonic_ns"]
+                        ) / 1_000_000
+                        text = event["data"].get("text")
+                        if (
+                            event["type"] == "text_delta"
+                            and isinstance(text, str)
+                            and text.strip()
+                            and timing["first_text_delta_ms"] is None
+                        ):
+                            timing["first_text_delta_ms"] = elapsed_ms
+                        if event["type"] == "ui" and timing["first_ui_ms"] is None:
+                            timing["first_ui_ms"] = elapsed_ms
+                            timing["first_ui_component"] = event["data"].get("component")
                         if event["type"] in {"turn_complete", "error"}:
                             terminal = event
+                            timing["terminal_ms"] = elapsed_ms
+                            timing["terminal_type"] = event["type"]
                 except TaskFailure as error:
                     error.unsafe = True
                     raise
@@ -661,6 +688,12 @@ def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) ->
         raise TaskFailure(
             "Chat HTTP transport failed; turn outcome is unknown", unsafe=True
         ) from error
+    finally:
+        if response is not None and response.is_closed:
+            timing["stream_closed_ms"] = (
+                time.monotonic_ns() - timing["start_monotonic_ns"]
+            ) / 1_000_000
+        evidence.json(f"step-{number:02d}-chat-timing.json", timing)
     if terminal is None:
         raise TaskFailure("SSE closed without a terminal event", unsafe=True)
     evidence.json(f"step-{number:02d}-terminal.json", terminal)
