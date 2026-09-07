@@ -901,3 +901,43 @@ def test_fixture_preflight_protects_exact_owners_and_unrelated_change_records(mo
     )
     assert changes == "3"
     assert all(runtime.sql(query) == "0" for query in queries.values())
+
+
+async def test_live_catalog_counts_and_campaign_window_reach_model_context(settings, sql, truth):
+    from uuid import uuid4
+
+    auth = AuthClient(settings)
+    client = CommerceClient(settings.commerce_url)
+    backend = CityBuddyMerchantBackend(auth, None, client, sql)
+    try:
+        login = await auth.login("shopmate-fixture-operator", _password())
+        identity = RequestIdentity(login["subject"], login["accessToken"])
+        session = MerchantSessionContext(
+            session_id=str(uuid4()),
+            merchant_id="citybuddy",
+            operator=identity.subject,
+            now=datetime.now(UTC),
+        )
+        with bind_context(identity, session.session_id):
+            context = await backend.get_merchant_context(session)
+            schema = json.loads((await backend.get_analysis_schema(session)).split("\n\n", 1)[0])
+            campaigns = await backend.get_campaign_performance(session, "C-203")
+        counts = context["current_catalog_counts"]
+        assert counts == schema["current_catalog_counts"]
+        assert not counts["truncated"]
+        currency, skus, roots, sellable = counts["rows"][0]
+        assert (currency, skus, roots) == ("CNY", 104, 87)
+        actual = await _rows(
+            truth,
+            "SELECT COUNT(*) AS sellable FROM product WHERE currency='CNY' "
+            "AND publication_state='PUBLISHED' AND available=1 AND stock_quantity>0",
+        )
+        assert sellable == actual[0]["sellable"]
+        assert len(campaigns) == 1
+        campaign = campaigns[0]
+        assert campaign.observation_start == "2026-06-15T00:00:00+08:00"
+        assert campaign.observation_end == "2026-07-16T00:00:00+08:00"
+        assert campaign.observation_period.endswith("2026-07-16T00:00:00+08:00（不含）")
+    finally:
+        await auth.close()
+        await client.close()

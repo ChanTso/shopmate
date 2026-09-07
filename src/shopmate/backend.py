@@ -744,10 +744,23 @@ class CityBuddyMerchantBackend(MerchantBackend):
             else None,
         }
 
+    async def _catalog_counts(self, session):
+        table = await self.execute_analysis_query(
+            session,
+            "SELECT currency, COUNT(*) AS sku_count, "
+            "COUNT(DISTINCT listing_id) AS catalog_root_count, "
+            "SUM(publication_state='PUBLISHED' AND available=1 "
+            "AND stock_quantity>0) AS sellable_sku_count "
+            "FROM merchant_listing_facts GROUP BY currency ORDER BY currency",
+        )
+        return table.model_dump(mode="json")
+
     async def get_analysis_schema(self, session):
         self._bound(session)
-        clock = json.dumps(self._reporting_context(session), ensure_ascii=False)
-        return clock + "\n\n" + SCHEMA
+        context = self._reporting_context(session) | {
+            "current_catalog_counts": await self._catalog_counts(session)
+        }
+        return json.dumps(context, ensure_ascii=False) + "\n\n" + SCHEMA
 
     async def get_merchant_context(self, session):
         self._bound(session)
@@ -756,6 +769,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             "operator": session.operator,
             "default_currency": "CNY",
             **self._reporting_context(session),
+            "current_catalog_counts": await self._catalog_counts(session),
             "operation_time": (session.local_now() or datetime.now(SHANGHAI))
             .astimezone(SHANGHAI)
             .isoformat(),

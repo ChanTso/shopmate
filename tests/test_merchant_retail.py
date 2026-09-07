@@ -525,3 +525,15 @@ async def test_unknown_history_is_not_reported_as_zero_sales(retail):
     result = await retail.backend.query_metrics(retail.session, "sales", "last_180_days")
     assert result.points == [] and "覆盖" in result.note
     retail.sql.query.assert_not_called()
+
+
+def test_campaign_tool_uses_local_instants_and_keeps_exclusive_end():
+    row = CampaignView.model_validate(campaign_row())
+    card = presentation.campaign(row)
+    assert card.observation_start == "2026-08-05T00:00:00+08:00"
+    assert card.observation_end == "2026-09-05T00:00:00+08:00"
+    assert card.observation_period == (
+        "上海时间：2026-08-05T00:00:00+08:00（含）至 2026-09-05T00:00:00+08:00（不含）"
+    )
+    absent = row.model_copy(update={"observationStart": None, "observationEnd": None})
+    assert presentation.campaign(absent).observation_period is None

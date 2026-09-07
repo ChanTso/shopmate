@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from merchant_agent.changes import ChangeNotApplicable
 from merchant_agent.types import (
@@ -66,6 +68,7 @@ class RetailListingDetails(ListingDetails):
 
 
 class RetailCampaign(Campaign):
+    observation_period: str | None = None
     roas: float | None = None
     observation_start: str | None = None
     observation_end: str | None = None
@@ -200,6 +203,10 @@ def issue(row: IssueView) -> RetailOrderIssue:
     )
 
 
+def local_timestamp(value: datetime | None) -> str | None:
+    return value.astimezone(ZoneInfo("Asia/Shanghai")).isoformat() if value else None
+
+
 def campaign(row: CampaignView) -> RetailCampaign:
     return RetailCampaign(
         campaign_id=row.campaignId,
@@ -211,13 +218,19 @@ def campaign(row: CampaignView) -> RetailCampaign:
         spend=row.spendMinor / 100 if row.spendMinor is not None else None,
         revenue=row.revenueMinor / 100 if row.revenueMinor is not None else None,
         currency=row.currency,
-        starts=row.startsAt.isoformat() if row.startsAt else None,
-        ends=row.endsAt.isoformat() if row.endsAt else None,
+        starts=local_timestamp(row.startsAt),
+        ends=local_timestamp(row.endsAt),
         roas=row.revenueMinor / row.spendMinor
         if row.spendMinor and row.revenueMinor is not None
         else None,
-        observation_start=row.observationStart.isoformat() if row.observationStart else None,
-        observation_end=row.observationEnd.isoformat() if row.observationEnd else None,
+        observation_start=local_timestamp(row.observationStart),
+        observation_end=local_timestamp(row.observationEnd),
+        observation_period=(
+            f"上海时间：{local_timestamp(row.observationStart)}（含）至 "
+            f"{local_timestamp(row.observationEnd)}（不含）"
+            if row.observationStart and row.observationEnd
+            else None
+        ),
         observation_source_kind=row.observationSourceKind,
         observation_source_ref=row.observationSourceRef,
     )
