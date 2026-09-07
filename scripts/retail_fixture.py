@@ -645,7 +645,7 @@ def policy_entries() -> list[dict]:
     # Consultation follows this deployment's actual services; no simulated settlement or paid membership.
     replacements = {
         "returns": (
-            "退款与退换货 Returns refunds",
+            "退货、换货与退款 Returns refunds",
             "可查询本人已支付订单并准备退款申请。准备阶段不会执行退款；请核对订单、金额后亲自确认，系统会复核归属与剩余可退额度。REQUESTED表示已记录退款申请，模拟支付不会实际退钱，不承诺到账时限或自动换货。",
         ),
         "shipping": (
