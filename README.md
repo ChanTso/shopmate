@@ -17,17 +17,20 @@
 
 ```mermaid
 flowchart LR
-  UI[商家工作台] --> Host[ShopMate API / 持久会话]
-  Host --> Agent[主 Agent]
-  Agent --> Analysis[只读 SQL 分析子 Agent]
-  Analysis --> Views[六个受限经营视图]
-  Agent -->|精确 scope 的 OBO| Java[CityBuddy 业务接口]
-  UI -->|操作员批准| Host
-  Host -->|直接用户身份| Java
-  Java --> Transaction[实际变更 / 草案回执 / 商品事件]
+  Buyer[买家购物助手] --> Host[ShopMate API / 身份隔离的会话与记忆]
+  Merchant[商家经营工作台] --> Host
+  Host --> Shopping[购物 Agent]
+  Host --> Trading[经营 Agent]
+  Trading --> Analysis[只读 SQL 分析子 Agent]
+  Analysis --> Views[受限经营视图]
+  Analysis --> Sandbox[独立 Python 沙箱]
+  Shopping -->|买家 OBO / 工具权限| Java[CityBuddy 业务接口]
+  Trading -->|商家 OBO / 工具权限| Java
+  Host -->|用户确认 / 操作员批准| Java
+  Java --> Transaction[身份与版本校验 / 交易 / 回执 / Outbox]
 ```
 
-商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 商城的购物助手链接已统一指向 ShopMate；旧客服入口与重复模型循环已撤下，Java 的授权、退款确认及回执机制继续复用。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。新版完整业务评测按当前零售任务单独记录，接线检查不是最终成功率。
+商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 商城的购物助手链接已统一指向 ShopMate；旧客服入口与重复模型循环已撤下，Java 的授权、退款确认及回执机制继续复用。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。[完整零售验收](evals/records/retail-v1-20260907/README.md)记录真实业务任务、页面操作、记忆、并发与中断恢复；业务成绩和边界检查分别报告。
 
 ## 本地运行
 
@@ -62,7 +65,7 @@ npm --prefix web run start
 
 模型代理凭证继续来自同级 `citybuddy/.env` 的 `CLIPROXY_BASE_URL` 和 `CLIPROXY_API_KEY`。默认主模型与分析模型均为 `gpt-5.6-terra`，经 Chat Completions 适配对接 Messages 循环。运行参数位于 `.run/settings.json`，也可通过 `SHOPMATE_CONFIG` 指定配置文件；凭证不传入浏览器或模型工具参数。
 
-每回合主、分析子 Agent 共用默认 16 次模型调用和 300 秒截止；主循环最多 12 个工具轮。分析账号仅有六个经营视图的 SELECT，默认查询上限 2 秒、200 行及 16,000 字节。Python 只接收这些视图的完整、有界查询结果；截断表在执行前拒绝。缓存用量仅展示代理实际报告的字段，未知量不推断成命中率或费用收益。主、分析、记忆和搜索请求共用模型调用预算；实际 Responses 搜索用量与 Chat 用量合计一次。默认每任务至多 3 次搜索和 3 次 Python 尝试，次数与任务时间限制不是硬 token 或费用上限。
+每回合主、分析子 Agent 共用默认 16 次模型调用和 300 秒截止；主循环最多 12 个工具轮。分析账号仅有六个经营视图的 SELECT，默认查询上限 2 秒、200 行及 16,000 字节。Python 只接收这些视图的完整、有界查询结果；截断表在执行前拒绝。缓存用量仅展示代理实际报告的字段，未知量不推断成命中率或费用收益。主、分析、记忆和搜索请求共用模型调用预算；实际 Responses 搜索用量与 Chat 用量合计一次。默认每聊天回合至多 3 次搜索和 3 次 Python 尝试，次数与回合时间限制不是硬 token 或费用上限。
 
 网页搜索通过独立的 Responses 请求接入现有普通工具接口，返回外部摘要、实际引用和服务提供的查阅来源。来源卡将引用与查阅列表分开；没有元数据时明确提示。网页内容不作为本站商品、订单、政策或权限真相。当前代理不支持原生 Messages server tools，本部署没有启用原生 server search、code execution 或原生提前派发；搜索与 Python 能力由宿主实际执行。字段依据见 [Responses 搜索文档](https://developers.openai.com/api/docs/guides/tools-web-search)。
 
@@ -100,4 +103,6 @@ npm --prefix web run build
 
 真实 Java/数据库边界检查使用 `uv run pytest integration_tests -q`，会修改保留的演示业务数据，应与其他任务串行运行。每次完整运行前，先停止 API 和全部写入、保存所需记录，按[手工重置流程](docs/retail-fixture.md#手工重置)恢复夹具后重新启动 API；正常 `up` 会保留已批准的变更，不能代替重置。直接重复写入套件可能触发无变更草案拒绝，或继续改变测试商品的价格和库存。
 
-[历史评测索引](evals/records/README.md)保留旧七商品/42 日 UTC 版本的完整 **78/90** 与后续定向 **21/24**；版本与分母不同，均不是当前 M1 的成绩。[历史浏览器演示、截图和 SQL](docs/demo-20260906/README.md)也对应旧版，未替换原件。新版业务验收需使用当前业务口径、参考 SQL 和实际写入终态另行执行，不能直接把旧任务矩阵或完成执行数当作新版通过率。
+[完整零售验收](evals/records/retail-v1-20260907/README.md)覆盖 18 个已知业务场景各 3 次：54 次全部完成执行，人工核对实际回复、工具数据和数据库终态后 **46/54 通过**。该完整批对应 `6056c26aa29bc60710ce14cdecf927219491a15d`；后续字段语义修订的 12 次定向回归单独记录，不回填旧结果，也不代表新版本完整重跑。模型分析仍可能混淆聚合单位、日期或商品状态，结果需要结合明细复核；操作仍须由用户确认并经 Java 事务校验。
+
+[评测索引](evals/records/README.md)保留旧七商品/42 日 UTC 版本的 **78/90** 与定向 **21/24**；它们不描述当前零售数据或本次完整批。[历史浏览器演示、截图和 SQL](docs/demo-20260906/README.md)仍对应旧版，当前双端页面、记忆与恢复记录见新版验收。
