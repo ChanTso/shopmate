@@ -759,7 +759,11 @@ class CityBuddyMerchantBackend(MerchantBackend):
             "operation_time": (session.local_now() or datetime.now(SHANGHAI))
             .astimezone(SHANGHAI)
             .isoformat(),
-            "period_syntax": "相对报表期间以report_as_of为准，裸日期是上海午夜；带offset的ISO时间保留瞬间，左闭右开。促销今天/明天按operation_time。",
+            "period_syntax": (
+                "相对报表期间按report_as_of，裸日期是上海午夜；offset时间保留瞬间、左闭右开。"
+                "促销今天/明天按operation_time。展示时将两端转换到声明时区；标结束不含就保留真实排除端点，"
+                "写最后已包含自然日则不得称该日不含。不可只改时区标签而保留原日期/时刻。"
+            ),
             "metrics": ["sales", "orders", "units", "traffic", "conversion", "aov"],
             "limitations": [
                 "退款前成交按历史付款；退款申请比例不是实物退货率。零基期变化率、未知成本或缺失流量不填零。",
