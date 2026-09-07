@@ -184,6 +184,8 @@ def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory
         assistant_name="买家购物助手",
         brand_voice="使用中文，清楚区分商品事实、个人偏好、配送估算和实际订单状态",
         domain_search_notes=(
+            "政策检索按字面关键词匹配；多主题分别使用短词查询，例如退货、损坏、配送。"
+            "未命中时缩短主题词或使用同义词，不能根据一次空结果断言没有该政策。"
             "商品价格与库存以当前目录为准；多规格商品先选择具体规格。结账仅交接至用户确认页，"
             "配送报价仅供咨询，不计入商品支付金额。退款只准备确认卡片，不替用户确认。"
             "CNY 的展示价格 price、total 以元计；amount_minor 和所有以 Minor 结尾的金额字段以整数分计。"
