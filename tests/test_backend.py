@@ -49,6 +49,12 @@ class SQL:
 
     async def query(self, sql):
         self.calls.append(sql)
+        if "AS catalog_root_count" in sql:
+            return AnalysisTable(
+                columns=["currency", "sku_count", "catalog_root_count", "sellable_sku_count"],
+                rows=[["CNY", 8, 3, 5], ["USD", 1, 1, 0]],
+                row_count=2,
+            )
         if "SUM(visits)" in sql:
             return AnalysisTable(columns=["visits", "observed_days"], rows=[[None, 0]], row_count=1)
         return AnalysisTable(columns=["bucket", "value"], rows=[["2026-08-22", 11500]], row_count=1)

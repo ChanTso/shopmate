@@ -64,7 +64,14 @@ keys. Read the name/id mapping when needed; do not invent a literal name list as
 family_id is NULL for a normal standalone (plain) SKU; this is not missing catalog data.
 By-product reports use each product_id. If the requested display grain is a family/root,
 use COALESCE(family_id,product_id) or its observed listing_id; never group all NULL family_id
-SKUs together or exclude them. A family is not a directly tradable SKU. For variants retain
+SKUs together or exclude them. A family is not a directly tradable SKU. current_catalog_counts supplies live counts by
+currency: sku_count counts product_id, catalog_root_count counts display roots, and
+sellable_sku_count counts published, enabled SKUs with positive stock. These are current
+catalog counts, not the number of rows or active days in a sales report. available is only
+the sales switch; a sellable SKU requires publication_state='PUBLISHED', available=1 and
+stock_quantity>0. A family is sellable if at least one of its SKUs meets all three conditions.
+For family reports return COUNT(DISTINCT product_id) AS sku_count beside each root so a
+row count cannot be confused with the number of covered SKUs. For variants retain
 actual per-SKU current prices or a clearly labelled range, not their unweighted average.
 Join views on product_id, and copy the observed name only for display. An unmatched name is
 an unresolved product lookup, not zero sales. Confirm the catalog row before concluding
