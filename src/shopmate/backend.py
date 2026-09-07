@@ -76,6 +76,10 @@ class Period:
     def label(self) -> str:
         return f"{self.start.isoformat()}/{self.end.isoformat()}"
 
+    @property
+    def local_label(self) -> str:
+        return "/".join(value.astimezone(SHANGHAI).isoformat() for value in (self.start, self.end))
+
     def previous(self) -> Period:
         return Period(self.start - (self.end - self.start), self.start)
 
@@ -315,8 +319,8 @@ class CityBuddyMerchantBackend(MerchantBackend):
         conversion = now.orderCount * 100 / traffic if traffic else None
         prior_conversion = before.orderCount * 100 / prior_traffic if prior_traffic else None
         return BusinessSnapshot(
-            period=window.label,
-            compare_to=prior.label,
+            period=window.local_label,
+            compare_to=prior.local_label,
             sales=now.amountMinor / 100,
             orders=now.orderCount,
             units=now.units,
@@ -341,7 +345,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 pending_changes=pending_count,
             ),
             note=(
-                "上海日界；CNY退款前历史已支付金额。转化=付款子单数/店铺访问次数，非人数或checkout数；流量覆盖不完整则未知。"
+                "Asia/Shanghai；期间起点含、终点不含。CNY退款前历史已支付金额。转化=付款子单数/店铺访问次数，非人数或checkout数；流量覆盖不完整则未知。"
                 + ("前期超出历史覆盖，变化率未知。" if not prior_covered else "")
             ),
         )
@@ -372,7 +376,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             return MetricSeries(
                 metric=metric,
                 granularity=granularity,
-                period=window.label,
+                period=window.local_label,
                 segment=segment,
                 note="该期间超出固定90日历史覆盖，缺失不是零；请指定覆盖期内窗口。",
             )
@@ -401,7 +405,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     segment=segment,
                     note="仅有全店访问观察，没有商品、分类或其他币种的独立流量分母。",
                 )
@@ -410,14 +414,14 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     note="流量为上海自然日观察，无法为不足完整自然日的窗口分摊访问量。",
                 )
             if await self._traffic(window) is None:
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     note="此窗口流量观察不完整，流量或转化未知；缺失不是零。",
                 )
             start, end = (
@@ -448,11 +452,11 @@ class CityBuddyMerchantBackend(MerchantBackend):
             query = f"SELECT {paid_bucket} AS bucket, {column} AS value FROM merchant_paid_orders WHERE {where} GROUP BY bucket ORDER BY bucket"
         table = await self.sql.query(query)
         note = (
-            "上海日界；转化=付款子单数/全店访问次数，零访问时未知。"
+            "Asia/Shanghai；期间起点含、终点不含。转化=付款子单数/全店访问次数，零访问时未知。"
             if metric == "conversion"
-            else "上海日界；访问量来自固定日期观察。"
+            else "Asia/Shanghai；期间起点含、终点不含。访问量来自固定日期观察。"
             if metric == "traffic"
-            else "上海日界；退款前历史付款金额；仅列有成交时间桶，未填补无记录日。"
+            else "Asia/Shanghai；期间起点含、终点不含。退款前历史付款金额；仅列有成交时间桶，未填补无记录日。"
         )
         return MetricSeries(
             metric=metric,
@@ -462,7 +466,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             if metric == "conversion"
             else None,
             granularity=granularity,
-            period=window.label,
+            period=window.local_label,
             segment=segment,
             points=[
                 MetricPoint(
@@ -728,7 +732,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
         return {
             "report_as_of": reference.isoformat(),
             "timezone": "Asia/Shanghai",
-            "default_period": windows["last_14_days"].label,
+            "default_period": windows["last_14_days"].local_label,
             "periods_utc": {
                 label: window.label.replace("+00:00", "Z") for label, window in windows.items()
             },

@@ -29,7 +29,14 @@ def _filters_schema() -> dict[str, Any]:
         "type": "object",
         "description": "Constraints the customer stated; leave guesses in the query.",
         "properties": {
-            "category": {"type": "string", "description": "Catalog category name."},
+            "category": {
+                "type": "string",
+                "description": (
+                    "Exact category value returned by a product read in this conversation. "
+                    "Omit when none has been observed; a product type or intended use is "
+                    "not necessarily a catalog category."
+                ),
+            },
             "min_price": {"type": "number", "description": "Lowest acceptable price."},
             "max_price": {"type": "number", "description": "Price ceiling the customer stated."},
             "min_rating": {"type": "number", "description": "Lowest acceptable average rating."},
