@@ -4,11 +4,14 @@ import importlib.util
 import io
 import json
 import socket
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 spec = importlib.util.spec_from_file_location(
     "run_tasks", Path(__file__).resolve().parents[1] / "scripts/run_tasks.py"
@@ -149,7 +152,8 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
 ):
     runtime = tmp_path / ".run"
     runtime.mkdir()
-    (runtime / "operator_password").write_text("private-login-password")
+    for account in driver.ACTORS.values():
+        (runtime / account["password"]).write_text("private-login-password")
     monkeypatch.setattr(driver, "ROOT", tmp_path)
     monkeypatch.setattr(driver, "verify_sources", lambda *_: None)
     monkeypatch.setattr(
@@ -157,22 +161,29 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
     )
     calls = []
     recovered = False
+    session_created = False
 
     def handle(request):
-        nonlocal recovered
+        nonlocal recovered, session_created
         path = request.url.path.rsplit("/", 1)[-1]
         calls.append((request.method, path))
         if path == "login":
             return httpx.Response(
                 200,
                 json={
-                    "subject": driver.SUBJECT,
+                    "subject": json.loads(request.content)["loginIdentifier"],
                     "accessToken": "private-user-token",
                 },
             )
         if path == "sessions":
-            return httpx.Response(200, json={"sessions": [{"status": "completed"}]})
+            items = (
+                [{"session_id": "new-session", "status": "completed"}]
+                if session_created and "/merchant/" in request.url.path
+                else []
+            )
+            return httpx.Response(200, json={"sessions": items})
         if path == "session" and request.method == "POST":
+            session_created = True
             return httpx.Response(200, json={"session_id": "new-session"})
         if path == "listings":
             return httpx.Response(200, json={"listings": []})
@@ -203,7 +214,9 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
         lambda **kwargs: client_type(**kwargs, transport=httpx.MockTransport(handle)),
     )
     monkeypatch.setattr(
-        driver, "snapshot", lambda _evidence, stage, _paths, _session: calls.append(("SQL", stage))
+        driver,
+        "snapshot",
+        lambda _evidence, stage, _paths, _session, _bindings=None: calls.append(("SQL", stage)),
     )
     evidence = driver.Evidence(
         tmp_path / "results",
@@ -226,7 +239,7 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
     if recovery_status == 200:
         assert result["execution_status"] == "executed"
         assert calls.index(("GET", "overview")) < calls.index(("GET", "session"))
-        saved = json.loads((evidence.path / "saved-session.json").read_text())
+        saved = json.loads((evidence.path / "merchant/saved-session.json").read_text())
         assert "recovered-draft" in saved["data"]["response_body"]
     else:
         assert result["execution_status"] == "failed"
@@ -428,6 +441,7 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
     class SlowProcess:
         pid = 123
         terminated = False
+        killed = False
 
         def poll(self):
             return None
@@ -435,7 +449,12 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
         def terminate(self):
             self.terminated = True
 
+        def kill(self):
+            self.killed = True
+
         def wait(self, timeout):
+            if self.killed:
+                return -9
             raise driver.subprocess.TimeoutExpired("owned test process", timeout)
 
     host = driver.OwnedHost(driver.Evidence(tmp_path, {}))
@@ -444,7 +463,7 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
     with pytest.raises(driver.TaskFailure, match="no reset") as error:
         host.stop()
     assert error.value.unsafe is True
-    assert process.terminated and host.process is process
+    assert process.terminated and process.killed and host.process is process
 
 
 def test_remote_execution_is_rejected_before_runtime_settings(monkeypatch, capsys):
@@ -465,7 +484,8 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
 ):
     runtime = tmp_path / ".run"
     runtime.mkdir()
-    (runtime / "operator_password").write_text("test-password")
+    for account in driver.ACTORS.values():
+        (runtime / account["password"]).write_text("test-password")
     monkeypatch.setattr(driver, "ROOT", tmp_path)
     monkeypatch.setattr(driver, "verify_sources", lambda *_: None)
     calls = []
@@ -492,6 +512,18 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
     def handle(request):
         nonlocal logins, recovered
         path = request.url.path.rsplit("/", 1)[-1]
+        if "/buyer/" in request.url.path:
+            if path == "login":
+                return httpx.Response(
+                    200,
+                    json={
+                        "subject": json.loads(request.content)["loginIdentifier"],
+                        "accessToken": "test-buyer-token",
+                    },
+                )
+            if path == "sessions":
+                return httpx.Response(200, json={"sessions": []})
+            raise AssertionError("Unexpected buyer request in merchant-only task")
         if path == "login":
             logins += 1
             calls.append("login")
@@ -556,6 +588,6 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
         assert result["fixture_retained"] is True
         assert result["reset_completed"] is False
         assert calls == ["login", "recover"]
-    raw = (evidence.path / "pre-reset/overview-000.json").read_text()
+    raw = (evidence.path / "merchant/pre-reset/overview-000.json").read_text()
     assert '"path": "overview"' in raw
     assert "test-token" not in raw and "test-password" not in raw

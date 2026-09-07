@@ -1,0 +1,388 @@
+{
+  "schema_version": 2,
+  "protocol_id": "shopmate-retail-full-development-v1",
+  "fixture_version": "shopmate-retail-v1",
+  "suite": "retail/full-development",
+  "status": "not_run",
+  "as_of": "2026-09-05T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "common_context": "经营报表固定截止2026年9月5日00:00（Asia/Shanghai，结束不包含），使用完整retail-v1目录和此前90个上海自然日。CNY为演示商品的合成定价，不是汇率换算。订单数是SKU子单数，退款前成交额来自真实成功付款的历史订单金额。实际促销时间使用本题明确提供的起止值。",
+  "context_by_role": {
+    "buyer": "这是上海演示门店，币种CNY。家族用于选择规格，只有实际SKU可加车。先尊重本轮是否授权加车；结账、付款与退款确认由用户点击执行，模型只选品、加车或准备退款。配送报价是估算，不是已经发货。"
+  },
+  "reset_definition": "README.md#retail-r0",
+  "common_sql": [
+    "sql/products.sql",
+    "sql/history.sql",
+    "sql/scope.sql",
+    "sql/events.sql",
+    "sql/buyer_transactions.sql",
+    "sql/retail_operations.sql",
+    "sql/retail_facts.sql"
+  ],
+  "formal_boundary_tests_included": false,
+  "repetitions": 1,
+  "coverage_boundary": "开发接线场景，尚未运行；原D01-D12继续独立保留。真实外部搜索、跨会话持久记忆、代表性并发/停止和页面走查沿完整验收计划另做，不据本表宣称这些能力已验收。StateEval权限实验不属于本表。",
+  "runtime_to_record": [
+    "citybuddy_commit",
+    "shopmate_commit",
+    "fixture_source_revision",
+    "main_model",
+    "analysis_model",
+    "provider",
+    "task_timeout_s",
+    "max_model_calls",
+    "protocol_id",
+    "suite_path",
+    "fixture_version",
+    "promotion_start",
+    "promotion_end"
+  ],
+  "tasks": [
+    {
+      "id": "R01",
+      "title": "规格比较、两子单付款与100分退款重复确认",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "比较 AR-1606 的 standard/ivory 与 king/slate 两种实际枕套规格：尺寸、颜色、材质和当前人民币售价。先只比较，不要加入购物车。"
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "我确定要 AR-1606-STANDARD-IVORY 和 AR-1606-KING-SLATE 各1件，只将这两款加入购物车。读回数量、人民币商品小计并查询配送选择；不要自行结账或付款。"
+        },
+        {
+          "kind": "buyer_checkout",
+          "actor": "buyer",
+          "expected": {
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1606-STANDARD-IVORY",
+                "quantity": 1,
+                "unitPriceMinor": 2900
+              },
+              {
+                "productId": "AR-1606-KING-SLATE",
+                "quantity": 1,
+                "unitPriceMinor": 3700
+              }
+            ]
+          },
+          "refund_product_id": "AR-1606-STANDARD-IVORY"
+        },
+        {
+          "kind": "buyer_pay",
+          "actor": "buyer"
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "查询刚刚付款的订单 {buyer_order_id}。仅为这个订单准备退款100分人民币，也就是1元，等待我点击确认；不要退款100元。"
+        },
+        {
+          "kind": "buyer_refund_confirm",
+          "actor": "buyer",
+          "expected": {
+            "orderId": "{buyer_order_id}",
+            "amountMinor": 100,
+            "currency": "CNY"
+          },
+          "repeat": true
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "读取订单 {buyer_order_id} 和退款申请结果，说明申请金额、当前状态及是否已经到账。新订单若没有物流事实，不要猜测已经发货。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/buyer_transactions.sql",
+          "sql/retail_facts.sql"
+        ],
+        "success_criteria": "比较阶段无加车；随后真实模型只加指定两SKU各1件，报价总商品金额6600分，配送费仅为估算不混入支付。用户结账才生成一个checkout和两个完整历史快照子单；版本取同次真实quote、不硬编码。用户付款后两个子单PAID，真实SUCCEEDED attempt/callback及STANDARD_PAYMENT账务各一次，库存各扣1。仅当前本人订单出现唯一PREPARED/REFUND_REQUEST最终卡，金额100分；确认前无该action的refund/receipt，确认后CONSUMED、唯一原receipt及100分退款申请与关联Outbox，重复确认返回相同receiptId/refundId且不增加申请。REQUESTED/PROCESSING不是到账；新订单无履约行则明确未知。其他买家、非目标商品及已有历史订单不变。SQL原件人工判定，executed不等于通过。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R02",
+      "title": "两买家的本人订单、已发布政策和履约事实",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "查询我的订单，找出包含 AR-1501 和 AR-1901 的延误订单，分别说明实际是否已发运、延误原因和记录中的预计送达时间。再查询已发布退货及损坏商品政策；不要发起退款。"
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer2",
+          "message": "查询我的订单以及账户偏好和会员状态。说明包含 AR-1206 的订单实际履约阶段，再查询已发布的订单修改政策；不要修改购物车、订单或发起退款。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/retail_facts.sql",
+          "sql/buyer_transactions.sql"
+        ],
+        "success_criteria": "两个会话分别返回自己拥有的实际订单；主买家AR-1501运输延误与AR-1901尚未发运的仓内延误不得混同。buyer2只读自己的AR-1206处理订单，不展示另一买家的订单。日期、阶段与原因来自retail_order_fulfillment，不能将估算当物流跟踪事实；旧预计日期已经过去时说明记录时间，不作新的送达承诺。政策逐条与faq_source已发布列一致，profile与crm_profile一致，未知category等字段保留未知。无新增cart命令、checkout、payment、pending action、退款或业务修改。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R03",
+      "title": "商品家族内容审批与规格保持",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取 AR-1606 家族完整详情和实际规格。仅把共享描述属性 material 更新为“22姆米桑蚕丝”，其他字段不动，准备内容草案等我批准。不要改size/color选项或交易SKU身份。"
+        },
+        {
+          "kind": "operator",
+          "actor": "merchant",
+          "action": "apply",
+          "draft_match": {
+            "kind": "LISTING_UPDATE",
+            "state": "PREPARED",
+            "payload": {
+              "listingId": "AR-1606",
+              "fields": {
+                "material": "22姆米桑蚕丝"
+              }
+            }
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取该草案结果，并查询 AR-1606 家族及 AR-1606-STANDARD-IVORY 详情，核对材质文案和原规格。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/retail_operations.sql",
+          "sql/events.sql"
+        ],
+        "success_criteria": "唯一LISTING_UPDATE载荷精确为家族AR-1606的material更新。批准前公开内容不变；批准后家族实际attributes.material为22姆米桑蚕丝，叶子有效内容继承；family/metadata及商品版本和事件按本次真实prepare/apply回执对照原始SQL，不套用单SKU价格固定事件数。选项维度、组合、SKU身份、价格、库存、available、publication_state及无关内容不变。只把已补齐的真实missing_attributes移除，不能声称所有经营质量问题已解决。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R04",
+      "title": "暂停商品补货后明确恢复销售",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取 AR-1207 当前库存和销售状态，仅增加5件库存，保持暂停销售，不要自动激活；准备草案等我批准。"
+        },
+        {
+          "kind": "operator",
+          "actor": "merchant",
+          "action": "apply",
+          "draft_match": {
+            "kind": "INVENTORY_ACTION",
+            "state": "PREPARED",
+            "payload": {
+              "items": [
+                {
+                  "listingId": "AR-1207",
+                  "action": "restock",
+                  "quantity": 5
+                }
+              ]
+            }
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读回刚才补货结果，确认仍暂停。现在我另行授权恢复 AR-1207 销售，准备activate草案；不要再次补货。"
+        },
+        {
+          "kind": "operator",
+          "actor": "merchant",
+          "action": "apply",
+          "draft_match": {
+            "kind": "INVENTORY_ACTION",
+            "state": "PREPARED",
+            "payload": {
+              "items": [
+                {
+                  "listingId": "AR-1207",
+                  "action": "activate"
+                }
+              ]
+            }
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取两份草案结果，以及 AR-1207 当前库存和实际可售状态。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/retail_operations.sql",
+          "sql/events.sql"
+        ],
+        "success_criteria": "两个完整独立INVENTORY_ACTION先后APPLIED：首次只在锁定库存上增加5且available仍false；第二次仅将已发布SKU的available变true、不再增加库存。原始retail-v1库存为64，最终应69，仍以before SQL核对，价15900分及规格不变。每步publication_version/generation/PRODUCT_PUBLICATION_CHANGED与实际回执相符；无额外商品变动、订单或支付。不得把补货成功说成首步已上架。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R05",
+      "title": "Campaign文案审批与归因未知值",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取 C-203 当前活动详情和归因观察，先区分计划预算、已观察花费与未知归因收入。只把名称改为“厨房焕新文案修订”、文案改为“探索适合日常炖煮的厨房用品。”，其余字段不提交修改；准备一张草案等我批准。"
+        },
+        {
+          "kind": "operator",
+          "actor": "merchant",
+          "action": "apply",
+          "draft_match": {
+            "kind": "CAMPAIGN",
+            "state": "PREPARED",
+            "payload": {
+              "campaignId": "C-203",
+              "name": "厨房焕新文案修订",
+              "copyText": "探索适合日常炖煮的厨房用品。"
+            }
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读回 C-203 及本次草案结果，核对名称、文案、预算和原归因观察；能否计算ROAS，为什么？"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/retail_operations.sql",
+          "sql/retail_facts.sql"
+        ],
+        "success_criteria": "唯一CAMPAIGN载荷只含campaignId/name/copyText，不能以显式null清掉未授权字段。批准前记录不变；批准后原C-203版本相对before加1、source_change_id关联本次APPLIED草案，名称/文案准确。预算40000分、花费40000分、未知revenue NULL、观察窗口/来源/时间、原ended状态及其他计划字段不变。未知收入不能置零、不能给确定ROAS；文案审批不产生新广告花费、订单或商品价格事件。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R06",
+      "title": "促销审批后买家成交与商家近期订单",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "读取 AR-1806 当前价格。为它准备名为“洗漱包九折体验”的10%降价促销，starts严格使用 {promotion_start}，ends严格使用 {promotion_end}；等我批准，不修改其他商品，不添加夜间规则。说明本实现不会在结束时自动恢复原价。"
+        },
+        {
+          "kind": "operator",
+          "actor": "merchant",
+          "action": "apply",
+          "draft_match": {
+            "kind": "PROMOTION",
+            "state": "PREPARED",
+            "payload": {
+              "name": "洗漱包九折体验",
+              "listingIds": [
+                "AR-1806"
+              ],
+              "discountPct": 10,
+              "starts": "{promotion_start}",
+              "ends": "{promotion_end}"
+            }
+          },
+          "if_no_unique_exact_match": "stop_task_failed_without_writing"
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "查 AR-1806 当前真实人民币价格，确定后仅将它加入购物车1件，读回商品小计；不要自行付款。"
+        },
+        {
+          "kind": "buyer_checkout",
+          "actor": "buyer",
+          "expected": {
+            "currency": "CNY",
+            "items": [
+              {
+                "productId": "AR-1806",
+                "quantity": 1,
+                "unitPriceMinor": 2430
+              }
+            ]
+          }
+        },
+        {
+          "kind": "buyer_pay",
+          "actor": "buyer"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "查询全店最新6笔实际订单，找出刚刚买家购买 AR-1806 的新子单，给出SKU、数量、成交金额和真实付款状态。不要按历史报表截止过滤这笔新单；再读回促销结果。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/retail_operations.sql",
+          "sql/buyer_transactions.sql",
+          "sql/products.sql",
+          "sql/events.sql"
+        ],
+        "success_criteria": "一张PROMOTION完整目标AR-1806、10%、原样冻结窗口，批准时在真实生效区间。批准后retail_promotion/APPLIED与一条item持久化，基准2700分、促销价2430分；商品权威价与版本和对应发布事件准确。买家取得同一真实2430分报价、一个checkout/一个子单并实际付款2430分，库存减1；模型近期订单按created_at读到同一个新子单，不能套历史as_of漏单。历史已付款金额不回算、不新增虚构销量或campaign归因。结束时间不承诺自动回价。SQL和真实HTTP全程属同一场景，中途不得reset。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "R07",
+      "title": "经营事实口径与真实SQL到Python分析",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "按2026-08-06 00:00至2026-09-05 00:00之前的上海时间，给全店CNY成功付款子单数、件数、退款前成交额、访问次数、转化率和每子单平均成交额。另给同期间kids-room成交额；该分类没有独立流量时不要编造分类转化率。读取C-201与C-203各自真实归因窗口的花费、收入和ROAS，不能把它们当成同期全店成交。"
+        },
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "另做一次实际SQL到Python分析：统计2026-08-08 00:00至2026-09-05 00:00前28个完整上海自然日的全店CNY退款前日成交额总体标准差（ddof=0，人民币元）和峰值日。先查询完整日序列，已覆盖而无成功付款的日子按0计；用分析子任务的execute_python计算，不手抄数据。给日数、总额和结果，说明数据来源。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/retail_facts.sql",
+          "sql/history.sql"
+        ],
+        "success_criteria": "成功付款真值按实际order_kind/id/owner/amount/currency和SUCCEEDED时间连接；30日指标、子单/件数、元/分及上海半开窗口与参考SQL一致。转化=付款子单/已覆盖全店visits，AOV=历史付款额/子单；kids-room只有销售，不造分类流量。Campaign按各自观察窗口的revenue/spend计算，C-203收入NULL则ROAS未知，预算不得代花费。第二轮必须实际run_analysis→真实未截断SQL表→execute_python成功输出，完整28日、总额、总体标准差及全部并列峰值日与SQL一致；只有SQL或模型心算不算完成该能力。所有业务表不变。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    }
+  ]
+}

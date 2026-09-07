@@ -300,6 +300,7 @@ ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash);
         "action_receipt",
         "mock_refund",
         "faq_source",
+        "crm_profile",
     )
     sql(
         f"CREATE USER IF NOT EXISTS 'shopmate_truth'@'%' IDENTIFIED BY '{truth_password}';"
