@@ -38,6 +38,22 @@ export default function MetricsCard({ payload }: { payload: MetricsPayload }) {
           );
         })}
       </div> : null}
+      {analysis?.table ? (
+        <details className="border-t border-(--line) px-4 py-3 text-[12px]">
+          <summary className="cursor-pointer font-medium text-(--ink)">查看查询明细（{analysis.table.row_count} 行）</summary>
+          <div className="mt-3 max-h-96 overflow-auto" tabIndex={0} aria-label="查询明细表格">
+            <table className="w-full border-collapse text-left text-(--ink)">
+              <thead className="sticky top-0 bg-(--card)"><tr>
+                {analysis.table.columns.map((column, index) => <th key={index} scope="col" className="border-b border-(--line) px-2 py-2 whitespace-nowrap">{column}</th>)}
+              </tr></thead>
+              <tbody>{analysis.table.rows.map((row, rowIndex) => <tr key={rowIndex}>
+                {row.map((cell, columnIndex) => <td key={columnIndex} className="border-b border-(--line) px-2 py-2 align-top [overflow-wrap:anywhere]">{cell == null ? "NULL" : typeof cell === "object" ? JSON.stringify(cell) : String(cell)}</td>)}
+              </tr>)}</tbody>
+            </table>
+          </div>
+          {analysis.table.note ? <p className="mt-2 text-(--ink-soft)">{analysis.table.note}</p> : null}
+        </details>
+      ) : null}
       {analysis?.caveats.length || analysis?.method_note ? (
         <div className="space-y-3 border-t border-(--line) px-4 py-3 text-[12px] leading-relaxed text-(--ink-soft)">
           {analysis.caveats.length ? <div>

@@ -120,6 +120,8 @@ def build_submit_analysis_tool() -> dict[str, Any]:
             "When SQL or Python tools are available, every derived number must be an explicitly "
             "returned calculation for that exact metric, currency and period, from actual SQL "
             "or successful controlled Python output, not mental arithmetic. "
+            "To show a full table, pass the table_ref returned by a complete SQL query in "
+            "this run; the host attaches its original rows. Do not copy rows into findings. "
             "Calling this ends the analysis."
         ),
         "input_schema": {
@@ -183,6 +185,10 @@ def build_submit_analysis_tool() -> dict[str, Any]:
                     "maxItems": 4,
                 },
                 "method_note": {"type": "string", "maxLength": 300},
+                "table_ref": {
+                    "type": "string",
+                    "description": "One complete SQL result reference returned in this run.",
+                },
             },
             "required": ["question", "headline", "findings"],
             "additionalProperties": False,
@@ -305,7 +311,8 @@ def build_analysis_system_prompt(config: MerchantAgentConfig) -> str:
 - When SQL or Python tools are available, every derived number you submit must appear in an actual SQL result or successful controlled Python output: percentage changes, differences, shares, weighted averages and unit conversions. Python must compute from the actual complete SQL table supplied by the host, not a manually entered dataset. Return the source totals beside each calculation and use distinct aliases for each metric, currency and period. Never calculate these in your head or copy a different metric's change. If a needed calculation was not returned, run it before submitting; if you cannot, report that value as unknown. Failed, timed-out or truncated calculations are not completed evidence. Display rounding is allowed; it must not invent a calculation.
 - Decide from the schema note in your brief, before your first query, whether every dimension the question asks for exists; a metric derivable from existing columns counts. For a dimension that does not exist, say that part cannot be computed and answer the rest; do not hunt for it with exploratory reads or stand in a different column for it.
 - Batch independent reads into one response. One query grouped by every dimension the question names (period and segment together, say) answers the whole question at once; do not query one period or one segment at a time. Most analyses fit in two to four responses; past four, submit the best-supported partial answer with its caveats.
-- Count the dates in each window before aggregating, and check each bucket's distinct-date count beside its aggregate. When the question pins a formula, use that formula.
+- Check window coverage separately from active sales dates and SKU counts. Detail and total rows must preserve each column's unit and meaning; recompute distinct counts over the combined source set rather than SUM/MAX of per-group counts. When the question pins a formula, use it.
+- When displaying a half-open period, convert both offset-bearing instants to the stated timezone and name the true excluded endpoint. A range ending on the last included calendar day must not call that day excluded.
 - State the filters you applied. When a filter excludes rows that would change the answer (paused or out-of-stock listings still hold stock and cash), say so or widen it.
 - A headline that counts products must match the counted result rows, not the number of figures or currencies. Keep no-sale products distinct from products with successful payments.
 - Omit change_pct or use null unless you computed a comparison with a nonzero prior value. Never use 0 to mean unknown or not applicable.
@@ -314,6 +321,7 @@ def build_analysis_system_prompt(config: MerchantAgentConfig) -> str:
 - You have no write access. When the analysis suggests an action, submit it as a finding.
 - Between tool calls, write at most one short line of notes. You may call {REPORT_PROGRESS_TOOL} once, in the same response as your next read, to say what you are doing next; findings and figures leave only through {SUBMIT_ANALYSIS_TOOL}.
 - Finish by calling {SUBMIT_ANALYSIS_TOOL} exactly once: a short headline, the findings that answer the question, the figures with units, any series worth charting, and the caveats (missing segments, short windows, capped results). When the data cannot answer the question, submit that as the headline with what would be needed.
+- When a full detail table is requested, query all requested columns together and submit its returned table_ref. The host displays that exact complete table; findings explain it rather than repeat its rows. Truncated results have no attachable reference: narrow or aggregate the query, or state the limitation.
 - Keep it small: at most 8 findings and figures, series only when a trend supports the answer, downsampled to about 40 points (weekly buckets beyond 60 days). The submission is the only thing that leaves this context."""
 
 
@@ -360,6 +368,8 @@ def derive_metrics_payload(result: AnalysisResult) -> dict[str, Any]:
         },
         "suggestions": [],
     }
+    if result.table is not None:
+        payload["analysis"]["table"] = result.table.model_dump(mode="json", exclude_none=True)
     if result.analysis_id:
         payload["analysis_id"] = result.analysis_id
     periods = {s.period for s in result.derived_series if s.period}
@@ -371,7 +381,14 @@ def derive_metrics_payload(result: AnalysisResult) -> dict[str, Any]:
 def summarize_result_for_model(result: AnalysisResult) -> dict[str, Any]:
     """The tool result the orchestrator's model reads back. Derived series are reduced to
     their shape; the points are already on the card and stay out of the conversation."""
-    summary = result.model_dump(mode="json", exclude_none=True, exclude={"derived_series"})
+    summary = result.model_dump(
+        mode="json", exclude_none=True, exclude={"derived_series", "table"}
+    )
+    if result.table is not None:
+        summary["table"] = {
+            "columns": result.table.columns,
+            "row_count": result.table.row_count,
+        }
     if result.derived_series:
         summary["derived_series"] = [
             {

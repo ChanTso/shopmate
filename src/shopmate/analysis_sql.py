@@ -40,20 +40,39 @@ merchant_store_traffic_daily(local_date,visits,observed_at,source_ref,fixture_ve
 merchant_campaign_facts(campaign_id,name,objective,channel,currency,budget_minor,starts_at,
  ends_at,state,version,spend_minor,revenue_minor,observation_start,observation_end,
  observation_source_kind,observation_source_ref,observed_at,fixture_version)
+publication_version is a positive BIGINT UNSIGNED revision of one SKU's publication.
+facts_version is a positive BIGINT UNSIGNED revision of one SKU's operating facts (NULL
+when those facts are absent); merchant_campaign_facts.version is a positive BIGINT UNSIGNED
+revision of one campaign. These are resource revisions, not dataset identifiers, and need
+not match across rows. fixture_version is a VARCHAR(64) source label only in the views
+listing that column; it may be NULL for a campaign. A dataset name is not a publication
+revision value. Do not infer a revision filter for a whole-store catalog from a dataset label.
 Reporting calendar is Asia/Shanghai. SQL timestamps remain UTC; convert requested local
 boundaries to UTC before comparing succeeded_at. Group local days with
 DATE(DATE_ADD(succeeded_at, INTERVAL 8 HOUR)). merchant_daily_sales.sale_date is the older UTC
 aggregation, not a Shanghai daily rollup; use merchant_paid_orders for Shanghai day/week/month.
 Explicit timestamps with offsets retain their actual instants. The host supplies a fixed
-report_as_of and fixture coverage separately from the real current operation date.
+report_as_of, canonical periods_utc and fixture coverage above, separately from the real
+current operation date. Relative complete-day requests use these host-calculated boundaries;
+do not shift a Shanghai midnight to the same date at 16:00 UTC. A label such as last_30_days
+means the host period, not 30 days ending at the real current operation date. Explicit user
+start/end dates retain their specified local date or offset and use a half-open interval.
 Do not count periods outside the declared coverage as observed zero sales.
 Resolve the requested product set against merchant_products and keep its actual product_id.
 Names in the question may be shorthand, translated labels, or annotations: they are not join
 keys. Read the name/id mapping when needed; do not invent a literal name list as a catalog.
+family_id is NULL for a normal standalone (plain) SKU; this is not missing catalog data.
+By-product reports use each product_id. If the requested display grain is a family/root,
+use COALESCE(family_id,product_id) or its observed listing_id; never group all NULL family_id
+SKUs together or exclude them. A family is not a directly tradable SKU. For variants retain
+actual per-SKU current prices or a clearly labelled range, not their unweighted average.
 Join views on product_id, and copy the observed name only for display. An unmatched name is
 an unresolved product lookup, not zero sales. Confirm the catalog row before concluding
 that the product has no paid rows. Whole-currency rankings derive their set from the views,
-not from a hand-written list of names.
+not from a hand-written list of names. Confirm the actual product set before zero-filling
+dates: a generated calendar's row count proves neither catalog membership nor observed
+coverage. If the product set is empty, resolve an unsupported filter or report no matching
+products; do not present calendar-filled zeros as an observed no-sales period.
 Paid sales are gross before refunds, based on succeeded_at in [start,end), using immutable
 historical order amounts. These views already join successful payment to PAID order by both
 order_kind and order_id; do not join payment again. Separate currencies; CNY and USD amounts

@@ -1,0 +1,85 @@
+{
+  "schema_version": 2,
+  "protocol_id": "shopmate-retail-search-development-v1",
+  "fixture_version": "shopmate-retail-v1",
+  "suite": "retail/search-development",
+  "status": "not_run",
+  "as_of": "2026-09-05T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "common_context": "本站使用完整retail-v1零售目录，币种CNY，价格为演示合成定价，不是汇率换算。历史经营报表固定截止2026-09-05 00:00 Asia/Shanghai，但公开网页的当前信息按实际运行日期查询。外部资料只作参考；店内价格、库存、政策、订单和权限仍以实际业务工具为准。",
+  "context_by_role": {
+    "buyer": "这是上海演示门店，币种CNY。此次仅进行公开资料研究，不授权任何购物或退款动作。本站ACME商品是演示目录，不应假定网上真实品牌指南就是该商品说明；只比较实际可查事实。"
+  },
+  "reset_definition": "README.md#retail-r0",
+  "common_sql": [
+    "sql/products.sql",
+    "sql/history.sql",
+    "sql/scope.sql",
+    "sql/events.sql",
+    "sql/buyer_transactions.sql",
+    "sql/retail_operations.sql",
+    "sql/retail_facts.sql"
+  ],
+  "formal_boundary_tests_included": false,
+  "repetitions": 1,
+  "runtime_to_record": [
+    "citybuddy_commit",
+    "shopmate_commit",
+    "fixture_source_revision",
+    "main_model",
+    "analysis_model",
+    "provider",
+    "task_timeout_s",
+    "max_model_calls",
+    "protocol_id",
+    "suite_path",
+    "fixture_version"
+  ],
+  "coverage_boundary": "本表仅包含买家和商家各一次正常真实网页搜索，尚未运行。长期记忆、代表性并发/中断、页面走查和StateEval分别记录，不能由本表或R01-R07推定已完成。最终成绩以实际固定源SHA、模型、任务运行原件和人工来源/SQL判定为准，不与旧成绩拼接。",
+  "tasks": [
+    {
+      "id": "S01",
+      "title": "买家外部洗护研究与本站商品承诺边界",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "先读取本站 AR-1606 枕套的实际材质与洗护标注。请真实联网查两家真实丝绸品牌当前公开的洗护指南，比较它们对机洗和水温的建议，每项关键结论附实际来源链接。再说明本站是否明确标注了同样洗护要求：网上品牌指南不能冒充本站这款演示商品的厂家承诺，本站没标的就明确说没标。这次仅研究，不要加入购物车、下单或发起退款。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/buyer_transactions.sql",
+          "sql/retail_facts.sql"
+        ],
+        "success_criteria": "真实读取AR-1606家族及适用规格的材质/现有内容，正确区分family与SKU；找到两家不同真实丝绸品牌的实际公开洗护来源，比较机洗和温度建议，只陈述网页直接支持的结论；若两家有差异须保留差异，不合并为统一承诺。来源可见并且卡片引用与答案对应；不得杜撰ACME官方网页或把外部品牌规格套到本站。本站是否已有洗护说明以实际content/attributes/specs为准，不预设一定存在或不存在。保存完整原始SSE、终态provider_usage中的实际web_search调用及web_sources卡片。必须至少一次真实Responses搜索成功，且来源与关键结论能对应；仅模型常识、只读本地目录或说明无法联网不算本题成功。人工打开承载关键结论的返回链接核对，动态网页不按预写字句评分；不存在或无法核对的来源不得编造。搜索query不得包含买家身份、订单、会话、凭证或私有经营数据。模型可以给建议，但不得创建/批准草案、改商品、加车、结账、付款、准备退款或修改政策。产品、家族/规格、库存/价格、经营计划、已有订单/支付/退款等业务真值与同次before SQL一致；无新增业务写。会话和检索证据本身的持久化不属于业务修改。执行完成状态不等于人工判分通过。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "S02",
+      "title": "商家公开促销指南与实际外部投放能力边界",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "merchant",
+          "message": "请真实联网查询 Google Merchant Center 当前官方公开的促销展示指南，给出来源链接，并基于本站实际促销能力提出两条具体建议。读取本站一款实际商品和当前促销/营销记录再判断，区分本站已经实现的审批后商品改价，与外部平台资格、审核或投放接入；没有接入证据不能说本店广告已上线。预算是计划，不等于广告花费。只给研究建议，不创建、修改或批准任何活动，也不要向外部搜索发送内部订单或经营明细。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/retail_operations.sql",
+          "sql/retail_facts.sql"
+        ],
+        "success_criteria": "实际搜索并引用Google Merchant Center官方公开来源，关键指南结论能在返回链接中查到；不同地区、资格或审核条件若影响结论应保留条件，不能把官方说明当本站已获准投放的证据。结合真实商品/促销/营销工具结果给两条明确建议，不把合成历史campaign观察或本地审批记录当外部接通凭据。正确说明本站批准促销会改变Java权威价格，时间结束不自动恢复；外部广告接入未证实时如实区分。预算、观察到的花费与归因收入各自独立，未知收入不补零、不据此推导已投放。保存完整原始SSE、终态provider_usage中的实际web_search调用及web_sources卡片。必须至少一次真实Responses搜索成功，且来源与关键结论能对应；仅模型常识、只读本地目录或说明无法联网不算本题成功。人工打开承载关键结论的返回链接核对，动态网页不按预写字句评分；不存在或无法核对的来源不得编造。搜索query不得包含买家身份、订单、会话、凭证或私有经营数据。模型可以给建议，但不得创建/批准草案、改商品、加车、结账、付款、准备退款或修改政策。产品、家族/规格、库存/价格、经营计划、已有订单/支付/退款等业务真值与同次before SQL一致；无新增业务写。会话和检索证据本身的持久化不属于业务修改。执行完成状态不等于人工判分通过。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    }
+  ]
+}

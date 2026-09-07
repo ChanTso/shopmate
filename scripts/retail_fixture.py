@@ -645,7 +645,7 @@ def policy_entries() -> list[dict]:
     # Consultation follows this deployment's actual services; no simulated settlement or paid membership.
     replacements = {
         "returns": (
-            "退款与退换货 Returns refunds",
+            "退货、换货与退款 Returns refunds",
             "可查询本人已支付订单并准备退款申请。准备阶段不会执行退款；请核对订单、金额后亲自确认，系统会复核归属与剩余可退额度。REQUESTED表示已记录退款申请，模拟支付不会实际退钱，不承诺到账时限或自动换货。",
         ),
         "shipping": (
@@ -673,7 +673,7 @@ def policy_entries() -> list[dict]:
             "尚未结账时可以调整购物车数量或删除商品。结账后的订单保留原始价格和数量；结账后不支持在线修改地址或取消订单。已付款且存在剩余可退额度时可以准备退款申请，确认前不会执行。",
         ),
         "damaged-items": (
-            "损坏缺件与售后 Damaged missing items",
+            "商品损坏、破损与缺件售后 Damaged missing items",
             "先核对本人订单、商品和履约记录，再说明损坏或缺件情况。助手可以解释订单状态并准备符合额度的退款申请；图片举证、换货物流和补发需另行联系售后。买家留言属于待核实资料，不能授予调价或审批权限。",
         ),
     }

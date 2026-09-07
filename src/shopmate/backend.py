@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -74,6 +75,10 @@ class Period:
     @property
     def label(self) -> str:
         return f"{self.start.isoformat()}/{self.end.isoformat()}"
+
+    @property
+    def local_label(self) -> str:
+        return "/".join(value.astimezone(SHANGHAI).isoformat() for value in (self.start, self.end))
 
     def previous(self) -> Period:
         return Period(self.start - (self.end - self.start), self.start)
@@ -314,8 +319,8 @@ class CityBuddyMerchantBackend(MerchantBackend):
         conversion = now.orderCount * 100 / traffic if traffic else None
         prior_conversion = before.orderCount * 100 / prior_traffic if prior_traffic else None
         return BusinessSnapshot(
-            period=window.label,
-            compare_to=prior.label,
+            period=window.local_label,
+            compare_to=prior.local_label,
             sales=now.amountMinor / 100,
             orders=now.orderCount,
             units=now.units,
@@ -340,7 +345,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 pending_changes=pending_count,
             ),
             note=(
-                "上海日界；CNY退款前历史已支付金额。转化=付款子单数/店铺访问次数，非人数或checkout数；流量覆盖不完整则未知。"
+                "Asia/Shanghai；期间起点含、终点不含。CNY退款前历史已支付金额。转化=付款子单数/店铺访问次数，非人数或checkout数；流量覆盖不完整则未知。"
                 + ("前期超出历史覆盖，变化率未知。" if not prior_covered else "")
             ),
         )
@@ -371,7 +376,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             return MetricSeries(
                 metric=metric,
                 granularity=granularity,
-                period=window.label,
+                period=window.local_label,
                 segment=segment,
                 note="该期间超出固定90日历史覆盖，缺失不是零；请指定覆盖期内窗口。",
             )
@@ -400,7 +405,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     segment=segment,
                     note="仅有全店访问观察，没有商品、分类或其他币种的独立流量分母。",
                 )
@@ -409,14 +414,14 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     note="流量为上海自然日观察，无法为不足完整自然日的窗口分摊访问量。",
                 )
             if await self._traffic(window) is None:
                 return MetricSeries(
                     metric=metric,
                     granularity=granularity,
-                    period=window.label,
+                    period=window.local_label,
                     note="此窗口流量观察不完整，流量或转化未知；缺失不是零。",
                 )
             start, end = (
@@ -447,11 +452,11 @@ class CityBuddyMerchantBackend(MerchantBackend):
             query = f"SELECT {paid_bucket} AS bucket, {column} AS value FROM merchant_paid_orders WHERE {where} GROUP BY bucket ORDER BY bucket"
         table = await self.sql.query(query)
         note = (
-            "上海日界；转化=付款子单数/全店访问次数，零访问时未知。"
+            "Asia/Shanghai；期间起点含、终点不含。转化=付款子单数/全店访问次数，零访问时未知。"
             if metric == "conversion"
-            else "上海日界；访问量来自固定日期观察。"
+            else "Asia/Shanghai；期间起点含、终点不含。访问量来自固定日期观察。"
             if metric == "traffic"
-            else "上海日界；退款前历史付款金额；仅列有成交时间桶，未填补无记录日。"
+            else "Asia/Shanghai；期间起点含、终点不含。退款前历史付款金额；仅列有成交时间桶，未填补无记录日。"
         )
         return MetricSeries(
             metric=metric,
@@ -461,7 +466,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
             if metric == "conversion"
             else None,
             granularity=granularity,
-            period=window.label,
+            period=window.local_label,
             segment=segment,
             points=[
                 MetricPoint(
@@ -719,30 +724,46 @@ class CityBuddyMerchantBackend(MerchantBackend):
         await self._token(session, "merchant:read")
         return await self.sql.query(sql)
 
+    def _reporting_context(self, session):
+        reference = self._report_now(session)
+        labels = ("last_7_days", "last_14_days", "last_28_days", "last_30_days", "previous_14_days")
+        windows = {label: reporting_period(session, label, reference) for label in labels}
+        coverage = reporting_period(session, "last_90_days", reference)
+        return {
+            "report_as_of": reference.isoformat(),
+            "timezone": "Asia/Shanghai",
+            "default_period": windows["last_14_days"].local_label,
+            "periods_utc": {
+                label: window.label.replace("+00:00", "Z") for label, window in windows.items()
+            },
+            "fixture_coverage": {
+                "start": coverage.start.isoformat(),
+                "end": coverage.end.isoformat(),
+            }
+            if self.report_as_of
+            else None,
+        }
+
     async def get_analysis_schema(self, session):
         self._bound(session)
-        return SCHEMA
+        clock = json.dumps(self._reporting_context(session), ensure_ascii=False)
+        return clock + "\n\n" + SCHEMA
 
     async def get_merchant_context(self, session):
         self._bound(session)
-        report_now = self._report_now(session)
         return {
             "merchant": "CityBuddy",
             "operator": session.operator,
             "default_currency": "CNY",
-            "default_period": self._period(session).label,
-            "report_as_of": report_now.isoformat(),
+            **self._reporting_context(session),
             "operation_time": (session.local_now() or datetime.now(SHANGHAI))
             .astimezone(SHANGHAI)
             .isoformat(),
-            "timezone": "Asia/Shanghai",
-            "period_syntax": "相对报表期间以report_as_of为准，裸日期是上海午夜；带offset的ISO时间保留瞬间，左闭右开。促销今天/明天按operation_time。",
-            "fixture_coverage": {
-                "start": (self._period(session, "last_90_days").start.isoformat()),
-                "end": self._period(session, "last_90_days").end.isoformat(),
-            }
-            if self.report_as_of
-            else None,
+            "period_syntax": (
+                "相对报表期间按report_as_of，裸日期是上海午夜；offset时间保留瞬间、左闭右开。"
+                "促销今天/明天按operation_time。展示时将两端转换到声明时区；标结束不含就保留真实排除端点，"
+                "写最后已包含自然日则不得称该日不含。不可只改时区标签而保留原日期/时刻。"
+            ),
             "metrics": ["sales", "orders", "units", "traffic", "conversion", "aov"],
             "limitations": [
                 "退款前成交按历史付款；退款申请比例不是实物退货率。零基期变化率、未知成本或缺失流量不填零。",
@@ -751,6 +772,10 @@ class CityBuddyMerchantBackend(MerchantBackend):
                 "促销批准时实际改价，结束不自动恢复；营销计划保存不代表外部广告投放。模型不能批准。",
             ],
         }
+
+    async def get_recent_orders(self, session, limit=6):
+        token = await self._token(session, "merchant:read")
+        return await self.client.recent_orders(token, session.session_id, limit=limit)
 
     async def overview(self, session):
         drafts = await self._drafts(session)
@@ -773,8 +798,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
         changes = [
             presentation.change(row, session.operator).model_dump(mode="json") for row in drafts
         ]
-        token = await self._token(session, "merchant:read")
-        orders = await self.client.recent_orders(token, session.session_id, limit=6)
+        orders = await self.get_recent_orders(session)
         return {
             "snapshot": snapshot.model_dump(mode="json"),
             "window": {

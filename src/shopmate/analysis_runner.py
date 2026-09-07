@@ -58,9 +58,9 @@ class RetailAnalysisRunner(AnalysisRunner):
             tool.pop("cache_control", None)
         return with_tool_cache_control([*tools, PYTHON_TOOL])
 
-    async def _execute(self, context, name, tool_input, series_names):
+    async def _execute(self, context, name, tool_input, series_names, tables):
         if name != "execute_python":
-            return await super()._execute(context, name, tool_input, series_names)
+            return await super()._execute(context, name, tool_input, series_names, tables)
         try:
             request = PythonRequest.model_validate(tool_input)
         except ValidationError:

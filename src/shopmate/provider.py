@@ -141,7 +141,7 @@ def build_agent(
 
     from .analysis_runner import RetailAnalysisRunner
     from .backend import ShopMateConfig
-    from .merchant_executor import RetailMerchantExecutor
+    from .merchant_executor import RECENT_ORDERS_TOOL, RetailMerchantExecutor
     from .settings import ROOT
     from .web_search import WEB_SEARCH_TOOL
 
@@ -164,7 +164,7 @@ def build_agent(
         skills_dir=ROOT / "skills",
         memory_store=memory_store,
         executor_class=RetailMerchantExecutor,
-        extra_tools=[WEB_SEARCH_TOOL],
+        extra_tools=[WEB_SEARCH_TOOL, RECENT_ORDERS_TOOL],
         analysis_runner=RetailAnalysisRunner(
             client=provider.client, backend=backend, config=config, sandbox=sandbox
         ),
@@ -184,6 +184,11 @@ def build_buyer_agent(settings: Settings, backend, provider: Provider, *, memory
         assistant_name="买家购物助手",
         brand_voice="使用中文，清楚区分商品事实、个人偏好、配送估算和实际订单状态",
         domain_search_notes=(
+            "商品目录的名称、类别和规格主要是英文，商品搜索按关键词匹配，不会自动翻译或理解用途。"
+            "把用户的中文需求转成简短英文商品词，按每种用途分别检索；类别和属性筛选只用已读取的目录值。"
+            "无结果时先缩短或换同义商品词，不能仅凭中文查询为空就断言无商品；给用户的解释仍用中文。"
+            "政策检索按字面关键词匹配；多主题分别使用短词查询，例如退货、损坏、配送。"
+            "未命中时缩短主题词或使用同义词，不能根据一次空结果断言没有该政策。"
             "商品价格与库存以当前目录为准；多规格商品先选择具体规格。结账仅交接至用户确认页，"
             "配送报价仅供咨询，不计入商品支付金额。退款只准备确认卡片，不替用户确认。"
             "CNY 的展示价格 price、total 以元计；amount_minor 和所有以 Minor 结尾的金额字段以整数分计。"

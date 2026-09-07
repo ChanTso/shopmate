@@ -22,6 +22,7 @@ def compact_product(product: Product) -> dict[str, Any]:
         "product_id": product.product_id,
         "title": product.title,
         "brand": product.brand,
+        "category": product.category,
         "price": product.price,
         "currency": product.currency,
         "rating": product.rating,
@@ -71,9 +72,12 @@ def product_details_payload(details: ProductDetails) -> dict[str, Any]:
 
 
 SEARCH_EMPTY_HEADER = (
-    "Search returned 0 results: nothing in the catalog matched this query. Run the "
-    "broader retry before telling the customer it is not carried, and do not present a "
-    "different product as the requested one. Search matches product text, not ids; "
+    "Search returned 0 results for this query and its supplied filters. Retry a shorter "
+    "item query without category or attribute filters whose catalog values you guessed. "
+    "Keep the customer's budget and hard requirements; check returned product and variant "
+    "facts against those requirements and saved preferences before recommending. Broader "
+    "retrieval is not permission to present an unsuitable item as a match. Do not conclude "
+    "the item is not carried from a guessed filter. Search matches product text, not ids; "
     "resolve a product id with get_product_details."
 )
 

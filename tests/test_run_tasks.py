@@ -4,11 +4,14 @@ import importlib.util
 import io
 import json
 import socket
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 spec = importlib.util.spec_from_file_location(
     "run_tasks", Path(__file__).resolve().parents[1] / "scripts/run_tasks.py"
@@ -149,7 +152,8 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
 ):
     runtime = tmp_path / ".run"
     runtime.mkdir()
-    (runtime / "operator_password").write_text("private-login-password")
+    for account in driver.ACTORS.values():
+        (runtime / account["password"]).write_text("private-login-password")
     monkeypatch.setattr(driver, "ROOT", tmp_path)
     monkeypatch.setattr(driver, "verify_sources", lambda *_: None)
     monkeypatch.setattr(
@@ -157,22 +161,29 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
     )
     calls = []
     recovered = False
+    session_created = False
 
     def handle(request):
-        nonlocal recovered
+        nonlocal recovered, session_created
         path = request.url.path.rsplit("/", 1)[-1]
         calls.append((request.method, path))
         if path == "login":
             return httpx.Response(
                 200,
                 json={
-                    "subject": driver.SUBJECT,
+                    "subject": json.loads(request.content)["loginIdentifier"],
                     "accessToken": "private-user-token",
                 },
             )
         if path == "sessions":
-            return httpx.Response(200, json={"sessions": [{"status": "completed"}]})
+            items = (
+                [{"session_id": "new-session", "status": "completed"}]
+                if session_created and "/merchant/" in request.url.path
+                else []
+            )
+            return httpx.Response(200, json={"sessions": items})
         if path == "session" and request.method == "POST":
+            session_created = True
             return httpx.Response(200, json={"session_id": "new-session"})
         if path == "listings":
             return httpx.Response(200, json={"listings": []})
@@ -203,7 +214,9 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
         lambda **kwargs: client_type(**kwargs, transport=httpx.MockTransport(handle)),
     )
     monkeypatch.setattr(
-        driver, "snapshot", lambda _evidence, stage, _paths, _session: calls.append(("SQL", stage))
+        driver,
+        "snapshot",
+        lambda _evidence, stage, _paths, _session, _bindings=None: calls.append(("SQL", stage)),
     )
     evidence = driver.Evidence(
         tmp_path / "results",
@@ -226,7 +239,7 @@ def test_completed_turn_recovers_unknown_prepare_before_archival_or_retains_fixt
     if recovery_status == 200:
         assert result["execution_status"] == "executed"
         assert calls.index(("GET", "overview")) < calls.index(("GET", "session"))
-        saved = json.loads((evidence.path / "saved-session.json").read_text())
+        saved = json.loads((evidence.path / "merchant/saved-session.json").read_text())
         assert "recovered-draft" in saved["data"]["response_body"]
     else:
         assert result["execution_status"] == "failed"
@@ -428,6 +441,7 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
     class SlowProcess:
         pid = 123
         terminated = False
+        killed = False
 
         def poll(self):
             return None
@@ -435,7 +449,12 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
         def terminate(self):
             self.terminated = True
 
+        def kill(self):
+            self.killed = True
+
         def wait(self, timeout):
+            if self.killed:
+                return -9
             raise driver.subprocess.TimeoutExpired("owned test process", timeout)
 
     host = driver.OwnedHost(driver.Evidence(tmp_path, {}))
@@ -444,7 +463,7 @@ def test_owned_stop_timeout_retains_process_and_disallows_reset(tmp_path):
     with pytest.raises(driver.TaskFailure, match="no reset") as error:
         host.stop()
     assert error.value.unsafe is True
-    assert process.terminated and host.process is process
+    assert process.terminated and process.killed and host.process is process
 
 
 def test_remote_execution_is_rejected_before_runtime_settings(monkeypatch, capsys):
@@ -465,7 +484,8 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
 ):
     runtime = tmp_path / ".run"
     runtime.mkdir()
-    (runtime / "operator_password").write_text("test-password")
+    for account in driver.ACTORS.values():
+        (runtime / account["password"]).write_text("test-password")
     monkeypatch.setattr(driver, "ROOT", tmp_path)
     monkeypatch.setattr(driver, "verify_sources", lambda *_: None)
     calls = []
@@ -492,6 +512,18 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
     def handle(request):
         nonlocal logins, recovered
         path = request.url.path.rsplit("/", 1)[-1]
+        if "/buyer/" in request.url.path:
+            if path == "login":
+                return httpx.Response(
+                    200,
+                    json={
+                        "subject": json.loads(request.content)["loginIdentifier"],
+                        "accessToken": "test-buyer-token",
+                    },
+                )
+            if path == "sessions":
+                return httpx.Response(200, json={"sessions": []})
+            raise AssertionError("Unexpected buyer request in merchant-only task")
         if path == "login":
             logins += 1
             calls.append("login")
@@ -556,6 +588,111 @@ def test_owned_task_recovers_prior_session_then_stops_resets_restarts_and_reauth
         assert result["fixture_retained"] is True
         assert result["reset_completed"] is False
         assert calls == ["login", "recover"]
-    raw = (evidence.path / "pre-reset/overview-000.json").read_text()
+    raw = (evidence.path / "merchant/pre-reset/overview-000.json").read_text()
     assert '"path": "overview"' in raw
     assert "test-token" not in raw and "test-password" not in raw
+
+
+@pytest.fixture
+def timed_chat(tmp_path, monkeypatch):
+    clock = [1_000_000_000]
+    monkeypatch.setattr(driver.time, "monotonic_ns", lambda: clock[0])
+    evidence = driver.Evidence(tmp_path / "evidence", {"protocol_id": "timing-test"})
+
+    def execute(events, *, close_ms=80, connect_error=False):
+        class TimedStream(httpx.SyncByteStream):
+            def __iter__(self):
+                for milliseconds, value in events:
+                    clock[0] = 1_000_000_000 + milliseconds * 1_000_000
+                    if isinstance(value, Exception):
+                        raise value
+                    yield value
+
+            def close(self):
+                clock[0] = 1_000_000_000 + close_ms * 1_000_000
+
+        def handle(request):
+            assert request.method == "POST" and request.url.path == "/chat"
+            if connect_error:
+                raise httpx.ConnectError("connection unavailable")
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, stream=TimedStream()
+            )
+
+        with httpx.Client(base_url="http://test/", transport=httpx.MockTransport(handle)) as client:
+            return driver.chat(client, evidence, 1, "Read the current order")
+
+    def timing():
+        return json.loads((evidence.path / "step-01-chat-timing.json").read_text())["data"]
+
+    return execute, timing
+
+
+def test_chat_timing_uses_observed_content_final_ui_terminal_and_closed_response(timed_chat):
+    execute, timing = timed_chat
+    events = [
+        (5, b'event: text_delta\ndata: {"text":""}\n\n'),
+        (10, b'event: text_delta\ndata: {"text":"  "}\n\n'),
+        (15, b'event: ui_partial\ndata: {"component":"order_status","payload":{}}\n\n'),
+        (20, b'event: text_delta\ndata: {"text":"Ready"}\n\n'),
+        (30, b'event: ui\ndata: {"component":"order_status","payload":{}}\n\n'),
+        (40, b'event: text_delta\ndata: {"text":" now"}\n\n'),
+        (50, b'event: turn_complete\ndata: {"stop_reason":"end_turn"}\n\n'),
+    ]
+    result = execute(events, close_ms=65)
+    assert result["type"] == "turn_complete"
+    assert timing() == {
+        "clock": "monotonic_ns",
+        "start_monotonic_ns": 1_000_000_000,
+        "first_text_delta_ms": 20.0,
+        "first_ui_ms": 30.0,
+        "first_ui_component": "order_status",
+        "terminal_ms": 50.0,
+        "terminal_type": "turn_complete",
+        "stream_closed_ms": 65.0,
+    }
+
+
+@pytest.mark.parametrize("connect_error", [False, True])
+def test_chat_timing_preserves_partial_samples_and_unknown_transport_failure(
+    timed_chat, connect_error
+):
+    execute, timing = timed_chat
+    events = [
+        (12, b'event: text_delta\ndata: {"text":"Ready"}\n\n'),
+        (25, httpx.ReadError("connection lost")),
+    ]
+    with pytest.raises(driver.TaskFailure, match="transport failed") as raised:
+        execute(events, close_ms=30, connect_error=connect_error)
+    assert raised.value.unsafe is True
+    assert timing()["first_text_delta_ms"] == (None if connect_error else 12.0)
+    assert timing()["first_ui_ms"] is None
+    assert timing()["terminal_ms"] is None
+    assert timing()["stream_closed_ms"] == (None if connect_error else 30.0)
+
+
+@pytest.mark.parametrize(
+    ("events", "unsafe", "terminal_type"),
+    [
+        ([], True, None),
+        ([(10, b'event: error\ndata: {"message":"unavailable"}\n\n')], False, "error"),
+        (
+            [
+                (10, b'event: turn_complete\ndata: {"stop_reason":"end_turn"}\n\n'),
+                (15, b'event: text_delta\ndata: {"text":"too late"}\n\n'),
+            ],
+            True,
+            "turn_complete",
+        ),
+    ],
+)
+def test_chat_timing_does_not_relax_terminal_failures(timed_chat, events, unsafe, terminal_type):
+    execute, timing = timed_chat
+    with pytest.raises(driver.TaskFailure) as raised:
+        execute(events, close_ms=20)
+    assert raised.value.unsafe is unsafe
+    assert timing()["terminal_type"] == terminal_type
+    assert timing()["terminal_ms"] == (10.0 if terminal_type else None)
+    assert timing()["first_text_delta_ms"] is None
+    assert timing()["first_ui_ms"] is None
+    assert timing()["stream_closed_ms"] == 20.0

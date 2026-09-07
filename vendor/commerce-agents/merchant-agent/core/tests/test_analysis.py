@@ -312,3 +312,30 @@ def test_forbidden_sql_blocks_select_into_variants():
     assert check_analysis_sql("SELECT * INTO new_table FROM listings") is not None
     assert check_analysis_sql("SELECT title FROM listings INTO OUTFILE '/tmp/x'") is not None
     assert check_analysis_sql("SELECT title, stock FROM listings WHERE stock < 5") is None
+
+
+def test_complete_table_survives_result_caps_and_is_not_repeated_to_main_model():
+    rows = [[f"sku-{index}", f"商品 {index}", index * 100, "CNY", None]
+            for index in range(1, 88)]
+    table = AnalysisTable(
+        columns=["sku", "name", "price_minor", "currency", "unknown"],
+        rows=rows, row_count=87,
+    )
+    result = AnalysisResult(
+        question="List every product", headline="87 products", findings=["x" * 500],
+        table=table,
+    )
+    state = MerchantSessionState()
+    state.remember_analysis(result)
+    restored = MerchantSessionState.model_validate_json(state.model_dump_json())
+    saved = restored.seen_analyses[result.analysis_id]
+    payload = derive_metrics_payload(saved)
+    assert len(saved.findings[0]) == 300
+    assert payload["analysis"]["table"]["rows"] == rows
+    assert payload["analysis"]["table"]["rows"][-2:] == rows[-2:]
+    assert payload["analysis"]["table"]["row_count"] == 87
+    summary = summarize_result_for_model(saved)
+    assert summary["table"] == {"columns": table.columns, "row_count": 87}
+    assert "sku-87" not in json.dumps(summary)
+    assert not restored.seen_listings and not restored.read_listings
+    assert not restored.seen_campaigns

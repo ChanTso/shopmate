@@ -263,6 +263,13 @@ export interface MetricsPayload {
     findings: string[];
     caveats: string[];
     method_note?: string | null;
+    table?: {
+      columns: string[];
+      rows: unknown[][];
+      row_count: number;
+      truncated: boolean;
+      note?: string | null;
+    };
   };
 }
 

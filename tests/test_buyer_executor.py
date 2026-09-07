@@ -151,3 +151,95 @@ async def test_refund_tool_does_not_coerce_noninteger_model_amounts(amount_minor
     )
     assert outcome.is_error and not outcome.events
     prepare.assert_not_awaited()
+
+
+@pytest.mark.parametrize("category", ["home-kitchen", None])
+async def test_catalog_category_reaches_actual_host_search_and_detail_tools(tmp_path, category):
+    import json
+
+    from shopping_agent.fencing import STOREFRONT_FENCE
+
+    from shopmate.buyer_client import RetailProduct
+
+    store = SessionStore(tmp_path / "category.sqlite3")
+    try:
+        client = Client()
+        source = client.products_by_id["AR-1001"].model_dump()
+        source["content"]["category"] = category
+        client.products_by_id["AR-1001"] = RetailProduct.model_validate(source)
+        backend = CityBuddyStorefrontBackend(Auth(), store, client, BuyerCommands(store))
+        session = ShoppingSessionContext(session_id="category-session", user_id="buyer")
+        state = ShoppingSessionState()
+        executor = BuyerToolExecutor(
+            backend=backend,
+            config=ShoppingAgentConfig(),
+            skills=SkillRegistry([]),
+            session=session,
+            state=state,
+        )
+        with bind_context(RequestIdentity("buyer", "token"), session.session_id, role="buyer"):
+            search = await executor.execute("search_products", {"query": "coffee"})
+            detail = await executor.execute("get_product_details", {"product_id": "AR-1001"})
+        payloads = []
+        for outcome in (search, detail):
+            assert not outcome.is_error
+            fenced = outcome.result_text.split(STOREFRONT_FENCE.open, 1)[1]
+            payloads.append(json.loads(fenced.rsplit(STOREFRONT_FENCE.close, 1)[0]))
+        for product in (payloads[0]["results"][0], payloads[1]):
+            if category is None:
+                assert "category" not in product
+            else:
+                assert product["category"] == source["content"]["category"]
+        assert state.seen_products["AR-1001"].category == category
+        assert len(client.reads) == 2 and not client.writes
+    finally:
+        store.close()
+
+
+async def test_empty_category_search_explains_retry_without_hidden_filter_relaxation(tmp_path):
+    class FilteredClient(Client):
+        async def search_products(self, token, body):
+            self.reads.append(("search", dict(body), token))
+            return [] if body["category"] else list(self.products_by_id.values())
+
+    store = SessionStore(tmp_path / "empty-category.sqlite3")
+    try:
+        client = FilteredClient()
+        backend = CityBuddyStorefrontBackend(Auth(), store, client, BuyerCommands(store))
+        session = ShoppingSessionContext(session_id="empty-category-session", user_id="buyer")
+        state = ShoppingSessionState()
+        executor = BuyerToolExecutor(
+            backend=backend,
+            config=ShoppingAgentConfig(),
+            skills=SkillRegistry([]),
+            session=session,
+            state=state,
+        )
+        with bind_context(RequestIdentity("buyer", "token"), session.session_id, role="buyer"):
+            empty = await executor.execute(
+                "search_products",
+                {
+                    "query": "coffee",
+                    "filters": {
+                        "category": "unobserved-product-type",
+                        "max_price": 80,
+                        "min_rating": 4,
+                    },
+                },
+            )
+            assert not empty.is_error and not state.seen_products
+            assert '"result_count": 0' in empty.result_text
+            assert "whose catalog values you guessed" in empty.result_text
+            assert "Keep the customer's budget and hard requirements" in empty.result_text
+            assert len(client.reads) == 1
+            retry = await executor.execute(
+                "search_products",
+                {"query": "coffee", "filters": {"max_price": 80, "min_rating": 4}},
+            )
+        assert not retry.is_error and '"result_count": 1' in retry.result_text
+        assert [read[1]["category"] for read in client.reads] == ["unobserved-product-type", None]
+        assert all(read[1]["maxPriceMinor"] == 8000 for read in client.reads)
+        assert all(read[1]["minRating"] == 4 for read in client.reads)
+        assert state.seen_products["AR-1001"].price == 79 and not client.writes
+    finally:
+        store.close()

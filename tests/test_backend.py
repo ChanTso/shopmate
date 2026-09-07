@@ -405,6 +405,50 @@ async def test_snapshot_does_not_sum_currencies_or_invent_unknown_metrics(rig):
         await rig.backend.query_metrics(rig.session, "profit")
 
 
+@pytest.mark.parametrize(
+    ("as_of", "period", "local_label"),
+    [
+        (
+            "2026-09-05T00:00:00+08:00",
+            "last_14_days",
+            "2026-08-22T00:00:00+08:00/2026-09-05T00:00:00+08:00",
+        ),
+        (
+            "2027-01-05T00:00:00+08:00",
+            "last_month",
+            "2026-12-01T00:00:00+08:00/2027-01-01T00:00:00+08:00",
+        ),
+        (
+            "2026-09-05T00:00:00+08:00",
+            "2026-08-21T20:15:00-04:00/2026-08-22T22:45:00-04:00",
+            "2026-08-22T08:15:00+08:00/2026-08-23T10:45:00+08:00",
+        ),
+    ],
+)
+async def test_snapshot_and_series_display_local_bounds_without_changing_query_instants(
+    rig, as_of, period, local_label
+):
+    rig.backend.report_as_of = datetime.fromisoformat(as_of)
+    rig.client.summary = AsyncMock(wraps=rig.client.summary)
+
+    snapshot = await rig.backend.get_business_snapshot(rig.session, period)
+    assert snapshot.period == local_label
+    start, end = (datetime.fromisoformat(value) for value in snapshot.period.split("/"))
+    current, previous = rig.client.summary.await_args_list
+    assert current.args[:2] == (start, end)
+    assert current.args[0].tzinfo == UTC and current.args[1].tzinfo == UTC
+    assert tuple(datetime.fromisoformat(value) for value in snapshot.compare_to.split("/")) == (
+        start - (end - start),
+        start,
+    )
+    assert previous.args[:2] == (start - (end - start), start)
+
+    series = await rig.backend.query_metrics(rig.session, "sales", period)
+    assert series.period == local_label
+    assert f"succeeded_at >= '{start.astimezone(UTC):%Y-%m-%d %H:%M:%S.%f}'" in rig.sql.calls[-1]
+    assert f"succeeded_at < '{end.astimezone(UTC):%Y-%m-%d %H:%M:%S.%f}'" in rig.sql.calls[-1]
+
+
 async def test_catalog_name_lookup_omits_filters_and_supported_filters_remain_effective(rig):
     tool = next(t for t in build_tools(ShopMateConfig(), []) if t["name"] == "search_listings")
     schema = tool["input_schema"]
@@ -567,6 +611,10 @@ async def test_overview_uses_one_alert_read_and_distinct_real_metric_series(rig)
         )
     }
     assert result["trends_prior"]["sales"] == [{"date": "2026-08-08", "value": 1956}]
+    assert result["snapshot"]["period"] == ("2026-08-22T00:00:00+08:00/2026-09-05T00:00:00+08:00")
+    assert tuple(
+        datetime.fromisoformat(value) for value in result["snapshot"]["period"].split("/")
+    ) == tuple(datetime.fromisoformat(result["window"][key]) for key in ("start", "end"))
     assert result["prior_window"]["end"] == result["window"]["start"]
     assert datetime.fromisoformat(result["window"]["end"]) == datetime(2026, 9, 4, 16, tzinfo=UTC)
     assert result["recent_orders"][0]["createdAt"].startswith("2026-09-08")
@@ -587,3 +635,58 @@ async def test_overview_keeps_capped_issue_counts_unknown_and_propagates_order_r
     )
     with pytest.raises(CommerceError, match="Invalid order response"):
         await rig.backend.overview(rig.session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operator", ["operator", "x" * 128])
+async def test_reporting_clock_reaches_main_and_analysis_within_context_cap(operator):
+    import json
+
+    from merchant_agent.prompt import build_dynamic_context
+    from merchant_agent_runtime.analysis import AnalysisRunner
+
+    session = MerchantSessionContext(
+        session_id="reporting-clock-session",
+        merchant_id="citybuddy",
+        operator=operator,
+        now=datetime(2026, 9, 7, 5, 37, tzinfo=UTC),
+    )
+    backend = CityBuddyMerchantBackend(
+        Auth(),
+        None,
+        Client(),
+        SQL(),
+        report_as_of=datetime(2026, 9, 5, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    config = ShopMateConfig()
+    with bind_context(RequestIdentity(operator, "unit-test-only"), session.session_id):
+        context = await backend.get_merchant_context(session)
+        schema = await backend.get_analysis_schema(session)
+        runner = AnalysisRunner(client=object(), backend=backend, config=config)
+        brief = await runner._task_brief(
+            session,
+            {"question": "Last 30 complete Shanghai days by product", "period": "last_30_days"},
+        )
+    clock = json.loads(schema.split("\n\n", 1)[0])
+    for key, value in clock.items():
+        assert context[key] == value
+    assert clock["periods_utc"]["last_30_days"] == "2026-08-05T16:00:00Z/2026-09-04T16:00:00Z"
+    assert clock["periods_utc"]["last_14_days"] == "2026-08-21T16:00:00Z/2026-09-04T16:00:00Z"
+    assert clock["periods_utc"]["previous_14_days"] == "2026-08-07T16:00:00Z/2026-08-21T16:00:00Z"
+    assert clock["periods_utc"]["last_7_days"] == "2026-08-28T16:00:00Z/2026-09-04T16:00:00Z"
+    assert context["operation_time"] == "2026-09-07T13:37:00+08:00"
+    assert clock["report_as_of"] == "2026-09-05T00:00:00+08:00"
+    assert clock["default_period"] == ("2026-08-22T00:00:00+08:00/2026-09-05T00:00:00+08:00")
+    assert len(json.dumps(context, ensure_ascii=False)) <= config.max_context_chars
+    rendered = build_dynamic_context(
+        merchant_context=context,
+        memory_facts=[],
+        now=session.local_now(),
+        merchant_context_max_chars=config.max_context_chars,
+    )
+    assert "merchant context omitted" not in rendered
+    for value in [context["operation_time"], clock["report_as_of"], *clock["periods_utc"].values()]:
+        assert value in rendered
+    assert clock["report_as_of"] in brief
+    assert clock["periods_utc"]["last_30_days"] in brief
+    assert "[truncated]" not in brief

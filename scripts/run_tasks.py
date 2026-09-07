@@ -9,15 +9,20 @@ import copy
 import fcntl
 import json
 import os
+import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
 from collections.abc import Iterable, Iterator
-from datetime import UTC, datetime
+from contextlib import ExitStack
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import quote, urlsplit
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 import pymysql
@@ -27,6 +32,15 @@ from shopmate.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
 SUBJECT = "shopmate-fixture-operator"
+ACTORS = {
+    "merchant": {"role": "merchant", "subject": SUBJECT, "password": "operator_password"},
+    "buyer": {"role": "buyer", "subject": "shopmate-retail-buyer", "password": "buyer_1_password"},
+    "buyer2": {
+        "role": "buyer",
+        "subject": "shopmate-retail-buyer-2",
+        "password": "buyer_2_password",
+    },
+}
 COMMON_SQL = ("products.sql", "history.sql", "scope.sql", "drafts.sql", "events.sql")
 LOCAL_API = "http://127.0.0.1:8101/api/merchant"
 HOST_TIMEOUT_S = 30
@@ -207,7 +221,29 @@ def item_prices(items: Any) -> dict[str, int]:
 def unique_draft(receipts: list[dict], match: dict) -> str:
     """Only the explicit operator step authorizes currency and the complete target-price set."""
     if match.get("kind", "PRICE_UPDATE") != "PRICE_UPDATE":
-        raise TaskFailure("This operator protocol only authorizes PRICE_UPDATE")
+        from retail_approval import matches_retail_payload
+
+        if "payload" not in match:
+            raise TaskFailure("This operator protocol only authorizes complete retail payloads")
+        candidates, seen = set(), set()
+        for value in receipts:
+            identifier = receipt_id(value)
+            if identifier in seen:
+                raise TaskFailure("Duplicate authoritative change ID")
+            seen.add(identifier)
+            if value.get("kind") != match["kind"] or value.get("state") != "PREPARED":
+                continue
+            try:
+                exact = matches_retail_payload(
+                    match["kind"], value.get("payload"), match["payload"]
+                )
+            except ValueError as error:
+                raise TaskFailure("Invalid retail approval intent: " + str(error)) from error
+            if match.get("state") == "PREPARED" and exact:
+                candidates.add(identifier)
+        if len(candidates) != 1:
+            raise TaskFailure("No unique exact draft match; no operator write attempted")
+        return candidates.pop()
     wanted = item_prices(match["items"])
     candidates: set[str] = set()
     seen: set[str] = set()
@@ -244,9 +280,24 @@ def provider_failure(data: dict) -> bool:
 
 
 class Evidence:
-    def __init__(self, path: Path, metadata: dict):
-        self.path, self.metadata = path, metadata
+    def __init__(self, path: Path, metadata: dict, *, write_marker: Path | None = None):
+        self.path, self.metadata, self.write_marker = path, metadata, write_marker
         path.mkdir(parents=True, exist_ok=True)
+
+    def begin_write(self, method: str, path: str) -> None:
+        if self.write_marker is None:
+            return
+        try:
+            with self.write_marker.open("x") as stream:
+                json.dump({"evidence": str(self.path), "method": method, "path": path}, stream)
+        except FileExistsError as error:
+            raise TaskFailure(
+                "An earlier evaluation write is unresolved; fixture retained", unsafe=True
+            ) from error
+
+    def finish_write(self) -> None:
+        if self.write_marker is not None:
+            self.write_marker.unlink()
 
     def json(self, name: str, data: Any) -> None:
         target = self.path / name
@@ -356,8 +407,11 @@ class OwnedHost:
         try:
             code = process.wait(timeout=HOST_TIMEOUT_S)
         except subprocess.TimeoutExpired as error:
+            process.kill()
+            process.wait(timeout=5)
             raise TaskFailure(
-                "Owned API did not stop; no reset is allowed and fixture is retained", unsafe=True
+                "Owned API required forced shutdown; no reset is allowed and fixture is retained",
+                unsafe=True,
             ) from error
         self.evidence.json(
             f"host/api-{self.generation:02d}-stop.json",
@@ -376,15 +430,19 @@ class OwnedHost:
         self.require_stopped()
 
 
-def authenticate(client: httpx.Client) -> None:
+def authenticate(client: httpx.Client, actor: str = "merchant") -> None:
     # Neither the login response nor an Authorization header enters an evidence file.
     client.headers.pop("Authorization", None)
-    password = (ROOT / ".run/operator_password").read_text().strip()
-    response = client.post("login", json={"loginIdentifier": SUBJECT, "password": password})
+    client.headers.pop("X-Session-Id", None)
+    account = ACTORS[actor]
+    password = (ROOT / ".run" / account["password"]).read_text().strip()
+    response = client.post(
+        "login", json={"loginIdentifier": account["subject"], "password": password}
+    )
     if not response.is_success:
         raise TaskFailure(f"Login HTTP {response.status_code}", unsafe=True)
     login = response.json()
-    if login.get("subject") != SUBJECT or not isinstance(login.get("accessToken"), str):
+    if login.get("subject") != account["subject"] or not isinstance(login.get("accessToken"), str):
         raise TaskFailure("Login returned an unexpected identity", unsafe=True)
     client.headers["Authorization"] = "Bearer " + login["accessToken"]
 
@@ -419,7 +477,9 @@ def recover_before_reset(client: httpx.Client, evidence: Evidence, sessions: lis
         client.headers.pop("X-Session-Id", None)
 
 
-def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str) -> dict:
+def snapshot(
+    evidence: Evidence, stage: str, paths: list[Path], session_id: str, bindings: dict | None = None
+) -> dict:
     results: dict[str, list[dict]] = {}
     config = json.loads((ROOT / ".run/truth-settings.json").read_text())
     with (
@@ -438,6 +498,10 @@ def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str)
         connection.cursor() as cursor,
     ):
         cursor.execute("SET @session_id=%s", (session_id,))
+        for actor in ("merchant", "buyer", "buyer2"):
+            for field in ("subject", "session_id", "checkout_id", "order_id", "pending_action_id"):
+                name = actor + "_" + field
+                cursor.execute("SET @" + name + "=%s", ((bindings or {}).get(name),))
         for path in paths:
             results[path.stem] = []
             source = path.read_text()
@@ -462,6 +526,38 @@ def snapshot(evidence: Evidence, stage: str, paths: list[Path], session_id: str)
     return results
 
 
+def definitive_rejection(response: httpx.Response) -> bool:
+    if response.status_code not in (400, 401, 403, 404, 409, 422):
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    detail = body.get("detail", body)
+    category = body.get("category")
+    if category is None and isinstance(detail, dict):
+        category = detail.get("category")
+    if category is None and isinstance(detail, str):
+        # FastAPI's local validation/identity/not-found denials precede the business write.
+        return response.status_code in (400, 401, 403, 404, 422)
+    return category in {
+        "INVALID_REQUEST",
+        "NOT_FOUND",
+        "AUTHENTICATION",
+        "AUTHORIZATION",
+        "IDEMPOTENCY_CONFLICT",
+        "VERSION_CONFLICT",
+        "QUANTITY_LIMIT",
+        "CART_LIMIT",
+        "NOT_ORDERABLE",
+        "CURRENCY_CONFLICT",
+        "AMOUNT_LIMIT",
+        "DRAFT_NOT_PREPARED",
+    }
+
+
 def request_json(
     client: httpx.Client,
     evidence: Evidence,
@@ -472,6 +568,16 @@ def request_json(
     body: dict | None = None,
     write: bool = False,
 ) -> dict:
+    evidence.json(
+        name.removesuffix(".json") + "-request.json",
+        {
+            "method": method,
+            "path": path,
+            "body": body,
+        },
+    )
+    if write:
+        evidence.begin_write(method, path)
     try:
         response = client.request(method, path, json=body)
     except httpx.HTTPError as error:
@@ -487,9 +593,11 @@ def request_json(
         },
     )
     if not response.is_success:
+        known = definitive_rejection(response)
+        if write and known:
+            evidence.finish_write()
         raise TaskFailure(
-            f"HTTP {response.status_code}: {method} {path}",
-            unsafe=write and response.status_code >= 500,
+            f"HTTP {response.status_code}: {method} {path}", unsafe=write and not known
         )
     try:
         result = response.json()
@@ -497,6 +605,8 @@ def request_json(
         raise TaskFailure(f"Invalid HTTP JSON: {method} {path}", unsafe=write) from error
     if not isinstance(result, dict):
         raise TaskFailure(f"Expected HTTP object: {method} {path}", unsafe=write)
+    if write:
+        evidence.finish_write()
     return result
 
 
@@ -521,6 +631,18 @@ def wait_quiet(client: httpx.Client, evidence: Evidence, name: str) -> list[dict
 def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) -> dict:
     evidence.json(f"step-{number:02d}-chat-request.json", {"message": message})
     terminal = None
+    events = []
+    timing = {
+        "clock": "monotonic_ns",
+        "start_monotonic_ns": time.monotonic_ns(),
+        "first_text_delta_ms": None,
+        "first_ui_ms": None,
+        "first_ui_component": None,
+        "terminal_ms": None,
+        "terminal_type": None,
+        "stream_closed_ms": None,
+    }
+    response = None
     try:
         with client.stream("POST", "chat", json={"message": message}) as response:
             evidence.json(
@@ -538,10 +660,27 @@ def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) ->
                     raise TaskFailure(f"Chat HTTP {response.status_code}")
                 try:
                     for event in iter_sse(response.iter_bytes(), stream):
+                        events.append(event)
                         if terminal is not None:
                             raise TaskFailure("SSE event received after terminal event")
+                        elapsed_ms = (
+                            time.monotonic_ns() - timing["start_monotonic_ns"]
+                        ) / 1_000_000
+                        text = event["data"].get("text")
+                        if (
+                            event["type"] == "text_delta"
+                            and isinstance(text, str)
+                            and text.strip()
+                            and timing["first_text_delta_ms"] is None
+                        ):
+                            timing["first_text_delta_ms"] = elapsed_ms
+                        if event["type"] == "ui" and timing["first_ui_ms"] is None:
+                            timing["first_ui_ms"] = elapsed_ms
+                            timing["first_ui_component"] = event["data"].get("component")
                         if event["type"] in {"turn_complete", "error"}:
                             terminal = event
+                            timing["terminal_ms"] = elapsed_ms
+                            timing["terminal_type"] = event["type"]
                 except TaskFailure as error:
                     error.unsafe = True
                     raise
@@ -549,12 +688,18 @@ def chat(client: httpx.Client, evidence: Evidence, number: int, message: str) ->
         raise TaskFailure(
             "Chat HTTP transport failed; turn outcome is unknown", unsafe=True
         ) from error
+    finally:
+        if response is not None and response.is_closed:
+            timing["stream_closed_ms"] = (
+                time.monotonic_ns() - timing["start_monotonic_ns"]
+            ) / 1_000_000
+        evidence.json(f"step-{number:02d}-chat-timing.json", timing)
     if terminal is None:
         raise TaskFailure("SSE closed without a terminal event", unsafe=True)
     evidence.json(f"step-{number:02d}-terminal.json", terminal)
     if terminal["type"] == "error":
         raise TaskFailure("Host reported turn failure", provider=provider_failure(terminal["data"]))
-    return terminal
+    return terminal | {"events": events}
 
 
 def operator(
@@ -564,8 +709,9 @@ def operator(
     step: dict,
     sql_paths: list[Path],
     session_id: str,
+    bindings: dict | None = None,
 ) -> None:
-    snapshot(evidence, f"step-{number:02d}-before", sql_paths, session_id)
+    snapshot(evidence, f"step-{number:02d}-before", sql_paths, session_id, bindings)
     overview = request_json(
         client,
         evidence,
@@ -601,38 +747,243 @@ def operator(
         write=True,
     )
     request_json(client, evidence, f"step-{number:02d}-receipt.json", "GET", path)
-    snapshot(evidence, f"step-{number:02d}-after", sql_paths, session_id)
+    snapshot(evidence, f"step-{number:02d}-after", sql_paths, session_id, bindings)
     if result.get("ok") is not True:
         raise TaskFailure("Operator endpoint did not accept the requested action")
 
 
-def run_task(
-    task: dict,
-    suite: dict,
-    evidence: Evidence,
-    settings: Settings,
-    api: str,
-    *,
-    host: OwnedHost | None = None,
-) -> dict:
-    record = {"execution_status": "failed", "started_at": now(), "session_id": None}
-    session_id = None
-    reset_done = False
-    failure: TaskFailure | None = None
-    unknown: BaseException | None = None
-    paths = task_sql_paths(task, suite)
-    with httpx.Client(
-        base_url=api.rstrip("/") + "/",
-        follow_redirects=False,
-        trust_env=False,
-        timeout=httpx.Timeout(settings.task_timeout_s + 30, connect=10),
-    ) as client:
+def buyer_session_quiet(value: dict) -> None:
+    if value.get("run_status") not in {"idle", "completed", "failed", "interrupted"}:
+        raise TaskFailure("Buyer session is not terminal; fixture retained", unsafe=True)
+    commands = value.get("commands")
+    if not isinstance(commands, list) or any(
+        c.get("state") not in {"confirmed", "rejected"} for c in commands
+    ):
+        raise TaskFailure("Buyer command outcome is unknown; fixture retained", unsafe=True)
+
+
+def recover_actor(client, evidence, sessions, actor):
+    if ACTORS[actor]["role"] == "merchant":
+        recover_before_reset(client, evidence, sessions)
+        return
+    try:
+        for index, session in enumerate(sessions):
+            client.headers["X-Session-Id"] = session["session_id"]
+            state = request_json(
+                client, evidence, f"pre-reset/session-{index:03d}.json", "GET", "session"
+            )
+            buyer_session_quiet(state)
+            commands = request_json(
+                client, evidence, f"pre-reset/commands-{index:03d}.json", "GET", "commands"
+            )
+            if any(c.get("state") not in {"confirmed", "rejected"} for c in commands["commands"]):
+                raise TaskFailure(
+                    "Buyer command could not recover by its original key", unsafe=True
+                )
+            request_json(
+                client, evidence, f"pre-reset/checkouts-{index:03d}.json", "GET", "checkouts"
+            )
+            request_json(client, evidence, f"pre-reset/actions-{index:03d}.json", "GET", "actions")
+        wait_quiet(client, evidence, "pre-reset/sessions-after-recovery.json")
+    finally:
+        client.headers.pop("X-Session-Id", None)
+
+
+def local_reset_preflight(settings, covered):
+    """Check exactly the sessions R0 deletes, after stopping the only API writer."""
+    path = Path(getattr(settings, "state_path", ROOT / ".run/sessions.sqlite3"))
+    if not path.exists():
+        return
+    from retail_fixture import fixture_owners
+
+    owners = fixture_owners()
+    slots = ",".join("?" for _ in owners)
+    with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
+        rows = db.execute(
+            f"SELECT id,owner,role,status FROM sessions WHERE owner IN ({slots})", owners
+        ).fetchall()
+        if any(
+            (owner, role, identifier) not in covered or status == "running"
+            for identifier, owner, role, status in rows
+        ):
+            raise TaskFailure(
+                "R0 includes a session not inspected through its actual identity", unsafe=True
+            )
+        unknown = db.execute(
+            f"SELECT COUNT(*) FROM buyer_commands c JOIN sessions s ON s.id=c.session_id "
+            f"WHERE s.owner IN ({slots}) AND c.result IS NULL AND c.rejection IS NULL",
+            owners,
+        ).fetchone()[0]
+        intents = db.execute(
+            f"SELECT COUNT(*) FROM prepare_intents p JOIN sessions s ON s.id=p.session_id "
+            f"WHERE s.owner IN ({slots}) AND p.draft_id IS NULL AND p.rejection IS NULL",
+            owners,
+        ).fetchone()[0]
+        if unknown or intents:
+            raise TaskFailure("Unresolved durable prepare/write exists before R0", unsafe=True)
+
+
+def replace_bindings(value, bindings):
+    if isinstance(value, str):
+        for name, replacement in bindings.items():
+            value = value.replace("{" + name + "}", str(replacement))
+        return value
+    if isinstance(value, dict):
+        return {key: replace_bindings(item, bindings) for key, item in value.items()}
+    if isinstance(value, list):
+        return [replace_bindings(item, bindings) for item in value]
+    return value
+
+
+def buyer_step(client, evidence, number, step, actor, state, events, bindings):
+    from retail_buyer_steps import checkout_body, select_refund_card
+
+    prefix = f"step-{number:02d}"
+    kind = step["kind"]
+    if kind == "buyer_checkout":
+        quoted = request_json(client, evidence, prefix + "-cart.json", "GET", "cart")
         try:
-            authenticate(client)
-            sessions = wait_quiet(client, evidence, "sessions-before-reset.json")
+            body = checkout_body(quoted["quote"], step["expected"], "evaluation-" + uuid4().hex)
+        except ValueError as error:
+            raise TaskFailure(
+                "Cart does not match the authorized checkout: " + str(error)
+            ) from error
+        result = request_json(
+            client, evidence, prefix + "-checkout.json", "POST", "checkouts", body=body, write=True
+        )
+        checkout = result["checkout"]
+        if (
+            checkout["sourceCartVersion"] != body["expectedCartVersion"]
+            or checkout["currency"] != body["currency"]
+            or checkout["totalMinor"] != quoted["quote"]["subtotalMinor"]
+        ):
+            raise TaskFailure("Checkout response differs from its authorized quote", unsafe=True)
+        state["checkout_id"] = checkout["checkoutId"]
+        state["orders"] = {
+            item["product"]["productId"]: item["orderId"] for item in checkout["orders"]
+        }
+        expected = {item["productId"] for item in step["expected"]["items"]}
+        if set(state["orders"]) != expected or len(checkout["orders"]) != len(expected):
+            raise TaskFailure(
+                "Checkout did not return exactly the authorized SKU orders", unsafe=True
+            )
+        bindings[actor + "_checkout_id"] = state["checkout_id"]
+        if step.get("refund_product_id"):
+            bindings[actor + "_order_id"] = state["orders"][step["refund_product_id"]]
+        request_json(client, evidence, prefix + "-cart-after.json", "GET", "cart")
+    elif kind == "buyer_pay":
+        identifier = state["checkout_id"]
+        result = request_json(
+            client,
+            evidence,
+            prefix + "-payment.json",
+            "POST",
+            "checkouts/" + quote(identifier, safe="") + "/pay",
+            body={},
+            write=True,
+        )
+        checkout = result["checkout"]
+        if checkout["checkoutId"] != identifier or checkout["paymentStatus"] != "PAID":
+            raise TaskFailure("The known checkout was not fully paid", unsafe=True)
+        request_json(
+            client,
+            evidence,
+            prefix + "-paid-checkout.json",
+            "GET",
+            "checkouts/" + quote(identifier, safe=""),
+        )
+        request_json(client, evidence, prefix + "-orders.json", "GET", "orders")
+    elif kind == "buyer_refund_confirm":
+        try:
+            action = select_refund_card(
+                events, step["expected"], ACTORS[actor]["subject"], client.headers["X-Session-Id"]
+            )
+        except ValueError as error:
+            raise TaskFailure(
+                "Refund card does not match the customer's authorization: " + str(error)
+            ) from error
+        identifier = action["pendingActionId"]
+        bindings[actor + "_pending_action_id"] = identifier
+        path = "actions/" + quote(identifier, safe="") + "/confirm"
+        first = request_json(
+            client, evidence, prefix + "-refund.json", "POST", path, body={}, write=True
+        )["receipt"]
+        if (
+            first["pendingActionId"] != identifier
+            or first["orderId"] != action["orderId"]
+            or first["amountMinor"] != action["amountMinor"]
+            or first["currency"] != action["currency"]
+            or first["status"] != "REQUESTED"
+        ):
+            raise TaskFailure("Refund receipt does not match the confirmed card", unsafe=True)
+        if step.get("repeat"):
+            second = request_json(
+                client, evidence, prefix + "-refund-replay.json", "POST", path, body={}, write=True
+            )["receipt"]
+            if (
+                first["receiptId"] != second["receiptId"]
+                or first["refundId"] != second["refundId"]
+                or second["replayed"] is not True
+            ):
+                raise TaskFailure(
+                    "Repeated confirmation did not replay the original receipt", unsafe=True
+                )
+        request_json(client, evidence, prefix + "-actions.json", "GET", "actions")
+    else:
+        raise ValueError("Unsupported buyer action")
+
+
+def run_task(task, suite, evidence, settings, api, *, host=None):
+    record = {"execution_status": "failed", "started_at": now(), "session_id": None, "sessions": {}}
+    sessions, states, events = {}, {}, {}
+    primary = None
+    failure = unknown = None
+    reset_done = False
+    paths = task_sql_paths(task, suite)
+    participants = {step.get("actor", "merchant") for step in task["steps"]}
+    if not participants or participants - ACTORS.keys():
+        raise ValueError("A task must use only the fixed evaluation actors")
+    bindings = {
+        "merchant_subject": ACTORS["merchant"]["subject"],
+        "buyer_subject": ACTORS["buyer"]["subject"],
+        "buyer2_subject": ACTORS["buyer2"]["subject"],
+    }
+    operation_date = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    bindings["promotion_start"] = operation_date.isoformat()
+    bindings["promotion_end"] = (operation_date + timedelta(days=7)).isoformat()
+    with ExitStack() as stack:
+        clients = {
+            actor: stack.enter_context(
+                httpx.Client(
+                    base_url=api.rsplit("/", 1)[0] + "/" + account["role"] + "/",
+                    follow_redirects=False,
+                    trust_env=False,
+                    timeout=httpx.Timeout(settings.task_timeout_s + 30, connect=10),
+                )
+            )
+            for actor, account in ACTORS.items()
+        }
+        actor_evidence = {
+            actor: Evidence(
+                evidence.path / actor,
+                evidence.metadata | {"actor": actor},
+                write_marker=evidence.write_marker,
+            )
+            for actor in ACTORS
+        }
+        try:
+            covered = set()
+            for actor, client in clients.items():
+                authenticate(client, actor)
+                old = wait_quiet(client, actor_evidence[actor], "sessions-before-reset.json")
+                recover_actor(client, actor_evidence[actor], old, actor)
+                covered.update(
+                    (ACTORS[actor]["subject"], ACTORS[actor]["role"], item["session_id"])
+                    for item in old
+                )
             if host is not None:
-                recover_before_reset(client, evidence, sessions)
                 host.stop()
+            local_reset_preflight(settings, covered)
             with evidence.stream("reset.log") as stream:
                 process = subprocess.run(
                     [sys.executable, str(ROOT / "scripts/reset_fixture.py")],
@@ -647,63 +998,100 @@ def run_task(
             reset_done = True
             if host is not None:
                 host.start()
-                authenticate(client)
-            value = request_json(client, evidence, "new-session.json", "POST", "session")
-            session_id = value["session_id"]
-            record["session_id"] = session_id
-            client.headers["X-Session-Id"] = session_id
-            baseline = snapshot(evidence, "before", paths, session_id)
+            for actor in ACTORS:
+                authenticate(clients[actor], actor)
+                if actor not in participants:
+                    continue
+                item = request_json(
+                    clients[actor], actor_evidence[actor], "new-session.json", "POST", "session"
+                )
+                sessions[actor] = item["session_id"]
+                clients[actor].headers["X-Session-Id"] = item["session_id"]
+                bindings[actor + "_session_id"] = item["session_id"]
+                states[actor], events[actor] = {}, []
+                visible = "listings" if actor == "merchant" else "cart"
+                request_json(
+                    clients[actor], actor_evidence[actor], "visible-facts.json", "GET", visible
+                )
+            primary = sessions.get("merchant", next(iter(sessions.values())))
+            record.update(session_id=primary, sessions=dict(sessions))
+            baseline = snapshot(evidence, "before", paths, primary, bindings)
             if suite.get("baseline_mode") == "authoritative_sql_before_each_task":
                 evidence.json(
                     "expectations.json", materialize_expectations(task["evaluator"], baseline)
                 )
-            request_json(client, evidence, "visible-listings.json", "GET", "listings")
-            first_chat = True
-            for number, step in enumerate(task["steps"], 1):
+            first_chat = set()
+            for number, original in enumerate(task["steps"], 1):
+                step = replace_bindings(original, bindings)
+                actor = step.get("actor", "merchant")
+                client, output = clients[actor], actor_evidence[actor]
                 if step["kind"] == "chat":
                     message = step["message"]
-                    if first_chat:
-                        message = suite["common_context"] + "\n\n" + message
-                    first_chat = False
-                    chat(client, evidence, number, message)
-                    wait_quiet(client, evidence, f"step-{number:02d}-sessions.json")
-                elif step["kind"] == "operator" and step["action"] in {"apply", "discard"}:
-                    operator(client, evidence, number, step, paths, session_id)
+                    if actor not in first_chat:
+                        role = ACTORS[actor]["role"]
+                        background = suite.get("context_by_role", {}).get(
+                            role, suite.get("common_context", "") if role == "merchant" else ""
+                        )
+                        message = background + "\n\n" + message if background else message
+                        first_chat.add(actor)
+                    value = chat(client, output, number, message)
+                    events[actor].extend(value["events"])
+                    wait_quiet(client, output, f"step-{number:02d}-sessions.json")
+                    if ACTORS[actor]["role"] == "buyer":
+                        buyer_session_quiet(
+                            request_json(
+                                client, output, f"step-{number:02d}-state.json", "GET", "session"
+                            )
+                        )
+                elif (
+                    step["kind"] == "operator"
+                    and actor == "merchant"
+                    and step["action"] in {"apply", "discard"}
+                ):
+                    operator(client, output, number, step, paths, sessions[actor], bindings)
+                elif step["kind"].startswith("buyer_") and ACTORS[actor]["role"] == "buyer":
+                    buyer_step(
+                        client, output, number, step, actor, states[actor], events[actor], bindings
+                    )
+                    snapshot(evidence, f"step-{number:02d}-after", paths, primary, bindings)
                 else:
-                    raise ValueError("Unsupported task step")
+                    raise ValueError("Unsupported task step or actor")
             record["execution_status"] = "executed"
         except TaskFailure as error:
             failure = error
         except httpx.HTTPError as error:
             failure = TaskFailure("Host unavailable during login", unsafe=True)
             failure.__cause__ = error
-        except BaseException as error:  # noqa: BLE001 -- recorded, then re-raised below
-            # Preserve the record, then surface programmer/configuration failures to the caller.
+        except BaseException as error:  # noqa: BLE001 -- preserve evidence and re-raise after owned cleanup
             unknown = error
         finally:
-            if session_id is not None:
+            for actor in sessions:
+                client, output = clients[actor], actor_evidence[actor]
                 try:
-                    wait_quiet(client, evidence, "sessions-after.json")
-                    # A completed turn can still contain a prepare whose Java response was lost.
-                    request_json(
-                        client, evidence, "recovered-overview.json", "GET", "overview", write=True
-                    )
-                    request_json(client, evidence, "saved-session.json", "GET", "session")
+                    wait_quiet(client, output, "sessions-after.json")
+                    if actor == "merchant":
+                        request_json(
+                            client, output, "recovered-overview.json", "GET", "overview", write=True
+                        )
+                    state = request_json(client, output, "saved-session.json", "GET", "session")
+                    if ACTORS[actor]["role"] == "buyer":
+                        buyer_session_quiet(state)
                 except TaskFailure as error:
-                    if failure is None:
-                        failure = error
+                    failure = failure or error
                     failure.unsafe = True
-                except BaseException as error:  # noqa: BLE001 -- re-raised after evidence is saved
+                except BaseException as error:  # noqa: BLE001 -- preserve evidence and re-raise after owned cleanup
                     unknown = unknown or error
+            if sessions:
                 try:
-                    snapshot(evidence, "after", paths, session_id)
-                except BaseException as error:  # noqa: BLE001 -- re-raised after evidence is saved
+                    primary = primary or sessions.get("merchant", next(iter(sessions.values())))
+                    snapshot(evidence, "after", paths, primary, bindings)
+                except BaseException as error:  # noqa: BLE001 -- preserve evidence and re-raise after owned cleanup
                     unknown = unknown or error
             try:
                 verify_sources(settings, evidence.metadata)
             except TaskFailure as error:
                 failure = error
-            except BaseException as error:  # noqa: BLE001 -- re-raised after evidence is saved
+            except BaseException as error:  # noqa: BLE001 -- preserve evidence and re-raise after owned cleanup
                 unknown = unknown or error
             record["finished_at"] = now()
             if failure is not None:
@@ -719,11 +1107,25 @@ def run_task(
                     reason="Unexpected " + type(unknown).__name__,
                     fixture_retained=True,
                 )
+            if (
+                record.get("fixture_retained")
+                and evidence.write_marker is not None
+                and not evidence.write_marker.exists()
+            ):
+                evidence.write_marker.write_text(
+                    json.dumps({"evidence": str(evidence.path), "reason": record["reason"]})
+                )
             record["reset_completed"] = reset_done
+            evidence.json("bindings.json", bindings)
             evidence.json("execution.json", record)
     if unknown is not None:
         raise unknown
     return record
+
+
+def interrupt_evaluation(signum, frame):
+    signal.signal(signum, signal.SIG_IGN)
+    raise InterruptedError("Evaluation interrupted")
 
 
 def main() -> int:
@@ -811,7 +1213,14 @@ def main() -> int:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             parser.error("Another evaluation driver holds the runtime lock")
-        evidence = Evidence(directory, metadata)
+        marker = ROOT / ".run/evaluation-write-inflight.json"
+        if marker.exists():
+            parser.error(
+                "An earlier evaluation write is unresolved; inspect its retained evidence before reset"
+            )
+        signal.signal(signal.SIGTERM, interrupt_evaluation)
+        signal.signal(signal.SIGINT, interrupt_evaluation)
+        evidence = Evidence(directory, metadata, write_marker=marker)
         started_at = now()
         evidence.json("run.json", {"started_at": started_at, "executions": entries})
         consecutive_provider_failures = 0
@@ -826,6 +1235,7 @@ def main() -> int:
                 task_evidence = Evidence(
                     directory / f"{entry['task_id']}-r{entry['repetition']}",
                     metadata | {"task_id": entry["task_id"], "repetition": entry["repetition"]},
+                    write_marker=marker,
                 )
                 try:
                     entry.update(
@@ -861,6 +1271,10 @@ def main() -> int:
             except TaskFailure as error:
                 cleanup_failed = True
                 stop_reason = str(error)
+                if not marker.exists():
+                    marker.write_text(
+                        json.dumps({"evidence": str(directory), "reason": stop_reason})
+                    )
             evidence.json(
                 "run.json",
                 {
