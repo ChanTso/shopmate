@@ -207,7 +207,17 @@ class ResponsesWebSearch:
                         "tools": [{"type": "web_search"}],
                         "tool_choice": "required",
                         "include": ["web_search_call.action.sources"],
-                        "instructions": "Answer the public research query briefly with cited sources. Do not perform business actions.",
+                        "instructions": (
+                            "Research the public query and inspect the relevant source pages. "
+                            "Report each source's explicit claims separately, with its page title "
+                            "and supporting URL. Preserve conditions, exceptions and regional or "
+                            "product scope. If a page does not state a requested fact, say it is "
+                            "not specified there. Do not attribute general advice or another "
+                            "page's claims to that source, or infer support for an alternative "
+                            "method the page does not discuss. Prefer primary sources. Answer "
+                            "concisely with citations attached to the exact supported claims. "
+                            "Do not perform business actions."
+                        ),
                         "input": query,
                     },
                 ) as response:
