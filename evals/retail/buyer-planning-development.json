@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "protocol_id": "shopmate-retail-buyer-planning-development-v1",
+  "fixture_version": "shopmate-retail-v1",
+  "suite": "retail/buyer-planning-development",
+  "status": "not_run",
+  "as_of": "2026-09-05T00:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "context_by_role": {
+    "buyer": "这是上海演示门店，币种CNY；实际交易商品、规格、价格和可售状态来自店内工具。用户明确授权时才改购物车；结账、付款和退款确认由用户操作。本题未授权这些交易动作。"
+  },
+  "reset_definition": "README.md#retail-r0",
+  "common_sql": [
+    "sql/products.sql",
+    "sql/history.sql",
+    "sql/scope.sql",
+    "sql/events.sql",
+    "sql/buyer_transactions.sql",
+    "sql/retail_operations.sql",
+    "sql/retail_facts.sql"
+  ],
+  "formal_boundary_tests_included": false,
+  "repetitions": 1,
+  "runtime_to_record": [
+    "citybuddy_commit",
+    "shopmate_commit",
+    "fixture_source_revision",
+    "main_model",
+    "analysis_model",
+    "provider",
+    "task_timeout_s",
+    "max_model_calls",
+    "protocol_id",
+    "suite_path",
+    "fixture_version"
+  ],
+  "coverage_boundary": "尚未运行的两道正常购物补充开发题，仅补自然预算规划及购物车SET/REMOVE；不替代R01-R07、网页搜索、记忆生命周期、运行观察、页面或StateEval。",
+  "tasks": [
+    {
+      "id": "B01",
+      "title": "自然用途与100元预算的只读购物规划",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "我想给孩子布置一个阅读角，桌椅已经有了，不买床或桌椅。商品总预算100元人民币，配送费用另算。优先考虑照明、收纳和地面活动这三种互补用途：请搜索店内实际可售商品，给出具体商品、必要规格、数量、当前价格和合计，用分步计划卡安排怎么布置。如果要取舍请说明原因，不要只列泛泛建议。这次只做计划，不要加入购物车、结账或付款。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/buyer_transactions.sql"
+        ],
+        "success_criteria": "实际搜索店内目录并读取所选商品事实，给出可见分步计划卡和具体可售商品/实际SKU规格、数量、当前CNY价格、合计；商品总额不超过10000分，配送另计，不混币种。覆盖至少照明和另一种互补用途；三种用途均有可行组合时应给出或明确合理取舍，不推销已排除床/桌椅。不锁唯一SKU集合；人工根据实际选择与products/family/metadata SQL核价和适用性，不能用预计价格或外部售价替代。没有新增车行/命令、结账、付款、退款或商家修改，库存和全部既有业务不变。driver不得替模型选品、改价、修车或自动执行。仅给一般建议、虚构商品、超预算或声称已经加车均未完成。原始SQL与SSE人工判定，executed不等于通过。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    },
+    {
+      "id": "B02",
+      "title": "明确授权后的购物车改量与移除",
+      "reset": "retail-R0",
+      "steps": [
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "请先读取 AR-2107 火箭台灯和 AR-2106 收纳箱组的实际价格及可售状态。我明确要将 AR-2107 加入购物车2件、AR-2106 加入购物车1件，只加这两款，随后读回购物车数量和人民币商品小计；不要结账、付款或退款。"
+        },
+        {
+          "kind": "chat",
+          "actor": "buyer",
+          "message": "我改变主意：将购物车中 AR-2107 的数量从2件改为1件，不是再加1件；把 AR-2106 整行移除。不要换成其他商品，也不要结账。完成后重新读取购物车，明确只剩什么商品、数量和人民币商品小计。"
+        }
+      ],
+      "evaluator": {
+        "reference_sql": [
+          "sql/products.sql",
+          "sql/buyer_transactions.sql"
+        ],
+        "success_criteria": "首次由真实模型只ADD台灯AR-2107两件和收纳箱组AR-2106一件，当前单价分别2200分和2900分，小计7300分。第二轮实际SET台灯从2到1、REMOVE收纳从1到0；最后账户车完整集合只有AR-2107数量1，小计2200分，不能通过追加、换商品或整车checkout清空替代。原始shopping_cart_command保留相应before/after数量和真实applied_cart_version，版本不硬编码；原key重放不额外增加数量。模型若收到真实并发版本冲突可在既定预算内纠正，但未知写仍停批留现场。未结账，故product库存/价格/版本、既有订单/付款/退款及其他买家车不变；没有新增checkout/payment/pending action/退款或商家修改。以SQL原行、真实工具回执及可见读回人工判定，不重建业务状态机。",
+        "expected_drafts": [],
+        "expected_product_changes": []
+      }
+    }
+  ]
+}

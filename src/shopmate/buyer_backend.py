@@ -117,6 +117,22 @@ def shopping_cart(value: CartView) -> BuyerCart:
 
 
 def shopping_order(value: OrderView) -> BuyerOrder:
+    zone = ZoneInfo("Asia/Shanghai")
+    payment = value.payment.model_dump(mode="json") if value.payment else None
+    if payment is not None and value.payment.succeededAt is not None:
+        payment["succeededAt"] = value.payment.succeededAt.astimezone(zone).isoformat()
+    fulfillment = value.fulfillment.model_dump(mode="json") if value.fulfillment else None
+    if fulfillment is not None:
+        for name in (
+            "promisedDeliveryAt",
+            "estimatedDeliveryAt",
+            "packedAt",
+            "shippedAt",
+            "deliveredAt",
+            "observedAt",
+        ):
+            stamp = getattr(value.fulfillment, name)
+            fulfillment[name] = stamp.astimezone(zone).isoformat() if stamp is not None else None
     status = OrderStatus(value.status.lower())
     if value.status == "PAID" and value.fulfillment is not None:
         facts = value.fulfillment
@@ -135,7 +151,7 @@ def shopping_order(value: OrderView) -> BuyerOrder:
     return BuyerOrder(
         order_id=value.orderId,
         status=status,
-        placed_at=value.createdAt,
+        placed_at=value.createdAt.astimezone(zone),
         items=[
             OrderItem(
                 product_id=product.productId,
@@ -146,16 +162,12 @@ def shopping_order(value: OrderView) -> BuyerOrder:
         ],
         total=product.totalPriceMinor / 100,
         currency=product.currency,
-        estimated_delivery=(
-            value.fulfillment.estimatedDeliveryAt.astimezone(ZoneInfo("Asia/Shanghai")).isoformat()
-            if value.fulfillment and value.fulfillment.estimatedDeliveryAt
-            else None
-        ),
+        estimated_delivery=fulfillment["estimatedDeliveryAt"] if fulfillment else None,
         tracking_url=None,
         payment_status=value.status,
-        payment=value.payment.model_dump(mode="json") if value.payment else None,
+        payment=payment,
         refunds=value.refunds.model_dump(mode="json"),
-        fulfillment=value.fulfillment.model_dump(mode="json") if value.fulfillment else None,
+        fulfillment=fulfillment,
         product_snapshot=product.model_dump(mode="json"),
     )
 

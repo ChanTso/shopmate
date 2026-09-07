@@ -141,7 +141,7 @@ def build_agent(
 
     from .analysis_runner import RetailAnalysisRunner
     from .backend import ShopMateConfig
-    from .merchant_executor import RetailMerchantExecutor
+    from .merchant_executor import RECENT_ORDERS_TOOL, RetailMerchantExecutor
     from .settings import ROOT
     from .web_search import WEB_SEARCH_TOOL
 
@@ -164,7 +164,7 @@ def build_agent(
         skills_dir=ROOT / "skills",
         memory_store=memory_store,
         executor_class=RetailMerchantExecutor,
-        extra_tools=[WEB_SEARCH_TOOL],
+        extra_tools=[WEB_SEARCH_TOOL, RECENT_ORDERS_TOOL],
         analysis_runner=RetailAnalysisRunner(
             client=provider.client, backend=backend, config=config, sandbox=sandbox
         ),

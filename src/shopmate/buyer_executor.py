@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from commerce_common.execution import clamp_limit
 from commerce_common.streaming import AgentEvent, ToolOutcome
 from commerce_common.turn import current_tool_call
 from fastapi import HTTPException
 from pydantic import ValidationError
-from shopping_agent.executor import ShoppingToolExecutor
+from shopping_agent.executor import MAX_ORDERS, ShoppingToolExecutor
+from shopping_agent.gates import remember_order_items
 
 from .auth import current_context
 from .buyer_client import RefundArguments
@@ -103,6 +105,40 @@ class BuyerToolExecutor(ShoppingToolExecutor):
             "prepare_refund": self._prepare_refund,
             "web_search": self._web_search,
         }
+
+    async def _get_orders(self, arguments):
+        limit = clamp_limit(arguments.get("limit"), 5, MAX_ORDERS)
+        orders = await self._backend.get_orders(self._session, limit)
+        remember_order_items(self._state, orders)
+        # Full payment/refund/fulfillment records can truncate the entire list mid-JSON.
+        # Preserve every recent order ID here; the existing detail tool returns those facts.
+        summaries = [
+            {
+                "order_id": order.order_id,
+                "status": order.status.value,
+                "payment_status": order.payment_status,
+                "placed_at": order.placed_at.isoformat(),
+                "estimated_delivery": order.estimated_delivery,
+                "items": [
+                    {
+                        "product_id": item.product_id,
+                        "title": self._sanitize(item.title, 60),
+                        "quantity": item.quantity,
+                    }
+                    for item in order.items
+                ],
+            }
+            for order in orders
+        ]
+        return self._fenced(
+            {
+                "orders": summaries,
+                "detail": (
+                    "Recent orders only; titles are shortened summaries. Use get_order_status "
+                    "with an order_id for full items, payment, refunds and fulfillment facts."
+                ),
+            }
+        )
 
     async def _web_search(self, arguments):
         return await execute_search(self, arguments)

@@ -752,6 +752,10 @@ class CityBuddyMerchantBackend(MerchantBackend):
             ],
         }
 
+    async def get_recent_orders(self, session, limit=6):
+        token = await self._token(session, "merchant:read")
+        return await self.client.recent_orders(token, session.session_id, limit=limit)
+
     async def overview(self, session):
         drafts = await self._drafts(session)
         window = self._period(session)
@@ -773,8 +777,7 @@ class CityBuddyMerchantBackend(MerchantBackend):
         changes = [
             presentation.change(row, session.operator).model_dump(mode="json") for row in drafts
         ]
-        token = await self._token(session, "merchant:read")
-        orders = await self.client.recent_orders(token, session.session_id, limit=6)
+        orders = await self.get_recent_orders(session)
         return {
             "snapshot": snapshot.model_dump(mode="json"),
             "window": {
