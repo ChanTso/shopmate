@@ -12,6 +12,19 @@ import org.junit.Test
 
 class BuyerContractTest {
     @Test
+    fun `HTTP conflict with rejected reservation is a definitive business result`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(409).setBody("{\"reservationId\":\"r\",\"state\":\"REJECTED\",\"decisionCode\":\"SOLD_OUT\"}"))
+            server.enqueue(MockResponse().setResponseCode(409).setBody("{\"category\":\"CONFLICT\",\"message\":\"different intent\"}"))
+            val api = BuyerApi().apply { commerceRoot = server.url("/").toString() }
+            val reply = api.seckill("/seckill/activities/a/reservations", JsonObject(emptyMap()), "key")
+            assertEquals("REJECTED", SeckillTicket("key", "a", 1).result(reply).state)
+            try { api.seckill("/seckill/activities/a/reservations", JsonObject(emptyMap()), "key"); fail("unrelated conflict must fail") }
+            catch (e: ApiFailure) { assertEquals(409, e.status) }
+        }
+    }
+
+    @Test
     fun `seckill goes directly to commerce with original idempotency key`() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("{}"))

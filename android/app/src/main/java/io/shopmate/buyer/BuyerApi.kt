@@ -88,9 +88,9 @@ class BuyerApi(
             }
             .method(if (body == null) "GET" else "POST",
                 body?.toString()?.toRequestBody("application/json".toMediaType()))
-            .build())
+            .build(), allowRejectedReservation = key != null)
 
-    private suspend fun execute(request: Request): JsonObject = suspendCancellableCoroutine { continuation ->
+    private suspend fun execute(request: Request, allowRejectedReservation: Boolean = false): JsonObject = suspendCancellableCoroutine { continuation ->
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(
@@ -102,7 +102,13 @@ class BuyerApi(
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
                         val result = runCatching {
-                            if (!it.isSuccessful) throw failure(it)
+                            if (!it.isSuccessful) {
+                                val rejected = if (allowRejectedReservation && it.code == 409)
+                                    runCatching { wireJson.parseToJsonElement(it.peekBody(65536).string()).jsonObject }.getOrNull()
+                                    else null
+                                if (rejected?.text("state") != "REJECTED" || rejected.text("reservationId").isBlank())
+                                    throw failure(it)
+                            }
                             wireJson
                                 .parseToJsonElement(it.body?.string() ?: throw IOException("响应为空"))
                                 .jsonObject
