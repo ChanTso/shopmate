@@ -118,31 +118,16 @@ class BuyerApi(
                     call.execute().use { response ->
                         if (!response.isSuccessful) throw failure(response)
                         val source = response.body?.source() ?: throw IOException("流式响应为空")
-                        var type = ""
-                        val data = mutableListOf<String>()
-                        var terminal = false
+                        val decoder = StreamDecoder()
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
-                            when {
-                                line.startsWith("event:") -> type = line.substringAfter(':').trim()
-                                line.startsWith("data:") ->
-                                    data.add(line.substringAfter(':').trimStart())
-                                line.isEmpty() && data.isNotEmpty() -> {
-                                    val event =
-                                        StreamEvent(
-                                            type,
-                                            wireJson
-                                                .parseToJsonElement(data.joinToString("\n"))
-                                                .jsonObject,
-                                        )
-                                    send(event)
-                                    if (type == "turn_complete" || type == "error") terminal = true
-                                    type = ""
-                                    data.clear()
-                                }
-                            }
+                            decoder.line(line)?.let { send(it) }
                         }
-                        if (!terminal) throw IOException("连接中断，请恢复对话并核对订单或购物车")
+                        try {
+                            decoder.finish()
+                        } catch (e: IllegalStateException) {
+                            throw IOException(e.message, e)
+                        }
                     }
                     close()
                 } catch (e: IOException) {
