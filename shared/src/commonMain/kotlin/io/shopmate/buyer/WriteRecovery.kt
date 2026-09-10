@@ -13,7 +13,8 @@ object WriteRecovery {
     // Timeout/throttling and unknown outcomes retain the original intent for explicit retry.
     fun retain(status: Int, category: String): Boolean =
         status !in 400..499 || status in listOf(401, 408, 429) ||
-            Regex("unknown|uncertain|unavailable").containsMatchIn(category)
+            Regex("unknown|uncertain|unavailable|indeterminate|inconsistent_durable_state|retryable_concurrency|commerce_error")
+                .containsMatchIn(category.lowercase())
 
     fun encode(pending: PendingWrite): String = wireJson.encodeToString(pending)
 

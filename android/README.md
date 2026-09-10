@@ -24,7 +24,8 @@ Run shared tests with `./gradlew :shared:jvmTest`; on macOS, also run `:shared:i
 ## Client boundaries
 
 - Normal shopping uses the buyer bearer without a conversation. The assistant creates a conversation only when a message is sent.
-- A ViewModel owns screen state and the active stream through activity recreation. Wide windows show an assistant alongside shopping; compact windows use the assistant tab. Explicit stop cancels the HTTP stream. Process death restores saved server history rather than pretending generation continued.
+- A ViewModel owns separate shopping and conversation state flows; only the assistant subscribes to text deltas. The active stream survives activity recreation. Wide windows show an assistant alongside shopping; compact windows use the assistant tab. Explicit stop cancels the HTTP stream. Process death restores saved server history rather than pretending generation continued.
+- Long replies follow the latest content until the reader scrolls up. Returning to the latest content resumes following. A saveable screen holder retains reading position across navigation, and is discarded on logout.
 - Checkout submits the exact integer-minor-unit quote and versions the customer reviewed. Price or inventory conflicts require a fresh quote and another confirmation.
 - Before an idempotent write, the client durably saves its original key and body, scoped by server and authenticated owner. Unknown outcomes can retry that original intent. Payment and refund confirmation use the existing checkout/action identifier and server receipts.
 - Bearer tokens are encrypted with an Android Keystore key; app backup is disabled. Passwords are never stored. Conversation content and long-term memory remain on the server.

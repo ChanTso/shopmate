@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -100,6 +101,7 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
         LoginScreen(vm, state)
         return
     }
+    val savedScreens = rememberSaveableStateHolder()
     val expanded = LocalConfiguration.current.screenWidthDp >= 600
     val pages =
         listOf(
@@ -202,7 +204,7 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                         Box(Modifier.weight(1f)) {
                             when (state.screen) {
                                 "首页" -> CatalogScreen(vm, state)
-                                "助手" -> ChatScreen(vm, state)
+                                "助手" -> savedScreens.SaveableStateProvider("assistant") { ChatScreen(vm, state) }
                                 "购物车" ->
                                     CartScreen(vm, state) { label, action ->
                                         confirm = label to action
@@ -216,7 +218,9 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                         }
                         if (wide && state.screen != "助手") {
                             VerticalDivider(color = Line)
-                            Box(Modifier.width(390.dp)) { ChatScreen(vm, state) }
+                            Box(Modifier.width(390.dp)) {
+                                savedScreens.SaveableStateProvider("assistant") { ChatScreen(vm, state) }
+                            }
                         }
                     }
                 }
