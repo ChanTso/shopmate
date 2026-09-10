@@ -32,6 +32,10 @@ data class BuyerState(
     val delivery: JsonObject = emptyObject,
     val pending: List<PendingWrite> = emptyList(),
     val commands: List<JsonObject> = emptyList(),
+)
+
+data class ChatState(
+    val conversationKey: String = "",
     val messages: List<ChatMessage> = emptyList(),
     val conversations: List<Conversation> = emptyList(),
     val streaming: Boolean = false,
@@ -44,6 +48,8 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     private val store = DeviceStore(application)
     private val mutable = MutableStateFlow(BuyerState())
     val state = mutable.asStateFlow()
+    private val mutableChat = MutableStateFlow(ChatState())
+    val chat = mutableChat.asStateFlow()
     private var chatJob: Job? = null
     private var restoreJob: Job? = null
     private var catalogJob: Job? = null
@@ -51,6 +57,10 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun update(change: (BuyerState) -> BuyerState) {
         mutable.update(change)
+    }
+
+    private fun updateChat(change: (ChatState) -> ChatState) {
+        mutableChat.update(change)
     }
 
     init {
@@ -79,6 +89,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             api.token = null
             store.logout()
             mutable.value = BuyerState(error = e.message)
+            mutableChat.value = ChatState()
             return
         }
         update {
@@ -112,6 +123,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             store.login(reply.text("subject"), reply.text("accessToken"))
             api.token = reply.text("accessToken")
             mutable.value = BuyerState(signedIn = true, pending = store.pending())
+            mutableChat.value = ChatState()
             refresh()
             restoreChat()
         } finally {
@@ -124,6 +136,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
         api.token = null
         store.logout()
         mutable.value = BuyerState()
+        mutableChat.value = ChatState()
     }
 
     fun navigate(screen: String) {
@@ -334,7 +347,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun draft(value: String) {
-        update { it.copy(draft = value) }
+        updateChat { it.copy(draft = value) }
     }
 
     fun askProduct(product: Product) {
@@ -342,12 +355,13 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             put("page_type", "product")
             put("product_id", product.product_id)
         }
-        update { it.copy(screen = "助手", draft = "帮我分析 ${product.title}，是否适合我？") }
+        update { it.copy(screen = "助手") }
+        updateChat { it.copy(draft = "帮我分析 ${product.title}，是否适合我？") }
     }
 
     fun loadConversations() = launchRead {
         val rows = api.json("/conversations").rows("sessions")
-        update {
+        updateChat {
             it.copy(
                 conversations =
                     rows.map { row ->
@@ -361,14 +375,14 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun newChat() {
-        if (state.value.streaming) return
+        if (chat.value.streaming) return
         restoreJob?.cancel()
         store.conversation = null
-        update { it.copy(messages = emptyList(), draft = "") }
+        updateChat { ChatState(conversationKey = UUID.randomUUID().toString()) }
     }
 
     fun selectChat(id: String) {
-        if (state.value.streaming) return
+        if (chat.value.streaming) return
         store.conversation = id
         restoreChat()
     }
@@ -376,12 +390,12 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreChat() {
         restoreJob?.cancel()
         restoreJob = launchRead {
-            if (state.value.streaming) return@launchRead
+            if (chat.value.streaming) return@launchRead
             val id = store.conversation ?: return@launchRead
             val reply = api.json("/conversations/$id")
             val messages = ChatReducer.restore(reply.toString())
-            if (store.conversation == id && !state.value.streaming)
-                update { it.copy(messages = messages) }
+            if (store.conversation == id && !chat.value.streaming)
+                updateChat { it.copy(messages = messages, conversationKey = id) }
         }
     }
 
@@ -391,10 +405,11 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun send() {
-        val message = state.value.draft.trim()
-        if (state.value.streaming || message.isEmpty()) return
+        val message = chat.value.draft.trim()
+        if (chat.value.streaming || message.isEmpty()) return
         restoreJob?.cancel()
-        update { it.copy(streaming = true, activity = "正在连接助手…", error = null) }
+        update { it.copy(error = null) }
+        updateChat { it.copy(streaming = true, activity = "正在连接助手…") }
         chatJob = viewModelScope.launch {
             try {
                 val id =
@@ -402,8 +417,9 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                         ?: api.json("/conversations", emptyObject).text("session_id").also {
                             store.conversation = it
                         }
-                update {
+                updateChat {
                     it.copy(
+                        conversationKey = id,
                         draft = "",
                         messages =
                             it.messages +
@@ -417,9 +433,9 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                         "text_delta", "ui", "ui_partial" ->
                             updateLast { ChatReducer.apply(it, event) }
                         "tool_call" ->
-                            update { it.copy(activity = event.data.text("label", "正在查询业务数据…")) }
+                            updateChat { it.copy(activity = event.data.text("label", "正在查询业务数据…")) }
                         "progress" ->
-                            update { it.copy(activity = event.data.text("message", "正在分析…")) }
+                            updateChat { it.copy(activity = event.data.text("message", "正在分析…")) }
                         "cart_update" -> refreshCart()
                         "error" ->
                             update { it.copy(error = event.data.text("message", "助手未完成，请恢复后核对")) }
@@ -432,12 +448,12 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 report(e)
             } finally {
-                update { it.copy(streaming = false, activity = "") }
+                updateChat { it.copy(streaming = false, activity = "") }
             }
         }
     }
 
     private fun updateLast(change: (ChatMessage) -> ChatMessage) {
-        update { it.copy(messages = it.messages.dropLast(1) + change(it.messages.last())) }
+        updateChat { it.copy(messages = it.messages.dropLast(1) + change(it.messages.last())) }
     }
 }

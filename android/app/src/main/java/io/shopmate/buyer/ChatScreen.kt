@@ -10,6 +10,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.*
+import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -20,8 +25,28 @@ import kotlinx.serialization.json.*
 
 @Composable
 fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
+    val chat by vm.chat.collectAsStateWithLifecycle()
+    ChatContent(vm, state, chat)
+}
+
+@Composable
+fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
     var history by remember { mutableStateOf(false) }
-    val list = rememberLazyListState()
+    val list = rememberSaveable(chat.conversationKey, saver = LazyListState.Saver) { LazyListState() }
+    var following by rememberSaveable(chat.conversationKey) { mutableStateOf(true) }
+    val scroll = remember(list) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y > 0) following = false
+                return Offset.Zero
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && consumed.y < 0 && !list.canScrollForward)
+                    following = true
+                return Offset.Zero
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
@@ -39,17 +64,17 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
             ) {
                 Icon(Icons.Outlined.History, "历史对话")
             }
-            IconButton(onClick = vm::newChat, enabled = !state.streaming) {
+            IconButton(onClick = vm::newChat, enabled = !chat.streaming) {
                 Icon(Icons.Outlined.AddComment, "新对话")
             }
         }
         LazyColumn(
-            Modifier.weight(1f),
+            Modifier.weight(1f).nestedScroll(scroll).testTag("chat-history"),
             state = list,
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (state.messages.isEmpty())
+            if (chat.messages.isEmpty())
                 item {
                     Sheet(Modifier.fillMaxWidth()) {
                         Text("最近想给生活添点什么？", fontSize = 23.sp, fontWeight = FontWeight.Bold)
@@ -64,7 +89,8 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
                         }
                     }
                 }
-            itemsIndexed(state.messages) { _, message ->
+            // History is append-only; the ordinal is stable within one conversation.
+            itemsIndexed(chat.messages, key = { index, _ -> "${chat.conversationKey}:$index" }) { _, message ->
                 if (message.user)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Text(
@@ -94,22 +120,22 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
                             SuggestionChip(
                                 onClick = { vm.draft(suggestion) },
                                 label = { Text(suggestion) },
-                                enabled = !state.streaming,
+                                enabled = !chat.streaming,
                             )
                         }
                     }
             }
-            if (state.streaming)
+            if (chat.streaming)
                 item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Note(state.activity.ifBlank { "助手正在整理回答…" })
+                        Note(chat.activity.ifBlank { "助手正在整理回答…" })
                     }
                 }
-            if (state.messages.isNotEmpty() && !state.streaming)
+            if (chat.messages.isNotEmpty() && !chat.streaming)
                 item {
                     TextButton(
                         onClick = {
@@ -122,9 +148,17 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
                     }
                 }
         }
-        LaunchedEffect(state.messages.size) {
-            if (list.layoutInfo.totalItemsCount > 0)
-                list.animateScrollToItem(list.layoutInfo.totalItemsCount - 1)
+        LaunchedEffect(chat.messages, chat.streaming, following) {
+            if (following && chat.messages.isNotEmpty()) {
+                // Target the footer so a growing final message remains visible without restarting an animation.
+                list.requestScrollToItem(chat.messages.size)
+            }
+        }
+        if (!following) {
+            TextButton(onClick = { following = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Icon(Icons.Outlined.ArrowDownward, null, Modifier.size(16.dp))
+                Text("回到最新")
+            }
         }
         Row(
             Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
@@ -132,7 +166,7 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedTextField(
-                state.draft,
+                chat.draft,
                 vm::draft,
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("说说你想买什么…") },
@@ -140,13 +174,13 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
                 shape = RoundedCornerShape(18.dp),
             )
             FilledIconButton(
-                onClick = if (state.streaming) vm::stopChat else vm::send,
-                enabled = state.streaming || state.draft.isNotBlank(),
+                onClick = if (chat.streaming) vm::stopChat else vm::send,
+                enabled = chat.streaming || chat.draft.isNotBlank(),
                 modifier = Modifier.size(52.dp),
             ) {
                 Icon(
-                    if (state.streaming) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
-                    if (state.streaming) "停止生成" else "发送",
+                    if (chat.streaming) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
+                    if (chat.streaming) "停止生成" else "发送",
                 )
             }
         }
@@ -157,13 +191,13 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
             title = { Text("历史对话") },
             text = {
                 LazyColumn {
-                    items(state.conversations) { conversation ->
+                    items(chat.conversations) { conversation ->
                         TextButton(
                             onClick = {
                                 history = false
                                 vm.selectChat(conversation.id)
                             },
-                            enabled = !state.streaming,
+                            enabled = !chat.streaming,
                         ) {
                             Text(conversation.label)
                         }

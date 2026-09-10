@@ -79,6 +79,9 @@ class BuyerCoreTest {
         assertEquals("original-key", restored.body.text("request_key"))
         listOf(0, 401, 408, 429, 500, 503).forEach { assertTrue(WriteRecovery.retain(it, "")) }
         assertTrue(WriteRecovery.retain(409, "unknown_cart"))
+        listOf("INDETERMINATE", "INCONSISTENT_DURABLE_STATE", "RETRYABLE_CONCURRENCY", "COMMERCE_ERROR").forEach {
+            assertTrue(WriteRecovery.retain(409, it))
+        }
         assertFalse(WriteRecovery.retain(409, "VERSION_CONFLICT"))
         assertFalse(WriteRecovery.retain(403, "forbidden"))
     }
