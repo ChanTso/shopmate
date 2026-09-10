@@ -117,6 +117,7 @@ async def rig(tmp_path):
             backend=backend,
             headers=headers,
             session_id=session_id,
+            binding_id=store.get(session_id, "owner").authorization_id,
         )
     store.close()
 
@@ -147,7 +148,8 @@ async def test_completed_turn_restores_ui_and_runtime_history(rig):
     assert rig.store.get(rig.session_id, "owner").messages[-1]["content"] == "Hello"
 
 
-async def test_busy_blocks_second_chat_and_apply_but_keeps_reads(rig):
+async def test_busy_blocks_second_chat_but_approval_and_reads_continue(rig):
+    rig.store.remember_draft(rig.binding_id, "draft", {"state": "PREPARED"})
     rig.agent.wait = True
     task = asyncio.create_task(
         rig.client.post("/api/merchant/chat", headers=rig.headers, json={"message": "Analyze"})
@@ -161,7 +163,7 @@ async def test_busy_blocks_second_chat_and_apply_but_keeps_reads(rig):
         ).status_code == 409
         assert (
             await rig.client.post("/api/merchant/changes/draft/apply", headers=rig.headers)
-        ).status_code == 409
+        ).status_code == 200
         assert (
             await rig.client.get("/api/merchant/session", headers=rig.headers)
         ).status_code == 200
@@ -248,12 +250,14 @@ async def test_interrupted_turn_preserves_completed_query_trace(rig, monkeypatch
 
 
 async def test_operator_approval_uses_current_direct_identity_and_receipt_recovery(rig):
-    rig.store.remember_draft(rig.session_id, "draft", {"state": "PREPARED"})
+    rig.store.remember_draft(rig.binding_id, "draft", {"state": "PREPARED"})
     response = await rig.client.post("/api/merchant/changes/draft/apply", headers=rig.headers)
     assert response.json()["receipt"]["state"] == "APPLIED"
     assert rig.backend.calls[-1].identity.token == "owner"
     assert rig.backend.calls[-1].turn_id is None
-    assert rig.store.get(rig.session_id, "owner").state.seen_changes["draft"].status == "applied"
+    restored = (await rig.client.get("/api/merchant/session", headers=rig.headers)).json()
+    assert restored["status"] == "idle"
+    assert rig.store.get(rig.session_id, "owner").version == 0
     again = await rig.client.get("/api/merchant/changes/draft", headers=rig.headers)
     assert again.json()["receipt"]["state"] == "APPLIED"
 
@@ -280,7 +284,7 @@ async def test_previous_stream_cleanup_cannot_touch_next_operator_action(rig, mo
 
     monkeypatch.setattr(BackgroundTask, "__call__", delayed_background)
     monkeypatch.setattr(rig.backend, "apply_by_operator", delayed_apply)
-    rig.store.remember_draft(rig.session_id, "draft", {"state": "PREPARED"})
+    rig.store.remember_draft(rig.binding_id, "draft", {"state": "PREPARED"})
     chat = asyncio.create_task(
         rig.client.post("/api/merchant/chat", headers=rig.headers, json={"message": "Analyze"})
     )
@@ -298,15 +302,14 @@ async def test_previous_stream_cleanup_cannot_touch_next_operator_action(rig, mo
             blocked = await rig.client.post(
                 "/api/merchant/chat", headers=rig.headers, json={"message": "Another task"}
             )
-            assert blocked.status_code == 409
+            assert blocked.status_code == 200
             approval_release.set()
             result = await approval
             assert result.status_code == 200
             assert result.json()["receipt"]["state"] == "APPLIED"
-            assert (
-                rig.store.get(rig.session_id, "owner").state.seen_changes["draft"].status
-                == "applied"
-            )
+            assert rig.store.get(rig.session_id, "owner").status == "completed"
+            receipt = await rig.client.get("/api/merchant/changes/draft", headers=rig.headers)
+            assert receipt.json()["receipt"]["state"] == "APPLIED"
     finally:
         background_release.set()
         approval_release.set()

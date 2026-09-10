@@ -510,7 +510,7 @@ async def test_committed_approval_recovers_after_host_loses_response(settings, t
             )
         ).strip()
         for name, path in {
-            "citybuddy_sha": ROOT.parent / "citybuddy",
+            "citybuddy_sha": settings.citybuddy_dir,
             "shopmate_sha": ROOT,
         }.items()
     }

@@ -394,8 +394,15 @@ def reset_fixture_sessions() -> None:
         db.backup(backup)
         db.execute("PRAGMA foreign_keys=ON")
         owners = retail.fixture_owners()
-        sessions = "SELECT id FROM sessions WHERE owner IN (" + ",".join("?" for _ in owners) + ")"
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        binding_table = "bindings" if "bindings" in tables else "sessions"
+        sessions = (
+            "SELECT id FROM "
+            + binding_table
+            + " WHERE owner IN ("
+            + ",".join("?" for _ in owners)
+            + ")"
+        )
         if "buyer_commands" in tables:
             commands = (
                 "SELECT request_key FROM buyer_commands WHERE session_id IN (" + sessions + ")"
@@ -418,7 +425,11 @@ def reset_fixture_sessions() -> None:
                 )
         db.execute("DELETE FROM prepare_intents WHERE session_id IN (" + sessions + ")", owners)
         db.execute("DELETE FROM draft_refs WHERE session_id IN (" + sessions + ")", owners)
-        db.execute("DELETE FROM sessions WHERE id IN (" + sessions + ")", owners)
+        db.execute(
+            "DELETE FROM sessions WHERE owner IN (" + ",".join("?" for _ in owners) + ")", owners
+        )
+        if "bindings" in tables:
+            db.execute("DELETE FROM bindings WHERE id IN (" + sessions + ")", owners)
 
 
 def publish_policies() -> None:

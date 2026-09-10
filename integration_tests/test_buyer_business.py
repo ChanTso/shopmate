@@ -195,7 +195,9 @@ async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(
             for option in delivery["options"]
         )
         borrowed = second | {"X-Session-Id": first["X-Session-Id"]}
-        assert (await p.http.get("/api/buyer/cart", headers=borrowed)).status_code == 404
+        borrowed_cart = await get(p.http, "/api/buyer/cart", borrowed)
+        assert borrowed_cart == await get(p.http, "/api/buyer/cart", second)
+        assert (await p.http.get("/api/buyer/session", headers=borrowed)).status_code == 404
         assert (await p.http.post("/api/merchant/session", headers=first)).status_code == 403
         assert (
             await p.http.post(
@@ -287,10 +289,7 @@ async def test_two_line_checkout_payment_and_refund_replay_have_authoritative_sq
         same_owner_other_session = await login(p.http)
         path = "/api/buyer/actions/" + action["pendingActionId"] + "/confirm"
         assert (await p.http.post(path, headers=second, json={})).status_code == 404
-        assert (
-            await p.http.post(path, headers=same_owner_other_session, json={})
-        ).status_code == 404
-        receipt = (await post(p.http, path, first, {}))["receipt"]
+        receipt = (await post(p.http, path, same_owner_other_session, {}))["receipt"]
         replay = (await post(p.http, path, first, {}))["receipt"]
         assert (
             replay["receiptId"] == receipt["receiptId"]

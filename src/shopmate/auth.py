@@ -49,6 +49,7 @@ class BoundContext:
     session_id: str
     turn_id: str | None = None
     role: str = "merchant"
+    conversation_id: str | None = None
 
 
 _context: ContextVar[BoundContext] = ContextVar("shopmate_request_context")
@@ -65,9 +66,10 @@ def bind_context(
     turn_id: str | None = None,
     *,
     role: str = "merchant",
+    conversation_id: str | None = None,
 ):
     ROLE_PERMISSION[role]
-    handle = _context.set(BoundContext(identity, session_id, turn_id, role))
+    handle = _context.set(BoundContext(identity, session_id, turn_id, role, conversation_id))
     try:
         yield _context.get()
     finally:

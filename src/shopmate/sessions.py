@@ -37,6 +37,11 @@ class SessionRecord:
     turn_id: str | None = None
     version: int = 0
     role: Literal["merchant", "buyer"] = "merchant"
+    binding_id: str | None = None
+
+    @property
+    def authorization_id(self) -> str:
+        return self.binding_id or self.session_id
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,7 @@ class SessionStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -78,6 +84,7 @@ class SessionStore:
                 self.db.execute(
                     "ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'merchant'"
                 )
+        self._migrate_bindings()
         # A restarted process cannot resume an in-flight model stream.
         with self.db:
             rows = self.db.execute("SELECT * FROM sessions WHERE status='running'").fetchall()
@@ -85,6 +92,77 @@ class SessionStore:
                 record = self._record(row)
                 self._terminate_ui(record, "The previous turn was interrupted. You can continue.")
                 self.finish_turn(record, "interrupted")
+
+    def _migrate_bindings(self):
+        # Existing actions keep their original OBO binding, including across this migration.
+        self.db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            with self.db:
+                self.db.execute("BEGIN IMMEDIATE")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS bindings (
+                    id TEXT PRIMARY KEY, owner TEXT NOT NULL, role TEXT NOT NULL,
+                    storefront INTEGER NOT NULL DEFAULT 0)""")
+                self.db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS storefront_owner
+                    ON bindings(owner,role) WHERE storefront=1""")
+                columns = {r["name"] for r in self.db.execute("PRAGMA table_info(sessions)")}
+                if "binding_id" not in columns:
+                    self.db.execute("ALTER TABLE sessions ADD COLUMN binding_id TEXT")
+                    self.db.execute("UPDATE sessions SET binding_id=id")
+                self.db.execute("""INSERT OR IGNORE INTO bindings(id,owner,role)
+                    SELECT binding_id,owner,role FROM sessions""")
+                for table in ("prepare_intents", "draft_refs", "buyer_commands"):
+                    row = self.db.execute(
+                        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+                    ).fetchone()
+                    if row is None or "REFERENCES sessions(id)" not in row[0]:
+                        continue
+                    sql = row[0].replace("REFERENCES sessions(id)", "REFERENCES bindings(id)")
+                    sql = sql.replace(table, "migrating_" + table, 1)
+                    self.db.execute(sql)
+                    self.db.execute(f"INSERT INTO migrating_{table} SELECT * FROM {table}")
+                    self.db.execute(f"DROP TABLE {table}")
+                    self.db.execute(f"ALTER TABLE migrating_{table} RENAME TO {table}")
+                if self.db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                    raise sqlite3.IntegrityError("Invalid persisted binding reference")
+        finally:
+            self.db.execute("PRAGMA foreign_keys=ON")
+
+    def authorize_binding(self, binding_id: str, owner: str, *, role: str = "merchant"):
+        if (
+            self.db.execute(
+                "SELECT 1 FROM bindings WHERE id=? AND owner=? AND role=?",
+                (binding_id, owner, role),
+            ).fetchone()
+            is None
+        ):
+            raise HTTPException(404, "Binding not found")
+
+    def storefront(self, owner: str, *, role: Literal["merchant", "buyer"] = "merchant"):
+        row = self.db.execute(
+            "SELECT id FROM bindings WHERE owner=? AND role=? AND storefront=1", (owner, role)
+        ).fetchone()
+        if row is None:
+            identifier = "shop-" + str(uuid4())
+            with self.db:
+                self.db.execute(
+                    "INSERT INTO bindings(id,owner,role,storefront) VALUES(?,?,?,1)",
+                    (identifier, owner, role),
+                )
+        else:
+            identifier = row["id"]
+        state_type = {"merchant": MerchantSessionState, "buyer": ShoppingSessionState}[role]
+        return SessionRecord(identifier, owner, state=state_type(), role=role)
+
+    def merchant_bindings(self, owner: str) -> list[str]:
+        return [
+            r[0]
+            for r in self.db.execute(
+                """SELECT b.id FROM bindings b WHERE b.owner=? AND b.role='merchant'
+            AND (b.storefront=1 OR EXISTS(SELECT 1 FROM prepare_intents p WHERE p.session_id=b.id)
+            OR EXISTS(SELECT 1 FROM draft_refs d WHERE d.session_id=b.id)) ORDER BY b.id""",
+                (owner,),
+            )
+        ]
 
     def close(self):
         self.db.close()
@@ -102,6 +180,7 @@ class SessionStore:
             row["turn_id"],
             row["version"],
             row["role"],
+            row["binding_id"],
         )
 
     def create(
@@ -109,12 +188,21 @@ class SessionStore:
     ) -> SessionRecord:
         state_type = {"merchant": MerchantSessionState, "buyer": ShoppingSessionState}[role]
         session_id = "shop-" + str(uuid4()) if role == "buyer" else secrets.token_urlsafe(24)
-        record = SessionRecord(session_id, owner, state=state_type(), role=role)
+        record = SessionRecord(
+            session_id,
+            owner,
+            state=state_type(),
+            role=role,
+            binding_id=self.storefront(owner, role=role).session_id,
+        )
         with self.db:
             self.db.execute(
+                "INSERT INTO bindings(id,owner,role) VALUES(?,?,?)", (session_id, owner, role)
+            )
+            self.db.execute(
                 """INSERT INTO sessions
-                (id,owner,state,messages,items,status,updated_at,turn_id,version,role)
-                VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (id,owner,state,messages,items,status,updated_at,turn_id,version,role,binding_id)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     record.session_id,
                     owner,
@@ -126,6 +214,7 @@ class SessionStore:
                     None,
                     0,
                     role,
+                    record.binding_id,
                 ),
             )
         return record
@@ -271,6 +360,14 @@ class SessionStore:
             ).fetchone()
             is not None
         )
+
+    def draft_binding(self, owner: str, draft_id: str) -> str | None:
+        row = self.db.execute(
+            """SELECT d.session_id FROM draft_refs d JOIN bindings b ON b.id=d.session_id
+            WHERE b.owner=? AND b.role='merchant' AND d.draft_id=? LIMIT 1""",
+            (owner, draft_id),
+        ).fetchone()
+        return row[0] if row else None
 
     def intent_rows(self, session_id: str) -> list[PrepareIntent]:
         return [

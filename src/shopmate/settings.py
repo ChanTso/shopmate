@@ -32,6 +32,8 @@ class Settings:
     analysis_model: str = "gpt-5.6-terra"
     task_timeout_s: float = 300.0
     max_model_calls: int = 16
+    max_active_tasks: int = 8
+    max_user_tasks: int = 2
     sql_timeout_ms: int = 2000
     sql_max_rows: int = 200
     sql_max_bytes: int = 16000
@@ -54,6 +56,8 @@ class Settings:
             not 1 <= self.sql_port <= 65535
             or self.task_timeout_s <= 0
             or self.max_model_calls < 1
+            or self.max_active_tasks < 1
+            or not 1 <= self.max_user_tasks <= self.max_active_tasks
             or self.sql_timeout_ms < 1
             or self.sql_max_rows < 1
             or self.sql_max_bytes < 1

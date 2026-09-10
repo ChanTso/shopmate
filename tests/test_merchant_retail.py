@@ -386,10 +386,13 @@ async def test_operator_scope_and_not_started_keep_prepared_and_cancel_reads_ter
     assert not (await r.backend.discard_by_operator(r.session, proposal.change_id))["ok"]
     with pytest.raises(ChangeNotApplicable):
         await r.backend.discard_change(r.session, proposal.change_id)
-    with bind_context(RequestIdentity("operator", "direct"), "other-session"):
+    with bind_context(RequestIdentity("other-operator", "other-direct"), "other-session"):
         with pytest.raises(CommerceError) as failure:
             await r.backend.apply_by_operator(
-                r.session.model_copy(update={"session_id": "other-session"}), proposal.change_id
+                r.session.model_copy(
+                    update={"session_id": "other-session", "operator": "other-operator"}
+                ),
+                proposal.change_id,
             )
         assert failure.value.status_code == 404
 
@@ -537,3 +540,40 @@ def test_campaign_tool_uses_local_instants_and_keeps_exclusive_end():
     )
     absent = row.model_copy(update={"observationStart": None, "observationEnd": None})
     assert presentation.campaign(absent).observation_period is None
+
+
+async def test_new_storefront_recovers_old_unknown_prepare_with_original_binding(retail):
+    r = retail
+    r.wire.lose_prepare = True
+    with pytest.raises(CommerceError):
+        await r.backend.stage_inventory_action(
+            r.session, [InventoryActionItem(listing_id="sku", action="pause")]
+        )
+    original = r.store.intent_rows(r.session.session_id)[0]
+    assert original.draft_id is None
+    storefront = r.store.storefront(r.session.operator)
+    current = r.session.model_copy(update={"session_id": storefront.session_id})
+    with bind_context(RequestIdentity(r.session.operator, "direct"), storefront.session_id):
+        page = await r.backend.changes_page(current, limit=1)
+        assert len(page["items"]) == 1 and page["nextOffset"] is None
+        detail = await r.backend.get_change(current, page["items"][0]["change_id"])
+        assert detail.status == "staged"
+        assert (await r.backend.apply_by_operator(current, detail.change_id))["ok"]
+    requests = [
+        q
+        for q in r.wire.requests
+        if q.method == "POST" and q.url.path == "/internal/merchant/changes"
+    ]
+    assert len(requests) == 2 and len(r.wire.keys) == 1
+    assert (
+        requests[0].headers["idempotency-key"]
+        == requests[1].headers["idempotency-key"]
+        == original.key
+    )
+    assert requests[0].content == requests[1].content
+    assert (
+        requests[0].headers["x-merchant-session-id"]
+        == requests[1].headers["x-merchant-session-id"]
+        == r.session.session_id
+    )
+    assert r.store.intent_rows(storefront.session_id) == []

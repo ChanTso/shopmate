@@ -180,3 +180,98 @@ async def test_user_memory_revision_invalidates_older_turn_write_and_isolates_ro
         facts = await RetailMemoryStore(store).get_facts("Owner")
         assert [f.value for f in facts] == (["wool"] if edit else [])
     store.close()
+
+
+def test_legacy_binding_migration_retains_commands_confirmations_and_prepares(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.executescript("""
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, owner TEXT NOT NULL, state TEXT NOT NULL,
+                messages TEXT NOT NULL, items TEXT NOT NULL, status TEXT NOT NULL,
+                updated_at TEXT NOT NULL, turn_id TEXT, version INTEGER NOT NULL, role TEXT NOT NULL);
+            CREATE TABLE buyer_commands (
+                request_key TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
+                turn_id TEXT NOT NULL, call_id TEXT NOT NULL, kind TEXT NOT NULL,
+                operation TEXT NOT NULL, arguments TEXT NOT NULL, body TEXT NOT NULL,
+                result TEXT, rejection TEXT, created_at TEXT NOT NULL,
+                UNIQUE(session_id,turn_id,call_id));
+            CREATE TABLE buyer_confirmations (
+                request_key TEXT PRIMARY KEY REFERENCES buyer_commands(request_key),
+                receipt TEXT NOT NULL);
+            CREATE TABLE prepare_intents (
+                request_key TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
+                turn_id TEXT NOT NULL, intent_hash TEXT NOT NULL, body TEXT NOT NULL,
+                draft_id TEXT, rejection TEXT, UNIQUE(session_id,turn_id,intent_hash));
+            CREATE TABLE draft_refs (
+                session_id TEXT NOT NULL REFERENCES sessions(id), draft_id TEXT NOT NULL,
+                receipt TEXT NOT NULL, PRIMARY KEY(session_id,draft_id));
+        """)
+        for identifier, role in (("shop-legacy", "buyer"), ("merchant-legacy", "merchant")):
+            db.execute(
+                "INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    identifier,
+                    "owner",
+                    "{}",
+                    "[]",
+                    "[]",
+                    "idle",
+                    "2026-09-01",
+                    None,
+                    0,
+                    role,
+                ),
+            )
+        body = '{"trace_id":"original-trace","action_turn_id":"original-turn","request":{}}'
+        db.execute(
+            "INSERT INTO buyer_commands VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "refund-key",
+                "shop-legacy",
+                "t",
+                "c",
+                "refund",
+                "REFUND_REQUEST",
+                "{}",
+                body,
+                '{"pendingActionId":"action-1"}',
+                None,
+                "2026-09-01",
+            ),
+        )
+        db.execute(
+            "INSERT INTO buyer_confirmations VALUES(?,?)", ("refund-key", '{"receiptId":"r1"}')
+        )
+        db.execute(
+            "INSERT INTO prepare_intents VALUES(?,?,?,?,?,?,?)",
+            (
+                "prepare-key",
+                "merchant-legacy",
+                "t",
+                "hash",
+                '{"items":[]}',
+                "draft-1",
+                None,
+            ),
+        )
+        db.execute("INSERT INTO draft_refs VALUES(?,?,?)", ("merchant-legacy", "draft-1", "{}"))
+    for _ in range(2):
+        store = SessionStore(path)
+        commands = BuyerCommands(store)
+        binding = store.storefront("owner", role="buyer")
+        saved = commands.get("refund-key", binding.session_id, "owner")
+        assert saved.session_id == "shop-legacy" and saved.body["trace_id"] == "original-trace"
+        assert saved.source_conversation == "shop-legacy"
+        assert commands.confirmation(saved) == {"receiptId": "r1"}
+        assert commands.list(binding.session_id, "owner", kind="refund") == [saved]
+        assert store.get("shop-legacy", "owner", role="buyer").authorization_id == "shop-legacy"
+        assert store.intent_rows("merchant-legacy")[0].key == "prepare-key"
+        assert store.draft_binding("owner", "draft-1") == "merchant-legacy"
+        assert store.draft_binding("other", "draft-1") is None
+        assert not store.db.execute("PRAGMA foreign_key_check").fetchall()
+        assert store.db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert store.db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert store.db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 2
+        store.close()
