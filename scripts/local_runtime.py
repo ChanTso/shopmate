@@ -132,6 +132,7 @@ def sql(statement: str) -> str:
             "shopmate-mysql-1",
             "mysql",
             "--user=root",
+            "--default-character-set=utf8mb4",
             "--database=commerce_db",
             "--batch",
             "--skip-column-names",
