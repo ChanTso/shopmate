@@ -688,7 +688,7 @@ def main() -> None:
         "Start API: uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101"
     )
     print(
-        "Start web: npm --prefix web run dev (port 3100). Model credentials stay in CityBuddy .env."
+        "Build web: npm --prefix web run build, then start the API (Web/API on port 8101). Model credentials stay in CityBuddy .env."
     )
 
 

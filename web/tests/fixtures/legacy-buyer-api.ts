@@ -1,11 +1,12 @@
+// Retired browser client retained only to preserve its recovery contract regression tests.
 // Copyright 2026 Anthropic PBC
 // SPDX-License-Identifier: Apache-2.0
 
 import { AgentApi, readChatEventStream } from "web-shared/api.ts";
 import type { AgentEvent, MemoryFact } from "web-shared";
-import { ApiError, checkedResponse, UNREACHABLE } from "./http.ts";
-import type { ProductDetails, ProductsPage } from "./buyer-types.ts";
-export { UNREACHABLE } from "./http.ts";
+import { ApiError, checkedResponse, UNREACHABLE } from "../../lib/http.ts";
+import type { ProductDetails, ProductsPage } from "../../lib/buyer-types.ts";
+export { UNREACHABLE } from "../../lib/http.ts";
 export interface PendingBrowserWrite { key: string; path: string; body: Record<string,unknown>; session: string; }
 
 export class BuyerApi extends AgentApi {

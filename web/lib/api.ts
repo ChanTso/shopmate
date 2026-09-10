@@ -19,7 +19,7 @@ export class ShopMateApi extends AgentApi {
 
   setToken(token: string | null) { this.token = token; if (!token) { this.stopChat(); this.session = null; } }
   override headers(json = false) {
-    return { ...super.headers(json), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) };
+    return { ...(json ? { "Content-Type": "application/json" } : {}), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) };
   }
 
   private checked(response: Response): Promise<Response> {
@@ -48,13 +48,14 @@ export class ShopMateApi extends AgentApi {
   stopChat() { this.stream?.abort(); }
 
   override async *chatStream(message: string): AsyncGenerator<AgentEvent> {
+    if (!this.session) throw new Error("请先打开一个对话。");
     if (this.stream) throw new Error("当前会话正在运行，请等待完成后重试。");
     const controller = new AbortController();
     this.stream = controller;
     try {
       let response: Response;
       try {
-        response = await fetch(`${this.base}/chat`, { method: "POST", headers: this.headers(true), body: JSON.stringify({ message }), signal: controller.signal });
+        response = await fetch(`${this.base}/conversations/${encodeURIComponent(this.session)}/chat`, { method: "POST", headers: this.headers(true), body: JSON.stringify({ message }), signal: controller.signal });
       } catch (error) { if (controller.signal.aborted) throw error; throw new Error(UNREACHABLE); }
       await this.checked(response);
       if (!response.body) throw new Error(UNREACHABLE);
