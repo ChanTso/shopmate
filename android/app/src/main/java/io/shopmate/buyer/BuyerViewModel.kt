@@ -240,11 +240,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                 val key = retry?.key ?: UUID.randomUUID().toString()
                 request =
                     retry
-                        ?: PendingWrite(
-                            key,
-                            path,
-                            JsonObject(body + ("request_key" to JsonPrimitive(key))),
-                        )
+                        ?: WriteRecovery.prepare(key, path, body.toString())
                 store.savePending(store.pending().filterNot { it.key == key } + request)
                 update { it.copy(pending = store.pending()) }
                 api.json(request.path, request.body)
@@ -258,9 +254,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                 if (
                     request != null &&
                         e is ApiFailure &&
-                        e.status in 400..499 &&
-                        e.status != 401 &&
-                        !Regex("unknown|uncertain|unavailable").containsMatchIn(e.category)
+                        !WriteRecovery.retain(e.status, e.category)
                 ) {
                     store.savePending(store.pending().filterNot { it.key == request.key })
                     update { it.copy(pending = store.pending()) }
@@ -385,26 +379,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             if (state.value.streaming) return@launchRead
             val id = store.conversation ?: return@launchRead
             val reply = api.json("/conversations/$id")
-            val messages =
-                reply.rows("items").map { item ->
-                    if (item.text("kind") == "user")
-                        ChatMessage(true, listOf(ChatSegment(item.text("text"))))
-                    else
-                        ChatMessage(
-                            false,
-                            item.rows("segments").map { segment ->
-                                if (segment.text("type") == "ui")
-                                    ChatSegment(
-                                        block = segment.obj("block"),
-                                        slot = segment.text("slotKey"),
-                                        final = segment.text("status") == "final",
-                                    )
-                                else ChatSegment(segment.text("text"))
-                            },
-                            (item["suggestions"] as? JsonArray)?.map { it.jsonPrimitive.content }
-                                ?: emptyList(),
-                        )
-                }
+            val messages = ChatReducer.restore(reply.toString())
             if (store.conversation == id && !state.value.streaming)
                 update { it.copy(messages = messages) }
         }
@@ -439,55 +414,8 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                 val page = assistantPage
                 api.chat(id, message, page).collect { event ->
                     when (event.type) {
-                        "text_delta" ->
-                            updateLast { msg ->
-                                val text = event.data.text("text")
-                                val last = msg.segments.lastOrNull()
-                                msg.copy(
-                                    segments =
-                                        if (last != null && last.block == null)
-                                            msg.segments.dropLast(1) +
-                                                last.copy(text = last.text + text)
-                                        else msg.segments + ChatSegment(text)
-                                )
-                            }
-                        "ui",
-                        "ui_partial" -> {
-                            if (event.data.text("component") == "suggestions") {
-                                if (event.type == "ui")
-                                    updateLast {
-                                        it.copy(
-                                            suggestions =
-                                                (event.data.obj("payload")["suggestions"]
-                                                        as? JsonArray)
-                                                    ?.map { v -> v.jsonPrimitive.content }
-                                                    ?: emptyList()
-                                        )
-                                    }
-                            } else
-                                updateLast { msg ->
-                                    val slot =
-                                        event.data.text("stream_id", event.data.text("component"))
-                                    val segment =
-                                        ChatSegment(
-                                            block = event.data,
-                                            slot = slot,
-                                            final = event.type == "ui",
-                                        )
-                                    val index =
-                                        msg.segments.indexOfFirst {
-                                            it.slot == slot && it.block != null
-                                        }
-                                    msg.copy(
-                                        segments =
-                                            if (index < 0) msg.segments + segment
-                                            else
-                                                msg.segments.toMutableList().also {
-                                                    it[index] = segment
-                                                }
-                                    )
-                                }
-                        }
+                        "text_delta", "ui", "ui_partial" ->
+                            updateLast { ChatReducer.apply(it, event) }
                         "tool_call" ->
                             update { it.copy(activity = event.data.text("label", "正在查询业务数据…")) }
                         "progress" ->

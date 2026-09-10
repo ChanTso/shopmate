@@ -26,6 +26,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(platform("androidx.compose:compose-bom:2025.12.01"))
     implementation("androidx.activity:activity-compose:1.12.1")
     implementation("androidx.compose.material3:material3")
