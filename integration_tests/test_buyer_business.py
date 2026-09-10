@@ -169,7 +169,7 @@ async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(
         plain_ids = {value["product_id"] for value in roots if not value["options"]}
         variant_ids = {value["product_id"] for value in variants}
         assert not plain_ids & variant_ids
-        assert len(plain_ids | variant_ids) == 104
+        assert len(plain_ids | variant_ids) == 105
         profile = (await get(p.http, "/api/buyer/profile", first))["profile"]
         assert profile["user_id"] == BUYERS[0]
         policies = await get(p.http, "/api/buyer/policies?query=returns", first)
