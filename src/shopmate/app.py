@@ -44,14 +44,14 @@ def _context(record: SessionRecord, page=None):
         from shopping_agent import PageContext, ShoppingSessionContext
 
         return ShoppingSessionContext(
-            session_id=record.session_id,
+            session_id=record.authorization_id,
             user_id=record.owner,
             now=reference,
             timezone="Asia/Shanghai",
             page=page or PageContext(),
         )
     return MerchantSessionContext(
-        session_id=record.session_id,
+        session_id=record.authorization_id,
         merchant_id="citybuddy",
         operator=record.owner,
         now=reference,
@@ -150,6 +150,7 @@ def create_app(
         "sandbox": sandbox,
     }
     busy: set[str] = set()
+    active_users: dict[str, int] = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -284,10 +285,32 @@ def create_app(
 
     session_dependency = Depends(session)
 
+    async def storefront(user: RequestIdentity = identity_dependency):
+        return user, resources["store"].storefront(user.subject)
+
+    storefront_dependency = Depends(storefront)
+
     def acquire(record):
         if record.session_id in busy or record.status == "running":
-            raise HTTPException(409, "Session is busy")
+            raise HTTPException(409, "Conversation is busy")
+        if (
+            len(busy) >= settings.max_active_tasks
+            or active_users.get(record.owner, 0) >= settings.max_user_tasks
+        ):
+            raise HTTPException(
+                429, "Assistant is busy; try again shortly", headers={"Retry-After": "2"}
+            )
         busy.add(record.session_id)
+        active_users[record.owner] = active_users.get(record.owner, 0) + 1
+
+    def release(record):
+        if record.session_id in busy:
+            busy.remove(record.session_id)
+            remaining = active_users[record.owner] - 1
+            if remaining:
+                active_users[record.owner] = remaining
+            else:
+                del active_users[record.owner]
 
     prefix = "/api/merchant"
 
@@ -311,8 +334,8 @@ def create_app(
     @app.get(prefix + "/session")
     async def restore(bound=session_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
-            for draft_id in resources["store"].draft_ids(record.session_id):
+        with bind_context(user, record.authorization_id):
+            for draft_id in resources["store"].draft_ids(record.authorization_id):
                 change = await resources["backend"].get_change(context(record), draft_id)
                 _update_change(record, _json(change))
         return {
@@ -324,9 +347,9 @@ def create_app(
         }
 
     @app.get(prefix + "/overview")
-    async def overview(bound=session_dependency):
+    async def overview(bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             return await resources["backend"].overview(context(record))
 
     @app.get(prefix + "/listings")
@@ -339,7 +362,7 @@ def create_app(
         max_stock: int | None = Query(default=None, ge=0),
         content_quality: str | None = None,
         sort: str = "relevance",
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
         try:
@@ -352,7 +375,7 @@ def create_app(
             )
         except ValueError:
             raise HTTPException(422, "Invalid listing filters") from None
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].listings_page(
                 context(record), query, filters, limit, offset
             )
@@ -366,10 +389,10 @@ def create_app(
     async def inventory(
         limit: int = Query(default=20, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=10000),
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].inventory_page(context(record), limit, offset)
         return {
             "inventory": page["items"],
@@ -378,9 +401,11 @@ def create_app(
         }
 
     @app.get(prefix + "/order-issues")
-    async def order_issues(limit: int = Query(default=100, ge=1, le=100), bound=session_dependency):
+    async def order_issues(
+        limit: int = Query(default=100, ge=1, le=100), bound=storefront_dependency
+    ):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].order_issues_page(context(record), limit)
         return {
             "order_issues": page["items"],
@@ -392,10 +417,10 @@ def create_app(
     async def campaigns(
         limit: int = Query(default=20, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=10000),
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].campaigns_page(context(record), limit, offset)
         return {"campaigns": page["items"], "next_offset": page["nextOffset"]}
 
@@ -403,26 +428,26 @@ def create_app(
     async def promotions(
         limit: int = Query(default=20, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=10000),
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].promotions_page(context(record), limit, offset)
         return {"promotions": page["items"], "next_offset": page["nextOffset"]}
 
     @app.get(prefix + "/campaigns/{campaign_id}")
-    async def campaign_detail(campaign_id: str, bound=session_dependency):
+    async def campaign_detail(campaign_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             campaign = await resources["backend"].campaign_detail(context(record), campaign_id)
         if campaign is None:
             raise HTTPException(404, "Campaign not found")
         return {"campaign": campaign}
 
     @app.get(prefix + "/promotions/{promotion_id}")
-    async def promotion_detail(promotion_id: str, bound=session_dependency):
+    async def promotion_detail(promotion_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             promotion = await resources["backend"].promotion_detail(context(record), promotion_id)
         if promotion is None:
             raise HTTPException(404, "Promotion not found")
@@ -432,17 +457,17 @@ def create_app(
     async def changes(
         limit: int = Query(default=20, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=10000),
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             page = await resources["backend"].changes_page(context(record), limit, offset)
         return {"changes": page["items"], "next_offset": page["nextOffset"]}
 
     @app.get(prefix + "/listings/{listing_id}")
-    async def listing_detail(listing_id: str, bound=session_dependency):
+    async def listing_detail(listing_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             listing = await resources["backend"].get_listing(context(record), listing_id)
             if listing is None:
                 raise HTTPException(404, "Listing not found")
@@ -450,50 +475,30 @@ def create_app(
         return {"listing": _json(listing), "pricing": _json(pricing)}
 
     @app.get(prefix + "/changes/{change_id}")
-    async def get_change(change_id: str, bound=session_dependency):
+    async def get_change(change_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id):
+        with bind_context(user, record.authorization_id):
             change = await resources["backend"].get_change(context(record), change_id)
         return {"change": _json(change), "receipt": change.receipt}
 
     async def action(change_id, bound, apply):
         user, record = bound
-        acquire(record)
-        try:
-            with bind_context(user, record.session_id):
-                fn = (
-                    resources["backend"].apply_by_operator
-                    if apply
-                    else resources["backend"].discard_by_operator
-                )
-                result = await fn(context(record), change_id)
-            result["change"] = _json(result["change"])
-            _update_change(record, result["change"])
-            # This trusted application message records an observed result, never model authorization.
-            record.messages.append(
-                {
-                    "role": "user",
-                    "content": "Portal action result: "
-                    + str(
-                        {
-                            "change_id": change_id,
-                            "status": result["change"]["status"],
-                            "receipt": result["receipt"],
-                        }
-                    ),
-                }
+        with bind_context(user, record.authorization_id):
+            fn = (
+                resources["backend"].apply_by_operator
+                if apply
+                else resources["backend"].discard_by_operator
             )
-            resources["store"].save(record)
-            return result
-        finally:
-            busy.discard(record.session_id)
+            result = await fn(context(record), change_id)
+        # Java's receipt is persisted by the backend; no concurrent rewrite of chat history.
+        return {**result, "change": _json(result["change"])}
 
     @app.post(prefix + "/changes/{change_id}/apply")
-    async def apply(change_id: str, bound=session_dependency):
+    async def apply(change_id: str, bound=storefront_dependency):
         return await action(change_id, bound, True)
 
     @app.post(prefix + "/changes/{change_id}/discard")
-    async def discard(change_id: str, bound=session_dependency):
+    async def discard(change_id: str, bound=storefront_dependency):
         return await action(change_id, bound, False)
 
     async def run_chat(request, bound, *, role):
@@ -502,6 +507,11 @@ def create_app(
         session_context = context(record, getattr(request, "page", None))
         active_agent = resources["buyer_agent" if role == "buyer" else "agent"]
         try:
+            if role == "merchant":
+                with bind_context(user, record.authorization_id):
+                    for draft_id in resources["store"].draft_ids(record.authorization_id):
+                        change = await resources["backend"].get_change(session_context, draft_id)
+                        _update_change(record, _json(change))
             record.messages.append({"role": "user", "content": request.message})
             turn = 1 + max((i.get("turn", 0) for i in record.items), default=0)
             record.items.extend(
@@ -520,7 +530,7 @@ def create_app(
             )
             turn_id = resources["store"].begin_turn(record)
         except BaseException:
-            busy.discard(record.session_id)
+            release(record)
             raise
 
         finished = False
@@ -532,7 +542,13 @@ def create_app(
             analysis_queries = []
             try:
                 with (
-                    bind_context(user, record.session_id, turn_id, role=role),
+                    bind_context(
+                        user,
+                        record.authorization_id,
+                        turn_id,
+                        role=role,
+                        conversation_id=record.session_id,
+                    ),
                     resources["memory"].turn(),
                     capture_analysis_queries() as analysis_queries,
                 ):
@@ -586,7 +602,7 @@ def create_app(
                 try:
                     resources["store"].finish_turn(record, status)
                 finally:
-                    busy.discard(record.session_id)
+                    release(record)
 
         async def finish_unstarted_stream():
             nonlocal finished
@@ -599,7 +615,7 @@ def create_app(
                     )
                     resources["store"].finish_turn(record, "interrupted")
                 finally:
-                    busy.discard(record.session_id)
+                    release(record)
 
         return StreamingResponse(
             events(),
@@ -613,9 +629,22 @@ def create_app(
     async def chat(request: ChatRequest, bound=session_dependency):
         return await run_chat(request, bound, role="merchant")
 
+    app.post(prefix + "/conversations")(start_session)
+    app.get(prefix + "/conversations")(sessions)
+
+    @app.get(prefix + "/conversations/{conversation_id}")
+    async def restore_conversation(conversation_id: str, user=identity_dependency):
+        return await restore((user, resources["store"].get(conversation_id, user.subject)))
+
+    @app.post(prefix + "/conversations/{conversation_id}/chat")
+    async def chat_conversation(
+        conversation_id: str, request: ChatRequest, user=identity_dependency
+    ):
+        return await chat(request, (user, resources["store"].get(conversation_id, user.subject)))
+
     from .buyer_routes import install_buyer_routes
     from .memory_routes import install_memory_routes
 
-    install_memory_routes(app, prefix, session_dependency, resources, "merchant")
+    install_memory_routes(app, prefix, storefront_dependency, resources, "merchant")
     install_buyer_routes(app, resources, busy, run_chat, context, LoginRequest)
     return app

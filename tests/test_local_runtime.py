@@ -44,7 +44,7 @@ async def test_retail_reset_removes_only_fixture_buyer_commands_and_memories(tmp
     store = SessionStore(tmp_path / "sessions.sqlite3")
     commands, memory = BuyerCommands(store), RetailMemoryStore(store)
     records = [
-        store.create(owner, role="buyer")
+        store.storefront(owner, role="buyer")
         for owner in ("shopmate-retail-buyer", "Shopmate-retail-buyer")
     ]
     for record in records:

@@ -25,6 +25,7 @@ class BuyerCommand:
     result: dict | None
     rejection: str | None
     created_at: str
+    source_conversation: str | None = None
 
     def public(self) -> dict:
         return {
@@ -41,6 +42,7 @@ class BuyerCommand:
             "result": self.result,
             "rejection": self.rejection,
             "created_at": self.created_at,
+            "source_conversation": self.source_conversation,
         }
 
 
@@ -52,7 +54,7 @@ class BuyerCommands:
             self.db.executescript("""
                 CREATE TABLE IF NOT EXISTS buyer_commands (
                   request_key TEXT PRIMARY KEY,
-                  session_id TEXT NOT NULL REFERENCES sessions(id),
+                  session_id TEXT NOT NULL REFERENCES bindings(id),
                   turn_id TEXT NOT NULL, call_id TEXT NOT NULL,
                   kind TEXT NOT NULL CHECK(kind IN ('cart','checkout','refund')),
                   operation TEXT NOT NULL, arguments TEXT NOT NULL, body TEXT NOT NULL,
@@ -62,6 +64,14 @@ class BuyerCommands:
                   request_key TEXT PRIMARY KEY REFERENCES buyer_commands(request_key),
                   receipt TEXT NOT NULL);
             """)
+
+        columns = {r["name"] for r in self.db.execute("PRAGMA table_info(buyer_commands)")}
+        if "source_conversation" not in columns:
+            with self.db:
+                self.db.execute("ALTER TABLE buyer_commands ADD COLUMN source_conversation TEXT")
+                self.db.execute("""UPDATE buyer_commands SET source_conversation=session_id
+                    WHERE session_id IN (SELECT id FROM sessions) AND turn_id NOT LIKE 'user-%'
+                    AND turn_id != 'ui'""")
 
     @staticmethod
     def _record(row) -> BuyerCommand:
@@ -77,12 +87,13 @@ class BuyerCommands:
             json.loads(row["result"]) if row["result"] is not None else None,
             row["rejection"],
             row["created_at"],
+            row["source_conversation"],
         )
 
     def by_call(
         self, session_id: str, owner: str, turn_id: str, call_id: str
     ) -> BuyerCommand | None:
-        self.sessions.get(session_id, owner, role="buyer")
+        self.sessions.authorize_binding(session_id, owner, role="buyer")
         row = self.db.execute(
             "SELECT * FROM buyer_commands WHERE session_id=? AND turn_id=? AND call_id=?",
             (session_id, turn_id, call_id),
@@ -90,9 +101,11 @@ class BuyerCommands:
         return self._record(row) if row else None
 
     def get(self, key: str, session_id: str, owner: str) -> BuyerCommand:
-        self.sessions.get(session_id, owner, role="buyer")
+        self.sessions.authorize_binding(session_id, owner, role="buyer")
         row = self.db.execute(
-            "SELECT * FROM buyer_commands WHERE request_key=? AND session_id=?", (key, session_id)
+            """SELECT c.* FROM buyer_commands c JOIN bindings b ON b.id=c.session_id
+            WHERE c.request_key=? AND b.owner=? AND b.role='buyer'""",
+            (key, owner),
         ).fetchone()
         if row is None:
             raise HTTPException(404, "Buyer command not found")
@@ -110,18 +123,21 @@ class BuyerCommands:
         arguments: dict,
         body: dict,
         key: str | None = None,
+        source_conversation: str | None = None,
     ) -> BuyerCommand:
-        self.sessions.get(session_id, owner, role="buyer")
+        self.sessions.authorize_binding(session_id, owner, role="buyer")
         existing = self.by_call(session_id, owner, turn_id, call_id)
         if existing:
             self.require_same_call(existing, kind, operation, arguments)
             return existing
         key = key or secrets.token_urlsafe(24)
         other = self.db.execute(
-            "SELECT session_id FROM buyer_commands WHERE request_key=?", (key,)
+            """SELECT c.session_id,b.owner FROM buyer_commands c JOIN bindings b
+            ON b.id=c.session_id WHERE c.request_key=?""",
+            (key,),
         ).fetchone()
         if other:
-            if other["session_id"] != session_id:
+            if other["owner"] != owner:
                 raise HTTPException(409, "Request key already used")
             existing = self.get(key, session_id, owner)
             self.require_same_call(existing, kind, operation, arguments)
@@ -134,8 +150,8 @@ class BuyerCommands:
         with self.db:
             self.db.execute(
                 """INSERT INTO buyer_commands
-                (request_key,session_id,turn_id,call_id,kind,operation,arguments,body,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
+                (request_key,session_id,turn_id,call_id,kind,operation,arguments,body,created_at,source_conversation)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (
                     key,
                     session_id,
@@ -146,6 +162,7 @@ class BuyerCommands:
                     dump(arguments),
                     dump(body),
                     now(),
+                    source_conversation,
                 ),
             )
         return self.get(key, session_id, owner)
@@ -175,17 +192,18 @@ class BuyerCommands:
             )
 
     def list(self, session_id: str, owner: str, *, kind: str | None = None) -> list[BuyerCommand]:
-        self.sessions.get(session_id, owner, role="buyer")
+        self.sessions.authorize_binding(session_id, owner, role="buyer")
         rows = self.db.execute(
-            """SELECT * FROM buyer_commands WHERE session_id=? AND (? IS NULL OR kind=?)
-            ORDER BY created_at DESC""",
-            (session_id, kind, kind),
+            """SELECT c.* FROM buyer_commands c JOIN bindings b ON b.id=c.session_id
+            WHERE b.owner=? AND b.role='buyer' AND (? IS NULL OR c.kind=?)
+            ORDER BY c.created_at DESC""",
+            (owner, kind, kind),
         ).fetchall()
         return [self._record(row) for row in rows]
 
     def unknown_cart(self, owner: str) -> list[BuyerCommand]:
         rows = self.db.execute(
-            """SELECT c.* FROM buyer_commands c JOIN sessions s ON s.id=c.session_id
+            """SELECT c.* FROM buyer_commands c JOIN bindings s ON s.id=c.session_id
             WHERE s.owner=? AND s.role='buyer' AND c.kind='cart'
             AND c.result IS NULL AND c.rejection IS NULL ORDER BY c.created_at""",
             (owner,),

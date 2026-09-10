@@ -360,16 +360,12 @@ async def test_batch_rejects_canonical_duplicate_and_mixed_currencies(rig):
     assert rig.store.intent_rows(rig.session.session_id) == []
 
 
-async def test_operator_apply_uses_direct_identity_and_session_owned_draft(rig):
+async def test_operator_apply_uses_direct_identity_and_owner_scoped_original_draft(rig):
     draft = await rig.backend.stage_price_update(rig.session, [item()])
     other = rig.store.create("operator")
     other_session = rig.session.model_copy(update={"session_id": other.session_id})
     with bind_context(RequestIdentity("operator", "direct-test-token"), other.session_id):
-        with pytest.raises(CommerceError) as failure:
-            await rig.backend.apply_by_operator(other_session, draft.change_id)
-        assert failure.value.status_code == 404
-    assert rig.client.applies == []
-    result = await rig.backend.apply_by_operator(rig.session, draft.change_id)
+        result = await rig.backend.apply_by_operator(other_session, draft.change_id)
     assert result["ok"] is True and result["receipt"]["state"] == "APPLIED"
     assert rig.client.applies == [(draft.change_id, "direct-test-token")]
     with pytest.raises(ChangeNotApplicable):
@@ -696,3 +692,21 @@ async def test_reporting_clock_reaches_main_and_analysis_within_context_cap(oper
     assert clock["report_as_of"] in brief
     assert clock["periods_utc"]["last_30_days"] in brief
     assert "[truncated]" not in brief
+
+
+async def test_changes_pagination_keeps_java_tie_order_across_expanding_windows(rig, monkeypatch):
+    await rig.backend.stage_price_update(rig.session, [item()])
+    rows = [
+        rig.client.receipt.model_copy(update={"changeId": identifier})
+        for identifier in ("a", "b", "c")
+    ]
+
+    async def changes(token, session_id, limit=100, offset=0, state=None):
+        return rows[offset : offset + limit] if session_id == rig.session.session_id else []
+
+    monkeypatch.setattr(rig.client, "changes", changes)
+    pages = [
+        await rig.backend.changes_page(rig.session, limit=1, offset=offset) for offset in range(3)
+    ]
+    assert [page["items"][0]["change_id"] for page in pages] == ["a", "b", "c"]
+    assert [page["nextOffset"] for page in pages] == [1, 2, None]

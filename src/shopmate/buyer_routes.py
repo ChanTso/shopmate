@@ -75,12 +75,12 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return user, resources["store"].get(session_id, user.subject, role="buyer")
 
     session_dependency = Depends(session)
-    install_memory_routes(app, prefix, session_dependency, resources, "buyer")
 
-    def acquire(record):
-        if record.session_id in busy or record.status == "running":
-            raise HTTPException(409, "Session is busy")
-        busy.add(record.session_id)
+    async def storefront(user: RequestIdentity = identity_dependency):
+        return user, resources["store"].storefront(user.subject, role="buyer")
+
+    storefront_dependency = Depends(storefront)
+    install_memory_routes(app, prefix, storefront_dependency, resources, "buyer")
 
     @app.get(prefix + "/health")
     async def health():
@@ -107,10 +107,11 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
     @app.get(prefix + "/session")
     async def restore(bound=session_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             await resources["buyer_backend"].recover_cart_commands(context(record))
             commands = [
-                c.public() for c in resources["commands"].list(record.session_id, user.subject)
+                c.public()
+                for c in resources["commands"].list(record.authorization_id, user.subject)
             ]
             checkouts = await resources["transactions"].checkouts(context(record))
             actions = resources["transactions"].actions(context(record))
@@ -130,18 +131,18 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         query: str = Query(default="", max_length=500),
         limit: int = Query(default=24, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=10000),
-        bound=session_dependency,
+        bound=storefront_dependency,
     ):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             return await resources["buyer_backend"].products_page(
                 context(record), query, limit, offset
             )
 
     @app.get(prefix + "/products/{product_id}")
-    async def product(product_id: str, bound=session_dependency):
+    async def product(product_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             product = await resources["buyer_backend"].get_product_details(
                 context(record), product_id
             )
@@ -150,70 +151,56 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return {"product": product.model_dump(mode="json")}
 
     @app.get(prefix + "/cart")
-    async def cart(bound=session_dependency):
+    async def cart(bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             return await resources["buyer_backend"].cart_envelope(context(record))
 
     async def mutate_cart(operation, request, bound):
         user, record = bound
-        acquire(record)
-        try:
-            with bind_context(user, record.session_id, role="buyer"):
-                return await resources["buyer_backend"].cart_mutation(
-                    context(record),
-                    operation,
-                    request.model_dump(exclude={"request_key"}),
-                    request.request_key,
-                )
-        finally:
-            busy.discard(record.session_id)
+        with bind_context(user, record.authorization_id, role="buyer"):
+            return await resources["buyer_backend"].cart_mutation(
+                context(record),
+                operation,
+                request.model_dump(exclude={"request_key"}),
+                request.request_key,
+            )
 
     @app.post(prefix + "/cart/add")
-    async def add_cart(request: AddCart, bound=session_dependency):
+    async def add_cart(request: AddCart, bound=storefront_dependency):
         return await mutate_cart("ADD", request, bound)
 
     @app.post(prefix + "/cart/set")
-    async def set_cart(request: SetCart, bound=session_dependency):
+    async def set_cart(request: SetCart, bound=storefront_dependency):
         return await mutate_cart("SET", request, bound)
 
     @app.post(prefix + "/cart/remove")
-    async def remove_cart(request: RemoveCart, bound=session_dependency):
+    async def remove_cart(request: RemoveCart, bound=storefront_dependency):
         return await mutate_cart("REMOVE", request, bound)
 
     @app.get(prefix + "/commands")
     async def commands(
-        key: str | None = Query(default=None, max_length=128), bound=session_dependency
+        key: str | None = Query(default=None, max_length=128), bound=storefront_dependency
     ):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             await resources["buyer_backend"].recover_cart_commands(context(record))
             if key is not None:
                 values = [resources["commands"].get(key, record.session_id, user.subject)]
             else:
-                own = resources["commands"].list(record.session_id, user.subject)
-                other = [
-                    c
-                    for c in resources["commands"].unknown_cart(user.subject)
-                    if c.session_id != record.session_id
-                ]
-                values = own + other
+                values = resources["commands"].list(record.authorization_id, user.subject)
         return {"commands": [c.public() for c in values]}
 
     @app.post(prefix + "/commands/retry")
-    async def retry_command(request: CommandKey, bound=session_dependency):
+    async def retry_command(request: CommandKey, bound=storefront_dependency):
         user, record = bound
-        acquire(record)
-        try:
-            with bind_context(user, record.session_id, role="buyer"):
-                return await resources["buyer_backend"].command_envelope(
-                    context(record), request.request_key, retry=True
-                )
-        finally:
-            busy.discard(record.session_id)
+        with bind_context(user, record.authorization_id, role="buyer"):
+            return await resources["buyer_backend"].command_envelope(
+                context(record), request.request_key, retry=True
+            )
 
     @app.get(prefix + "/orders")
-    async def orders(limit: int = Query(default=20, ge=1, le=20), bound=session_dependency):
+    async def orders(limit: int = Query(default=20, ge=1, le=20), bound=storefront_dependency):
         user, record = bound
         token = await resources["auth"].exchange_shopping(
             user, record.session_id, "shopping:orders:read"
@@ -222,7 +209,7 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return {"orders": [v.model_dump(mode="json") for v in values]}
 
     @app.get(prefix + "/orders/{order_id}")
-    async def order(order_id: str, bound=session_dependency):
+    async def order(order_id: str, bound=storefront_dependency):
         user, record = bound
         token = await resources["auth"].exchange_shopping(
             user, record.session_id, "shopping:orders:read"
@@ -233,45 +220,43 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return {"order": value.model_dump(mode="json")}
 
     @app.get(prefix + "/profile")
-    async def profile(bound=session_dependency):
+    async def profile(bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             value = await resources["buyer_backend"].get_preferences(context(record))
         return {"profile": value.model_dump(mode="json")}
 
     @app.get(prefix + "/policies")
-    async def policies(query: str = Query(min_length=1, max_length=200), bound=session_dependency):
+    async def policies(
+        query: str = Query(min_length=1, max_length=200), bound=storefront_dependency
+    ):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             values = await resources["buyer_backend"].search_policies(context(record), query)
         return {"policies": [v.model_dump(mode="json") for v in values]}
 
     @app.post(prefix + "/delivery")
-    async def delivery(request: DeliveryRequest, bound=session_dependency):
+    async def delivery(request: DeliveryRequest, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             values = await resources["buyer_backend"].get_fulfillment_options(
                 context(record), request.product_ids
             )
         return {"options": [v.model_dump(mode="json") for v in values]}
 
     @app.post(prefix + "/delivery/cart")
-    async def delivery_cart(request: EmptyRequest, bound=session_dependency):
+    async def delivery_cart(request: EmptyRequest, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             return await resources["buyer_backend"].delivery_cart(context(record))
 
     async def transact(method, bound, *args):
         user, record = bound
-        acquire(record)
-        try:
-            with bind_context(user, record.session_id, role="buyer"):
-                return await method(context(record), *args)
-        finally:
-            busy.discard(record.session_id)
+        with bind_context(user, record.authorization_id, role="buyer"):
+            return await method(context(record), *args)
 
     @app.post(prefix + "/checkouts")
-    async def create_checkout(request: CheckoutRequest, bound=session_dependency):
+    async def create_checkout(request: CheckoutRequest, bound=storefront_dependency):
         return await transact(
             resources["transactions"].create_checkout,
             bound,
@@ -280,28 +265,28 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         )
 
     @app.post(prefix + "/checkouts/retry")
-    async def retry_checkout(request: CommandKey, bound=session_dependency):
+    async def retry_checkout(request: CommandKey, bound=storefront_dependency):
         return await transact(resources["transactions"].retry_checkout, bound, request.request_key)
 
     @app.get(prefix + "/checkouts")
-    async def checkouts(bound=session_dependency):
+    async def checkouts(bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             return {"checkouts": await resources["transactions"].checkouts(context(record))}
 
     @app.get(prefix + "/checkouts/{checkout_id}")
-    async def checkout(checkout_id: str, bound=session_dependency):
+    async def checkout(checkout_id: str, bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             value = await resources["transactions"].checkout(context(record), checkout_id)
         return {"checkout": value.model_dump(mode="json")}
 
     @app.post(prefix + "/checkouts/{checkout_id}/pay")
-    async def pay(checkout_id: str, request: EmptyRequest, bound=session_dependency):
+    async def pay(checkout_id: str, request: EmptyRequest, bound=storefront_dependency):
         return {"checkout": await transact(resources["transactions"].pay, bound, checkout_id)}
 
     @app.post(prefix + "/actions/prepare")
-    async def prepare_refund(request: PrepareRefund, bound=session_dependency):
+    async def prepare_refund(request: PrepareRefund, bound=storefront_dependency):
         async def prepare(ctx):
             return await resources["transactions"].prepare_refund(
                 ctx,
@@ -313,17 +298,17 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
         return await transact(prepare, bound)
 
     @app.post(prefix + "/actions/retry")
-    async def retry_refund(request: CommandKey, bound=session_dependency):
+    async def retry_refund(request: CommandKey, bound=storefront_dependency):
         return await transact(resources["transactions"].retry_refund, bound, request.request_key)
 
     @app.get(prefix + "/actions")
-    async def actions(bound=session_dependency):
+    async def actions(bound=storefront_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             return {"actions": resources["transactions"].actions(context(record))}
 
     @app.post(prefix + "/actions/{action_id}/confirm")
-    async def confirm_refund(action_id: str, request: EmptyRequest, bound=session_dependency):
+    async def confirm_refund(action_id: str, request: EmptyRequest, bound=storefront_dependency):
         return {
             "receipt": await transact(resources["transactions"].confirm_refund, bound, action_id)
         }
@@ -331,6 +316,21 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
     @app.post(prefix + "/chat")
     async def chat(request: ChatRequest, bound=session_dependency):
         user, record = bound
-        with bind_context(user, record.session_id, role="buyer"):
+        with bind_context(user, record.authorization_id, role="buyer"):
             await resources["buyer_backend"].recover_cart_commands(context(record))
         return await run_chat(request, bound, role="buyer")
+
+    app.post(prefix + "/conversations")(start_session)
+    app.get(prefix + "/conversations")(sessions)
+
+    @app.get(prefix + "/conversations/{conversation_id}")
+    async def restore_conversation(conversation_id: str, user=identity_dependency):
+        record = resources["store"].get(conversation_id, user.subject, role="buyer")
+        return await restore((user, record))
+
+    @app.post(prefix + "/conversations/{conversation_id}/chat")
+    async def chat_conversation(
+        conversation_id: str, request: ChatRequest, user=identity_dependency
+    ):
+        record = resources["store"].get(conversation_id, user.subject, role="buyer")
+        return await chat(request, (user, record))

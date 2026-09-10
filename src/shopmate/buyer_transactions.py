@@ -49,6 +49,7 @@ class BuyerTransactions:
         command = self.commands.register(
             session_id=session.session_id,
             owner=session.user_id,
+            source_conversation=bound.conversation_id,
             turn_id="user-checkout",
             call_id=key,
             kind="checkout",
@@ -98,7 +99,7 @@ class BuyerTransactions:
         for command in self.commands.list(session.session_id, session.user_id, kind="checkout"):
             if command.result is not None and command.result["checkoutId"] == checkout_id:
                 return command
-        raise HTTPException(404, "Checkout not found in this session")
+        raise HTTPException(404, "Checkout not found for this buyer")
 
     async def checkout(self, session, checkout_id):
         self._checkout_ref(session, checkout_id)
@@ -174,6 +175,7 @@ class BuyerTransactions:
         command = self.commands.register(
             session_id=session.session_id,
             owner=session.user_id,
+            source_conversation=bound.conversation_id,
             turn_id=bound.turn_id or "user-refund",
             call_id=call_id,
             kind="refund",
@@ -202,12 +204,12 @@ class BuyerTransactions:
             )
         if command.result is None:
             token = await self.auth.exchange_shopping(
-                bound.identity, session.session_id, "refund:create"
+                bound.identity, command.session_id, "refund:create"
             )
             try:
                 action = await self.client.prepare_refund(
                     token,
-                    session.session_id,
+                    command.session_id,
                     command.body["trace_id"],
                     command.body["action_turn_id"],
                     command.body["request"],
@@ -225,7 +227,7 @@ class BuyerTransactions:
         for command in self.commands.list(session.session_id, session.user_id, kind="refund"):
             if command.result is not None and command.result["pendingActionId"] == action_id:
                 return command
-        raise HTTPException(404, "Refund action not found in this session")
+        raise HTTPException(404, "Refund action not found for this buyer")
 
     def actions(self, session):
         self._bound(session)
@@ -240,12 +242,12 @@ class BuyerTransactions:
         command: BuyerCommand = self._action_ref(session, action_id)
         # Always ask Java to replay its receipt; Python never declares refund execution from a draft.
         token = await self.auth.exchange_shopping(
-            bound.identity, session.session_id, "refund:create"
+            bound.identity, command.session_id, "refund:create"
         )
         receipt = await self.client.confirm_refund(
             action_id,
             token,
-            session.session_id,
+            command.session_id,
             command.body["trace_id"],
             command.body["action_turn_id"],
         )

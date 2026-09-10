@@ -334,7 +334,7 @@ print(json.dumps({'gross_minor': str(gross), 'orders': orders,
         }
         with bind_context(identity, session.session_id, "real-sql-python", role="merchant"):
             async with Provider(settings, client=object()).task_budget() as budget:
-                result, failed = await runner._execute(context, "execute_python", request, [])
+                result, failed = await runner._execute(context, "execute_python", request, [], {})
                 assert not failed, result
                 payload = json.loads(
                     result.split("<merchant_data>\n")[1].split("\n</merchant_data>")[0]
@@ -356,6 +356,7 @@ print(json.dumps({'gross_minor': str(gross), 'orders': orders,
                         "execute_python",
                         request | {"sql": "DELETE FROM merchant_products"},
                         [],
+                        {},
                     )
                 )[1]
                 truncated_backend = CityBuddyMerchantBackend(auth, store, client, limited)
@@ -371,6 +372,7 @@ print(json.dumps({'gross_minor': str(gross), 'orders': orders,
                             "sql": "SELECT product_id,price_minor FROM merchant_products ORDER BY product_id LIMIT 2"
                         },
                         [],
+                        {},
                     )
                 )[1]
                 assert sandbox.names == names_after_success

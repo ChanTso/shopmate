@@ -399,7 +399,7 @@ async def test_cancelled_tool_leaves_original_unknown_command_for_read_only_reco
     assert len(env.client.writes) == 1 and command.result is None and command.rejection is None
 
 
-async def test_other_session_recovery_uses_original_session_scope_but_retry_cannot_cross_session(
+async def test_other_conversation_can_recover_own_command_without_changing_original_binding(
     environment,
 ):
     env = environment
@@ -419,11 +419,11 @@ async def test_other_session_recovery_uses_original_session_scope_but_retry_cann
     env.session = ShoppingSessionContext(session_id=other.session_id, user_id="buyer")
     with bound(env):
         records = await env.backend.recover_cart_commands(env.session)
-        with pytest.raises(HTTPException) as error:
-            await env.backend.command_envelope(env.session, command.key, retry=True)
+        replay = await env.backend.command_envelope(env.session, command.key, retry=True)
     assert records[0]["state"] == "confirmed"
-    assert env.auth.scopes[-1] == ("buyer", original.session_id, "shopping:cart:read")
-    assert error.value.status_code == 404 and not env.client.writes
+    assert ("buyer", original.session_id, "shopping:cart:read") in env.auth.scopes
+    assert replay["command"]["session_id"] == original.session_id
+    assert not env.client.writes
 
 
 @pytest.mark.parametrize("role,owner", [("merchant", "buyer"), ("buyer", "other")])

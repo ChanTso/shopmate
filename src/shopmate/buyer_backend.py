@@ -274,7 +274,7 @@ class CityBuddyStorefrontBackend(StorefrontBackend):
 
     async def _recover(self, session, command):
         context = self._bound(session)
-        self.store.get(command.session_id, context.identity.subject, role="buyer")
+        self.store.authorize_binding(command.session_id, context.identity.subject, role="buyer")
         if command.result is None and command.rejection is None:
             token = await self.auth.exchange_shopping(
                 context.identity, command.session_id, "shopping:cart:read"
@@ -299,17 +299,20 @@ class CityBuddyStorefrontBackend(StorefrontBackend):
         ]
 
     async def _write(self, session, command):
-        token = await self._token(session, "shopping:cart:write")
+        bound = self._bound(session)
+        token = await self.auth.exchange_shopping(
+            bound.identity, command.session_id, "shopping:cart:write"
+        )
         body = command.body
         try:
             if command.operation == "ADD":
                 result = await self.client.cart_add(
-                    token, session.session_id, command.key, body["productId"], body["quantity"]
+                    token, command.session_id, command.key, body["productId"], body["quantity"]
                 )
             elif command.operation == "SET":
                 result = await self.client.cart_set(
                     token,
-                    session.session_id,
+                    command.session_id,
                     command.key,
                     body["productId"],
                     body["quantity"],
@@ -318,7 +321,7 @@ class CityBuddyStorefrontBackend(StorefrontBackend):
             elif command.operation == "REMOVE":
                 result = await self.client.cart_remove(
                     token,
-                    session.session_id,
+                    command.session_id,
                     command.key,
                     body["productId"],
                     body["expectedCartVersion"],
@@ -364,6 +367,7 @@ class CityBuddyStorefrontBackend(StorefrontBackend):
         command = self.commands.register(
             session_id=session.session_id,
             owner=session.user_id,
+            source_conversation=context.conversation_id,
             turn_id=context.turn_id or "ui",
             call_id="ui:" + key,
             kind="cart",
@@ -406,6 +410,7 @@ class CityBuddyStorefrontBackend(StorefrontBackend):
         command = self.commands.register(
             session_id=session.session_id,
             owner=session.user_id,
+            source_conversation=context.conversation_id,
             turn_id=context.turn_id,
             call_id=call.tool_use_id,
             kind="cart",

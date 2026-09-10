@@ -198,83 +198,87 @@ class CityBuddyMerchantBackend(MerchantBackend):
         context = self._bound(session)
         return await self.auth.exchange(context.identity, session.session_id, scope)
 
-    async def _recover_prepares(self, session):
+    def _draft_bindings(self, session):
         self._bound(session)
-        missing = [
-            intent
-            for intent in self.store.intent_rows(session.session_id)
-            if intent.draft_id is None and intent.rejection is None
-        ]
-        if not missing:
-            return
-        token = await self._token(session, "merchant:change:prepare")
-        for intent in missing:
-            try:
-                draft = await self.client.prepare(
-                    intent.body, intent.key, token, session.session_id
-                )
-            except CommerceError as error:
-                if self._prepare_rejected(error):
-                    self.store.reject_intent(intent.key, error.category)
-                    continue
-                raise
-            self.store.attach_draft(intent.key, draft.changeId, draft.model_dump(mode="json"))
+        return sorted(set(self.store.merchant_bindings(session.operator)) | {session.session_id})
+
+    async def _recover_prepares(self, session):
+        context = self._bound(session)
+        for binding in self._draft_bindings(session):
+            missing = [
+                intent
+                for intent in self.store.intent_rows(binding)
+                if intent.draft_id is None and intent.rejection is None
+            ]
+            if not missing:
+                continue
+            token = await self.auth.exchange(context.identity, binding, "merchant:change:prepare")
+            for intent in missing:
+                try:
+                    draft = await self.client.prepare(intent.body, intent.key, token, binding)
+                except CommerceError as error:
+                    if self._prepare_rejected(error):
+                        self.store.reject_intent(intent.key, error.category)
+                        continue
+                    raise
+                self.store.attach_draft(intent.key, draft.changeId, draft.model_dump(mode="json"))
 
     @staticmethod
     def _prepare_rejected(error):
         return error.status_code in (400, 404, 409) and error.category in PREPARE_REJECTIONS
 
-    async def _drafts(self, session, state=None):
+    async def _drafts(self, session, state=None, *, take=10001):
         await self._recover_prepares(session)
-        token = await self._token(session, "merchant:change:read")
-        drafts = []
-        for offset in range(0, 10001, 100):
-            page = await self.client.changes(
-                token, session.session_id, limit=100, offset=offset, state=state
-            )
-            for draft in page:
-                self.store.remember_draft(
-                    session.session_id, draft.changeId, draft.model_dump(mode="json")
+        context = self._bound(session)
+        drafts = {}
+        for binding in self._draft_bindings(session):
+            token = await self.auth.exchange(context.identity, binding, "merchant:change:read")
+            for offset in range(0, take, 100):
+                limit = min(100, take - offset)
+                page = await self.client.changes(
+                    token, binding, limit=limit, offset=offset, state=state
                 )
-            drafts.extend(page)
-            if len(page) < 100:
-                return drafts
-        raise ChangeNotApplicable("变更记录超过读取上限，请在工作台分页查询。")
+                for draft in page:
+                    self.store.remember_draft(
+                        binding, draft.changeId, draft.model_dump(mode="json")
+                    )
+                    drafts[draft.changeId] = draft
+                if len(page) < limit:
+                    break
+        ordered = sorted(drafts.values(), key=lambda d: d.changeId)
+        ordered.sort(key=lambda d: d.createdAt, reverse=True)
+        if take == 10001 and len(ordered) >= take:
+            raise ChangeNotApplicable("变更记录超过读取上限，请在工作台分页查询。")
+        return ordered[:take]
 
     async def changes_page(self, session, limit=20, offset=0):
-        await self._recover_prepares(session)
-        token = await self._token(session, "merchant:change:read")
-        rows = await self.client.changes(token, session.session_id, limit=limit, offset=offset)
-        for row in rows:
-            self.store.remember_draft(session.session_id, row.changeId, row.model_dump(mode="json"))
+        rows = await self._drafts(session, take=offset + limit + 1)
         return {
             "items": [
-                presentation.change(row, session.operator).model_dump(mode="json") for row in rows
+                presentation.change(row, session.operator).model_dump(mode="json")
+                for row in rows[offset : offset + limit]
             ],
             "nextOffset": offset + limit
-            if len(rows) == limit and offset + limit <= 10000
+            if len(rows) > offset + limit and offset + limit <= 10000
             else None,
         }
 
     async def _owned_draft(self, session, change_id):
-        self._bound(session)
-        if not self.store.owns_draft(session.session_id, change_id):
-            # The Java GET checks owner AND session, including a committed but locally lost ref.
-            token = await self._token(session, "merchant:change:read")
-            row = await self.client.draft(change_id, token, session.session_id)
-            self.store.remember_draft(session.session_id, change_id, row.model_dump(mode="json"))
+        context = self._bound(session)
+        binding = self.store.draft_binding(session.operator, change_id) or session.session_id
+        token = await self.auth.exchange(context.identity, binding, "merchant:change:read")
+        row = await self.client.draft(change_id, token, binding)
+        self.store.remember_draft(binding, change_id, row.model_dump(mode="json"))
+        return binding, row
 
     async def get_change(self, session, change_id):
-        await self._owned_draft(session, change_id)
-        token = await self._token(session, "merchant:change:read")
-        draft = await self.client.draft(change_id, token, session.session_id)
-        self.store.remember_draft(session.session_id, change_id, draft.model_dump(mode="json"))
+        _, draft = await self._owned_draft(session, change_id)
         return presentation.change(draft, session.operator)
 
     async def apply_by_operator(self, session, change_id):
-        await self._owned_draft(session, change_id)
+        binding, _ = await self._owned_draft(session, change_id)
         draft = await self.client.apply(change_id, self._bound(session).identity.token)
-        self.store.remember_draft(session.session_id, change_id, draft.model_dump(mode="json"))
+        self.store.remember_draft(binding, change_id, draft.model_dump(mode="json"))
         return presentation.response(draft, session.operator, "APPLIED")
 
     async def discard_by_operator(self, session, change_id):
@@ -283,10 +287,12 @@ class CityBuddyMerchantBackend(MerchantBackend):
         )
 
     async def _cancel(self, session, change_id):
-        await self._owned_draft(session, change_id)
-        token = await self._token(session, "merchant:change:cancel")
-        draft = await self.client.cancel(change_id, token, session.session_id)
-        self.store.remember_draft(session.session_id, change_id, draft.model_dump(mode="json"))
+        binding, _ = await self._owned_draft(session, change_id)
+        token = await self.auth.exchange(
+            self._bound(session).identity, binding, "merchant:change:cancel"
+        )
+        draft = await self.client.cancel(change_id, token, binding)
+        self.store.remember_draft(binding, change_id, draft.model_dump(mode="json"))
         return draft
 
     async def _traffic(self, window):
