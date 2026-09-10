@@ -204,6 +204,7 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                         Box(Modifier.weight(1f)) {
                             when (state.screen) {
                                 "首页" -> CatalogScreen(vm, state)
+                                "限量发售" -> SeckillScreen(vm, state) { label, action -> confirm = label to action }
                                 "助手" -> savedScreens.SaveableStateProvider("assistant") { ChatScreen(vm, state) }
                                 "购物车" ->
                                     CartScreen(vm, state) { label, action ->
@@ -254,6 +255,7 @@ fun LoginScreen(vm: BuyerViewModel, state: BuyerState) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var endpoint by rememberSaveable { mutableStateOf(vm.api.root) }
+    var commerceEndpoint by rememberSaveable { mutableStateOf(vm.api.commerceRoot) }
     var settings by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize()
@@ -302,7 +304,7 @@ fun LoginScreen(vm: BuyerViewModel, state: BuyerState) {
         state.error?.let { Text(it, color = Vermilion) }
         Button(
             onClick = {
-                vm.login(endpoint, username, password)
+                vm.login(endpoint, username, password, commerceEndpoint)
                 password = ""
             },
             enabled = !state.loading && username.isNotBlank() && password.isNotBlank(),
@@ -318,6 +320,8 @@ fun LoginScreen(vm: BuyerViewModel, state: BuyerState) {
                 label = { Text("ShopMate 服务地址") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            OutlinedTextField(commerceEndpoint, { commerceEndpoint = it },
+                label = { Text("交易服务地址") }, modifier = Modifier.fillMaxWidth())
             Note("模拟器可连接 10.0.2.2，远程服务使用 HTTPS。")
         }
     }
@@ -347,6 +351,11 @@ fun CatalogScreen(vm: BuyerViewModel, state: BuyerState) {
                 FilledTonalIconButton(onClick = { vm.search(query) }) {
                     Icon(Icons.Outlined.ArrowForward, "搜索")
                 }
+            }
+        }
+        item {
+            OutlinedButton(onClick = { vm.navigate("限量发售") }, modifier = Modifier.fillMaxWidth()) {
+                Text("限量发售 · 查看活动与预约")
             }
         }
         item {

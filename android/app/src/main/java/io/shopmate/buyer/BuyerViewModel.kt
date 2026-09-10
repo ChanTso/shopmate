@@ -32,6 +32,8 @@ data class BuyerState(
     val delivery: JsonObject = emptyObject,
     val pending: List<PendingWrite> = emptyList(),
     val commands: List<JsonObject> = emptyList(),
+    val offers: List<JsonObject> = emptyList(),
+    val tickets: List<SeckillTicket> = emptyList(),
 )
 
 data class ChatState(
@@ -50,6 +52,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     val state = mutable.asStateFlow()
     private val mutableChat = MutableStateFlow(ChatState())
     val chat = mutableChat.asStateFlow()
+    private var seckillJob: Job? = null
     private var chatJob: Job? = null
     private var restoreJob: Job? = null
     private var catalogJob: Job? = null
@@ -64,6 +67,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        api.commerceRoot = store.commerceEndpoint
         api.root = store.endpoint
         api.token = store.token()
         if (api.token != null) {
@@ -106,11 +110,12 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
         update { it.copy(error = null, notice = null) }
     }
 
-    fun login(endpoint: String, username: String, password: String) = launchRead {
+    fun login(endpoint: String, username: String, password: String, commerceEndpoint: String = api.commerceRoot) = launchRead {
         if (state.value.loading) return@launchRead
         update { it.copy(loading = true, error = null) }
         try {
             api.root = endpoint
+            api.commerceRoot = commerceEndpoint
             val reply =
                 api.json(
                     "/login",
@@ -120,6 +125,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                     },
                 )
             store.endpoint = api.root
+            store.commerceEndpoint = api.commerceRoot
             store.login(reply.text("subject"), reply.text("accessToken"))
             api.token = reply.text("accessToken")
             mutable.value = BuyerState(signedIn = true, pending = store.pending())
@@ -282,6 +288,56 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     fun retry(value: PendingWrite) {
         val original = store.pending().firstOrNull { it.key == value.key } ?: value
         write(original.path, original.body, original)
+    }
+
+    fun loadSeckill() = launchRead {
+        update { it.copy(tickets = store.tickets()) }
+        val offers = api.seckill("/seckill/activities").rows("activities")
+        update { it.copy(offers = offers) }
+        pollSeckill()
+    }
+
+    private fun saveTicket(ticket: SeckillTicket) {
+        val values = store.tickets().filterNot { it.key == ticket.key } + ticket
+        store.saveTickets(values)
+        update { it.copy(tickets = values) }
+    }
+
+    fun reserve(offer: JsonObject) {
+        if (state.value.writing) return
+        val previous = store.tickets().lastOrNull { it.activityId == offer.text("activityId") }
+        if (previous != null) { retrySeckill(previous); return }
+        retrySeckill(SeckillTicket(UUID.randomUUID().toString(), offer.text("activityId"),
+            requireNotNull(offer.number("activityVersion"))))
+    }
+
+    fun retrySeckill(ticket: SeckillTicket) {
+        if (state.value.writing) return
+        update { it.copy(writing = true) }
+        launchRead {
+            try {
+                val original = store.tickets().firstOrNull { it.key == ticket.key } ?: ticket
+                saveTicket(original)
+                val result = if (original.reservationId == null)
+                    api.seckill("/seckill/activities/${original.activityId}/reservations",
+                        buildJsonObject { put("quantity", 1); put("expectedActivityVersion", original.activityVersion) }, original.key)
+                    else api.seckill("/reservations/${original.reservationId}")
+                saveTicket(original.result(result))
+                pollSeckill()
+            } finally { update { it.copy(writing = false) } }
+        }
+    }
+
+    private fun pollSeckill() {
+        seckillJob?.cancel()
+        seckillJob = launchRead {
+            repeat(30) {
+                val pending = store.tickets().filter { it.reservationId != null && !it.terminal }
+                if (pending.isEmpty()) return@launchRead
+                for (ticket in pending) saveTicket(ticket.result(api.seckill("/reservations/${ticket.reservationId}")))
+                delay(2000)
+            }
+        }
     }
 
     fun add(product: Product) {

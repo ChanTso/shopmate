@@ -12,6 +12,48 @@ import org.junit.Test
 
 class BuyerContractTest {
     @Test
+    fun `HTTP conflict with rejected reservation is a definitive business result`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(409).setBody("{\"reservationId\":\"r\",\"state\":\"REJECTED\",\"decisionCode\":\"SOLD_OUT\"}"))
+            server.enqueue(MockResponse().setResponseCode(409).setBody("{\"category\":\"CONFLICT\",\"message\":\"different intent\"}"))
+            val api = BuyerApi().apply { commerceRoot = server.url("/").toString() }
+            val reply = api.seckill("/seckill/activities/a/reservations", JsonObject(emptyMap()), "key")
+            assertEquals("REJECTED", SeckillTicket("key", "a", 1).result(reply).state)
+            try { api.seckill("/seckill/activities/a/reservations", JsonObject(emptyMap()), "key"); fail("unrelated conflict must fail") }
+            catch (e: ApiFailure) { assertEquals(409, e.status) }
+        }
+    }
+
+    @Test
+    fun `seckill goes directly to commerce with original idempotency key`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("{}"))
+            val api = BuyerApi().apply { commerceRoot = server.url("/").toString(); token = "buyer" }
+            api.seckill("/seckill/activities/a/reservations",
+                buildJsonObject { put("quantity", 1); put("expectedActivityVersion", 7) }, "original")
+            val request = server.takeRequest()
+            assertEquals("/api/seckill/activities/a/reservations", request.path)
+            assertEquals("original", request.getHeader("Idempotency-Key"))
+            assertEquals("Bearer buyer", request.getHeader("Authorization"))
+            assertNull(request.getHeader("X-Session-Id"))
+            assertEquals(7L, wireJson.parseToJsonElement(request.body.readUtf8()).jsonObject.number("expectedActivityVersion"))
+        }
+    }
+
+    @Test
+    fun `admitted is pending and only order terminal stops polling`() {
+        val intent = SeckillTicket("key", "activity", 1)
+        val pending = intent.result(buildJsonObject { put("reservationId", "r"); put("state", "ADMITTED") })
+        assertFalse(pending.terminal)
+        val restored = wireJson.decodeFromString<SeckillTicket>(kotlinx.serialization.json.Json.encodeToString(SeckillTicket.serializer(), pending))
+        assertEquals("key", restored.key)
+        assertEquals("r", restored.reservationId)
+        val ordered = restored.result(buildJsonObject { put("reservationId", "r"); put("state", "ORDERED"); put("orderId", "o") })
+        assertTrue(ordered.terminal)
+        assertEquals("o", ordered.orderId)
+    }
+
+    @Test
     fun `checkout submits frozen integer price and versions without display prices`() {
         val quote =
             Quote(

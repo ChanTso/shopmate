@@ -132,6 +132,7 @@ def sql(statement: str) -> str:
             "shopmate-mysql-1",
             "mysql",
             "--user=root",
+            "--default-character-set=utf8mb4",
             "--database=commerce_db",
             "--batch",
             "--skip-column-names",
@@ -256,7 +257,7 @@ ON DUPLICATE KEY UPDATE credential_hash=VALUES(credential_hash),state='ACTIVE',
         sql(f"""
 INSERT INTO auth_user_principal(principal_id,subject,login_identifier,state,permissions)
 VALUES ('{principal}','{buyer}','{buyer}','ACTIVE',
-        'catalog:read shopping:session:create order:create payment:create')
+        'catalog:read shopping:session:create order:create payment:create seckill:reserve')
 ON DUPLICATE KEY UPDATE state='ACTIVE',permissions=VALUES(permissions);
 INSERT INTO auth_login_credential(principal_id,password_hash)
 VALUES ('{principal}','{verifier}')
@@ -267,6 +268,7 @@ ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash);
     tables = (
         "product",
         "seckill_activity",
+        "seckill_reservation",
         "standard_order",
         "seckill_order",
         "mock_payment_attempt",
@@ -510,6 +512,59 @@ def wait_http(url: str, name: str, expected: int = 200) -> None:
     raise RuntimeError(name + " did not become ready")
 
 
+def seed_seckill() -> None:
+    """Initialize one finite demo offer while Java is stopped; never replenish an existing offer."""
+    activity = "shopmate-demo-seckill"
+    key = "commerce:seckill:activity:" + activity
+    password = read_env()["REDIS_COMMERCE_PASSWORD"]
+
+    def redis(*args):
+        return run(
+            [
+                "docker",
+                "exec",
+                "--env",
+                "REDISCLI_AUTH",
+                "shopmate-redis-commerce-1",
+                "redis-cli",
+                "--no-auth-warning",
+                *args,
+            ],
+            env={"REDISCLI_AUTH": password},
+            log=False,
+        )
+
+    exists = sql(f"SELECT COUNT(*) FROM seckill_activity WHERE activity_id='{activity}';") == "1"
+    projected = redis("EXISTS", key) == "1"
+    if exists:
+        if not projected:
+            raise RuntimeError("Demo seckill projection is missing; recover it before starting")
+        return
+    if projected:
+        raise RuntimeError("Demo seckill projection has no activity; inspect the isolated fixture")
+    sql(f"""
+START TRANSACTION;
+INSERT INTO product(product_id,name,description,price_minor,currency,stock_quantity,available,
+                    publication_state,publication_version)
+VALUES ('SM-LIMITED-CUP','限量随行杯','手机秒杀演示商品，有限库存',3900,'CNY',20,TRUE,'PUBLISHED',1);
+INSERT INTO seckill_activity(activity_id,product_id,starts_at,ends_at,state,allocated_quota,projection_version)
+VALUES ('{activity}','SM-LIMITED-CUP','2026-01-01','2030-01-01','ACTIVE',10,1);
+COMMIT;
+""")
+    projection = {
+        "activityId": activity,
+        "projectionVersion": 1,
+        "startsAt": "2026-01-01T00:00:00Z",
+        "endsAt": "2030-01-01T00:00:00Z",
+        "startsAtEpochMicros": 1767225600000000,
+        "endsAtEpochMicros": 1893456000000000,
+        "state": "ACTIVE",
+        "remainingQuota": 10,
+    }
+    if redis("SET", key, json.dumps(projection), "NX") != "OK":
+        raise RuntimeError("Demo seckill projection initialization failed")
+
+
 def start_java() -> None:
     values = read_env()
     for service, account in (("auth", "AUTH"), ("commerce", "COMMERCE")):
@@ -581,6 +636,14 @@ def start_java() -> None:
                 "--citybuddy.obo.jwks-url=http://shopmate-auth:8080/auth/jwks",
                 "--citybuddy.merchant.enabled=true",
                 "--citybuddy.orders.enabled=true",
+                "--citybuddy.seckill.enabled=true",
+                "--citybuddy.seckill.order.enabled=true",
+                "--citybuddy.seckill.order.rocketmq-endpoints=rocketmq-broker-proxy:8081",
+                "--citybuddy.seckill.order.rocketmq-topic=shopmate-seckill",
+                "--citybuddy.seckill.order.rocketmq-consumer-group=shopmate-seckill-consumer",
+                "--citybuddy.seckill.timeout.rocketmq-endpoints=rocketmq-broker-proxy:8081",
+                "--citybuddy.seckill.timeout.rocketmq-topic=shopmate-seckill-timeout",
+                "--citybuddy.seckill.timeout.rocketmq-consumer-group=shopmate-seckill-timeout-consumer",
                 "--citybuddy.mock-payment.enabled=true",
                 "--citybuddy.refund.enabled=true",
                 "--citybuddy.actions.enabled=true",
@@ -652,6 +715,16 @@ def main() -> None:
     for command in (
         ("updateTopic", "--topic", TOPIC, "--readQueueNums", "4", "--writeQueueNums", "4"),
         ("updateSubGroup", "--groupName", GROUP, "--consumeEnable", "true"),
+        ("updateTopic", "--topic", "shopmate-seckill", "-a", "+message.type=TRANSACTION"),
+        ("updateTopic", "--topic", "shopmate-seckill-timeout", "-a", "+message.type=DELAY"),
+        ("updateSubGroup", "--groupName", "shopmate-seckill-consumer", "--consumeEnable", "true"),
+        (
+            "updateSubGroup",
+            "--groupName",
+            "shopmate-seckill-timeout-consumer",
+            "--consumeEnable",
+            "true",
+        ),
     ):
         compose(
             "run",
@@ -668,6 +741,7 @@ def main() -> None:
     stop_java()
     settings = seed_identity()
     private(RUN / "settings.json", json.dumps(settings, indent=2) + "\n")
+    seed_seckill()
     start_java()
     initialized = (
         sql(

@@ -39,6 +39,18 @@ class DeviceStore(context: Context) {
             check(prefs.edit().putString("endpoint", value).commit())
         }
 
+    var commerceEndpoint: String
+        get() = prefs.getString("commerceEndpoint", "http://10.0.2.2:9082")!!
+        set(value) { check(prefs.edit().putString("commerceEndpoint", value).commit()) }
+
+    fun tickets(): List<SeckillTicket> =
+        prefs.getString(scoped("seckill:$commerceEndpoint"), null)?.let { wireJson.decodeFromString(it) }
+            ?: emptyList()
+
+    fun saveTickets(values: List<SeckillTicket>) {
+        check(prefs.edit().putString(scoped("seckill:$commerceEndpoint"), wireJson.encodeToString(values)).commit())
+    }
+
     val owner: String
         get() = prefs.getString("owner", "")!!
 

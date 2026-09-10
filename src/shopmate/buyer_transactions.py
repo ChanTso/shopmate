@@ -169,6 +169,46 @@ class BuyerTransactions:
             self.commands.confirm(command, progress)
         return (await self.checkout(session, checkout_id)).model_dump(mode="json")
 
+    async def pay_order(self, session, order_id):
+        bound = self._bound(session)
+        token = await self._read_token(session)
+        order = await self.client.order(order_id, token, session.session_id)
+        if order is None or order.orderKind != "SECKILL":
+            raise HTTPException(404, "Seckill order not found")
+        if order.status == "PAID":
+            return order.model_dump(mode="json")
+        if order.status != "UNPAID":
+            raise HTTPException(409, "Order cannot be paid; refresh its status")
+        if not self.settings.payment_callback_secret:
+            raise HTTPException(503, "Mock payment callback is not configured")
+        # Java persists the attempt and correlation. Retrying after interruption uses the same keys.
+        identity = str(uuid5(NAMESPACE_URL, f"shopmate:order-payment:{session.user_id}:{order_id}"))
+        attempt = await self.client.start_payment(
+            order_id,
+            bound.identity.token,
+            "pay-" + identity,
+            order.product.totalPriceMinor,
+            order.product.currency,
+        )
+        await self.client.payment_callback(
+            {
+                "callbackEventId": identity,
+                "callbackCorrelationId": attempt.callbackCorrelationId,
+                "orderId": order_id,
+                "amountMinor": attempt.amountMinor,
+                "currency": attempt.currency,
+                "outcome": "SUCCEEDED",
+            },
+            "callback-" + identity,
+            key_id="shopmate-local-payment",
+            secret=self.settings.payment_callback_secret,
+            timestamp=int(time.time()),
+        )
+        result = await self.client.order(order_id, token, session.session_id)
+        if result is None:
+            raise HTTPException(404, "Order not found")
+        return result.model_dump(mode="json")
+
     async def prepare_refund(self, session, arguments, *, call_id, key=None):
         bound = self._bound(session)
         arguments = RefundArguments.model_validate(arguments).model_dump(mode="json")

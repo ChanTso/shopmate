@@ -151,7 +151,8 @@ async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(
             page = await get(p.http, f"/api/buyer/products?limit=50&offset={offset}", first)
             roots.extend(page["products"])
             offset = page["next_offset"]
-        assert len(roots) == len({value["product_id"] for value in roots}) == 87
+        assert len(roots) == len({value["product_id"] for value in roots}) == 88
+        assert any(value["product_id"] == "SM-LIMITED-CUP" for value in roots)
         families = [value for value in roots if value["options"]]
         assert len(families) == 4
         variants = []
@@ -168,7 +169,7 @@ async def test_two_buyers_full_catalog_and_published_facts_use_real_identity(
         plain_ids = {value["product_id"] for value in roots if not value["options"]}
         variant_ids = {value["product_id"] for value in variants}
         assert not plain_ids & variant_ids
-        assert len(plain_ids | variant_ids) == 104
+        assert len(plain_ids | variant_ids) == 105
         profile = (await get(p.http, "/api/buyer/profile", first))["profile"]
         assert profile["user_id"] == BUYERS[0]
         policies = await get(p.http, "/api/buyer/policies?query=returns", first)
