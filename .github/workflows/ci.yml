@@ -86,3 +86,8 @@ jobs:
           -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           -F shared/build/bin/iosSimulatorArm64/debugFramework
           ios/Tests/CoreInterop.swift
+      - name: Build native iOS application and test bundle
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec ios/project.yml
+          xcodebuild -project ios/ShopMate.xcodeproj -scheme ShopMate -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build-for-testing
