@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from commerce_common.streaming import AgentEvent, to_sse
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from merchant_agent import ListingFilters, MerchantSessionContext
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
@@ -19,6 +20,7 @@ from .analysis_sql import capture_analysis_queries
 from .auth import AuthClient, RequestIdentity, bind_context
 from .commerce_client import CommerceError
 from .sessions import SessionRecord, SessionStore
+from .settings import ROOT
 
 
 class LoginRequest(BaseModel):
@@ -252,6 +254,11 @@ def create_app(
                     await result
 
     app = FastAPI(title="ShopMate", lifespan=lifespan)
+    app.mount(
+        "/products",
+        StaticFiles(directory=ROOT / "web" / "public" / "products"),
+        name="product-images",
+    )
     app.state.resources = resources
 
     @app.exception_handler(CommerceError)
