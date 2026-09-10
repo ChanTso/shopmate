@@ -166,7 +166,7 @@ struct CartView: View {
                     Text("合计 \(money(model.quote["subtotalMinor"]))").font(.title2.bold())
                     Text("按当前商品、价格与购物车版本创建订单。付款还需要单独确认。").font(.footnote).foregroundStyle(.secondary)
                     Button("核对并创建订单") {
-                        model.confirm("确认按当前报价创建订单，合计 \(money(model.quote["subtotalMinor"]))？") { model.checkout() }
+                        model.confirmCheckout()
                     }.buttonStyle(.borderedProminent).disabled(model.writing || model.quote["checkoutReady"] as? Bool != true).accessibilityIdentifier("checkout-create")
                 }
             }.padding(18)

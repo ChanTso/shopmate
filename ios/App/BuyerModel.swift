@@ -35,6 +35,7 @@ final class BuyerModel: ObservableObject {
     @Published var selected: Object?
     @Published var tab = 0
     private var chatTask: Task<Void, Never>?
+    private var chatGeneration = UUID()
     private var loadTask: Task<Void, Never>?
     private var writeTask: Task<Void, Never>?
 
@@ -71,6 +72,7 @@ final class BuyerModel: ObservableObject {
         }
     }
     func logout() {
+        chatGeneration = UUID()
         chatTask?.cancel(); loadTask?.cancel(); writeTask?.cancel()
         do { try storage.logout() } catch { self.error = error.localizedDescription }
         api.token = nil; signedIn = false; loading = false; writing = false
@@ -106,11 +108,14 @@ final class BuyerModel: ObservableObject {
     func add(_ product: Object) {
         write(path: "/cart/add", body: ["productId": text(product, "product_id"), "quantity": 1])
     }
-    func checkout() {
+    func confirmCheckout() {
         do {
             let body = try WriteRecovery.shared.checkoutBody(quote: jsonText(quote))
-            write(path: "/checkouts", body: try jsonObject(Data(body.utf8)))
-            tab = 3
+            let approved = try jsonObject(Data(body.utf8))
+            confirm("确认按当前报价创建订单，合计 \(money(quote["subtotalMinor"]))？") {
+                self.write(path: "/checkouts", body: approved)
+                self.tab = 3
+            }
         } catch { report(error) }
     }
     func retry(_ pending: PendingWrite) {
@@ -157,7 +162,7 @@ final class BuyerModel: ObservableObject {
             } catch { report(error) }
         }
     }
-    func stop() { chatTask?.cancel(); chat.running = false; chat.activity = "已停止，可恢复已保存的对话" }
+    func stop() { chatTask?.cancel(); chat.activity = "正在停止生成" }
     func newConversation() {
         guard !chat.running else { return }
         storage.conversation = nil; chat.clear()
@@ -173,8 +178,10 @@ final class BuyerModel: ObservableObject {
         let message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !chat.running else { return }
         chat.running = true; chat.activity = "正在查询"; error = nil
+        let generation = UUID()
+        chatGeneration = generation
         chatTask = Task {
-            defer { chat.running = false }
+            defer { if chatGeneration == generation { chat.running = false } }
             do {
                 var id = storage.conversation
                 if id == nil {
@@ -186,6 +193,8 @@ final class BuyerModel: ObservableObject {
                 chat.timeline.begin(text: message); chat.messages = chat.timeline.messages
                 let decoder = StreamDecoder()
                 try await api.stream("/conversations/" + id + "/chat", body: ["message": message, "page": ["page_type": "home"]]) { line in
+                    try Task.checkCancellation()
+                    guard self.chatGeneration == generation else { throw CancellationError() }
                     if let event = try decoder.line(raw: line) {
                         if event.type == "error" {
                             let value = try jsonObject(Data(event.payload.utf8))
