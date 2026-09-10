@@ -804,7 +804,7 @@ async def test_full_retail_changes_apply_to_live_authority_and_restore(settings,
                 session,
                 CampaignDraft(
                     campaign_id="C-203",
-                    name="Local approved plan",
+                    name=f"Local approved plan {session.session_id}",
                     budget=None,
                     copy_text="Review in local workspace",
                 ),
