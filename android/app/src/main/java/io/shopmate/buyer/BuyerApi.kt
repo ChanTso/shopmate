@@ -16,17 +16,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class ApiFailure(val status: Int, val category: String, message: String) : IOException(message)
-
-class BuyerApi(
-    private val client: OkHttpClient =
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .build()
-) {
-    var root = "http://10.0.2.2:8101"
-        set(value) {
+private fun serviceRoot(value: String): String {
             val parsed = value.trim().trimEnd('/').toHttpUrl()
             require(
                 parsed.username.isEmpty() &&
@@ -40,8 +30,22 @@ class BuyerApi(
             require(parsed.isHttps || parsed.host in setOf("10.0.2.2", "localhost", "127.0.0.1")) {
                 "远程服务须使用 HTTPS"
             }
-            field = value.trim().trimEnd('/')
-        }
+    return value.trim().trimEnd('/')
+}
+
+class ApiFailure(val status: Int, val category: String, message: String) : IOException(message)
+
+class BuyerApi(
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .build()
+) {
+    var root = "http://10.0.2.2:8101"
+        set(value) { field = serviceRoot(value) }
+    var commerceRoot = "http://10.0.2.2:9082"
+        set(value) { field = serviceRoot(value) }
 
     var token: String? = null
 
@@ -74,8 +78,20 @@ class BuyerApi(
         path: String,
         body: JsonObject? = null,
         method: String = if (body == null) "GET" else "POST",
-    ): JsonObject = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request(path, body, method))
+    ): JsonObject = execute(request(path, body, method))
+
+    suspend fun seckill(path: String, body: JsonObject? = null, key: String? = null): JsonObject =
+        execute(Request.Builder().url("$commerceRoot/api$path")
+            .apply {
+                token?.let { header("Authorization", "Bearer $it") }
+                key?.let { header("Idempotency-Key", it) }
+            }
+            .method(if (body == null) "GET" else "POST",
+                body?.toString()?.toRequestBody("application/json".toMediaType()))
+            .build())
+
+    private suspend fun execute(request: Request): JsonObject = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(
             object : Callback {

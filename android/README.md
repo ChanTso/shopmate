@@ -32,3 +32,9 @@ Run shared tests with `./gradlew :shared:jvmTest`; on macOS, also run `:shared:i
 - Product images use the existing API assets. Source notices remain in `web/public/products/IMAGE-CREDITS.md`.
 
 This app does not claim that backend benchmark throughput measures mobile rendering or concurrent Agent capacity. Payment is the existing simulated payment flow.
+
+## Limited offers
+
+The home-page limited-offer entry calls CityBuddy directly for activities, reservation and status. Login settings expose a separate Commerce origin (emulator default `http://10.0.2.2:9082`). The same direct buyer bearer is used; no conversation, Python hop or SQLite write sits on the reservation path. Original reservation intent is saved before sending and scoped by endpoint and buyer. Short bounded polling can be resumed manually; admission is never displayed as a completed order.
+
+After an order is created, its payment action uses ShopMate's server-side mock-payment signer and Java's persisted payment attempt. The APK contains no callback secret. The isolated runtime prepares one ten-unit offer once, without replenishing it on restart. This is a functional demo, not a new capacity result.

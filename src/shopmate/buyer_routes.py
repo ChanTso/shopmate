@@ -285,6 +285,10 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
     async def pay(checkout_id: str, request: EmptyRequest, bound=storefront_dependency):
         return {"checkout": await transact(resources["transactions"].pay, bound, checkout_id)}
 
+    @app.post(prefix + "/orders/{order_id}/pay")
+    async def pay_order(order_id: str, request: EmptyRequest, bound=storefront_dependency):
+        return {"order": await transact(resources["transactions"].pay_order, bound, order_id)}
+
     @app.post(prefix + "/actions/prepare")
     async def prepare_refund(request: PrepareRefund, bound=storefront_dependency):
         async def prepare(ctx):

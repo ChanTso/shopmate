@@ -241,6 +241,13 @@ fun OrdersScreen(vm: BuyerViewModel, state: BuyerState, confirm: (String, () -> 
                         Note(fulfillment.text("delayReason"))
                 } else Note("暂未提供履约信息")
                 Note("订单尾号 ${order.text("orderId").takeLast(8)}")
+                if (order.text("orderKind") == "SECKILL" && order.text("status") == "UNPAID")
+                    Button(enabled = !state.writing, onClick = {
+                        confirm("确认模拟支付 ${money(product.number("totalPriceMinor"), product.text("currency"))}？不会扣取真实资金。") {
+                            vm.transact("/orders/${order.text("orderId")}/pay")
+                        }
+                    }) { Text("核对并模拟付款") }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = {
