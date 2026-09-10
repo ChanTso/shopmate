@@ -61,8 +61,15 @@ fun SeckillScreen(vm: BuyerViewModel, state: BuyerState, confirm: (String, () ->
                     "UNFULFILLED" -> "本次预约未能成单"
                     else -> "结果尚未确认，请查询原预约"
                 })
-                Note("活动 ${ticket.activityId}")
-                if (ticket.decision.isNotEmpty()) Note(ticket.decision)
+                Note("预约尾号 ${(ticket.reservationId ?: ticket.key).takeLast(8)}")
+                if (ticket.state == "REJECTED") Note(when (ticket.decision) {
+                    "EXHAUSTED" -> "活动配额已售罄"
+                    "DUPLICATE_USER" -> "每位顾客限购一次，请查看原订单"
+                    "NOT_OPEN" -> "活动尚未开始"
+                    "EXPIRED", "ACTIVITY_INACTIVE" -> "活动已结束或暂不可用"
+                    "STALE_VERSION" -> "活动已更新，请刷新后核对"
+                    else -> "当前条件不满足，请核对活动状态"
+                })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(enabled = !state.writing, onClick = { vm.retrySeckill(ticket) }) { Text("查询原预约") }
                     if (ticket.orderId != null) Button(onClick = { vm.navigate("订单") }) { Text("查看订单") }
