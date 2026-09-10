@@ -110,3 +110,7 @@ npm --prefix web run build
 [最终零售业务验收](evals/records/retail-v2-20260907/README.md)覆盖18个已知场景、按登记共30次：**24次通过、3次业务失败、3次提供者故障**，对应冻结版本 `4020ff93f4797e2ae3142e8a4123442d3d8693b7`。购物付款退款、商品维护、补货、促销成交、营销审批、搜索与SQL/Python分析均核对实际回复和数据库终态；日期表达和遗漏回答的失败保留。61个聊天回合的结束等待p50为30.54秒、p95为87.08秒，包含失败，不代表并发容量。[前一轮54次与边界验证](evals/records/retail-v1-20260907/README.md)单列，不混合版本或分母；操作仍须由用户确认并经Java事务校验。
 
 [评测索引](evals/records/README.md)保留旧七商品/42 日 UTC 版本的 **78/90** 与定向 **21/24**；它们不描述当前零售数据或本次完整批。[历史浏览器演示、截图和 SQL](docs/demo-20260906/README.md)仍对应旧版，当前双端页面、记忆与恢复记录见新版验收。
+
+## iOS buyer loop
+
+The [SwiftUI buyer client](ios/README.md) uses the same Kotlin Multiplatform core as Android for streaming messages, checkout contracts and recovery. It covers consultation through simulated payment; Android retains the full buyer feature set. Both use the existing ShopMate/CityBuddy services.
