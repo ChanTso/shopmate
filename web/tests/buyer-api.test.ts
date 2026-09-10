@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
 const hooks=registerHooks({resolve(specifier,context,nextResolve){if(specifier==="web-shared/api.ts")return{url:new URL("../../vendor/commerce-agents/examples/web-shared/api.ts",import.meta.url).href,shortCircuit:true};return nextResolve(specifier,context);}});
-const { BuyerApi }=await import("../lib/buyer-api.ts");
+const { BuyerApi }=await import("./fixtures/legacy-buyer-api.ts");
 const { ShopMateApi }=await import("../lib/api.ts");
 hooks.deregister();
 test("lost cart reply retains exact body and original key, explicit retry does not add a new intent",async()=>{

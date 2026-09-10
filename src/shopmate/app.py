@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from merchant_agent import ListingFilters, MerchantSessionContext
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
+from starlette.responses import FileResponse
 
 from .analysis_sql import capture_analysis_queries
 from .auth import AuthClient, RequestIdentity, bind_context
@@ -259,6 +260,21 @@ def create_app(
         StaticFiles(directory=ROOT / "web" / "public" / "products"),
         name="product-images",
     )
+    web_dist = ROOT / "web" / "dist"
+    if (web_dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=web_dist / "assets"), name="web-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def merchant_web():
+        if not (web_dist / "index.html").is_file():
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "Build the merchant Web with npm --prefix web run build, then restart the API."
+                },
+            )
+        return FileResponse(web_dist / "index.html", headers={"Cache-Control": "no-cache"})
+
     app.state.resources = resources
 
     @app.exception_handler(CommerceError)

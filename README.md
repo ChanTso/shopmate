@@ -1,13 +1,13 @@
 # ShopMate
 
-远山户外官方商店的零售应用与 Agent 工作台。CityBuddy 提供同一家店的交易与身份后端；ShopMate 负责买家与操作员的应用入口、Agent 和对话。一个商品目录、一支运营团队、多位顾客，不包含多商户入驻。商家端支持经营分析、商品与库存、订单问题和审批执行；买家端支持推荐与比较、购物车、本人订单及由用户确认的结账、模拟付款和退款申请。
+面向单一零售品牌官方商店的应用与 Agent 工作台。CityBuddy 提供同一家店的交易与身份后端；ShopMate 负责买家与操作员的应用入口、Agent 和对话。一个商品目录、一支运营团队、多位顾客，不包含多商户入驻。商家端支持经营分析、商品与库存、订单问题和审批执行；买家端支持推荐与比较、购物车、本人订单及由用户确认的结账、模拟付款和退款申请。
 
 项目复用 [commerce-agents](vendor/commerce-agents/README.md) 的商家与购物核心、Messages 运行时和零售页面组件；业务工具、身份、持久会话及实际写入接入 CityBuddy。原 [Apache-2.0 许可证](vendor/commerce-agents/LICENSE)、版权声明和[图片来源](web/public/products/IMAGE-CREDITS.md)保留。
 
 ## 当前能力
 
 - **经营分析**：主 Agent 组织查询与追问，复杂计算交给分析子 Agent；它通过受限 SQL 取数，也可在独立 Python 容器内计算完整查询结果。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
-- **经营首页与订单**：六项指标、四项日趋势和三类待办使用同一报告口径；近期订单读取当前全店标准单与秒杀单，不受历史报告截止限制。按 SKU 子单展示成交时的金额，订单、付款、退款和履约状态分别保留。
+- **经营首页与订单**：四项核心指标、可切换日趋势和三类待办使用同一报告口径；近期订单读取当前全店标准单与秒杀单，不受历史报告截止限制。按 SKU 子单展示成交时的金额，订单、付款、退款和履约状态分别保留。
 - **商品与运营**：服务端分页浏览商品系列和单品，详情展开真实 SKU、规格、当前价格、库存、内容和成本观察；库存预警及订单问题提供对应分析入口。
 - **五类草案**：支持 `LISTING_UPDATE`、`PRICE_UPDATE`、`INVENTORY_ACTION`、`PROMOTION`、`CAMPAIGN`。涉及商品的操作展开后至多 25 个 SKU；卡片分别显示金额、数量、开关和文字差异。
 - **操作员审批**：模型可读取、建案和取消未执行方案，不能批准。批准按钮使用登录操作员的直接身份；Java 核对快照、版本和业务条件，在同一事务内保存实际变更、草案回执及适用的商品 Outbox。冲突整批拒绝，重复批准返回原结果。
@@ -30,13 +30,13 @@ flowchart LR
   Java --> Transaction[身份与版本校验 / 交易 / 回执 / Outbox]
 ```
 
-商家入口为 `/`，买家入口为 `/buyer`；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。CityBuddy 商城的购物助手链接已统一指向 ShopMate；旧客服入口与重复模型循环已撤下，Java 的授权、退款确认及回执机制继续复用。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。[完整零售验收](evals/records/retail-v1-20260907/README.md)记录真实业务任务、页面操作、记忆、并发与中断恢复；业务成绩和边界检查分别报告。
+商家入口为 React/Vite Web `/`，买家入口为 [Kotlin/Compose Android App](android/README.md)；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](docs/BUYER.md)。旧 `/buyer` Web 页面已退役；旧客服入口与重复模型循环已撤下，Java 的授权、退款确认及回执机制继续复用。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。[完整零售验收](evals/records/retail-v1-20260907/README.md)记录真实业务任务、页面操作、记忆、并发与中断恢复；业务成绩和边界检查分别报告。
 
 ## 身份、对话与持久状态
 
 普通购物和经营接口只要求对应角色的 `Authorization: Bearer`，不要求聊天 ID。服务端按主体和角色保存内部授权绑定，再按 Java 端点交换精确 scope 的 OBO；部分 UI 购物操作也走此受限代理。模型没有付款、退款确认或操作员批准工具。
 
-聊天通过 `POST /api/{buyer|merchant}/conversations` 创建，列表和恢复分别使用 `GET /conversations`、`GET /conversations/{id}`，流式调用为 `POST /conversations/{id}/chat`。原 `/session`、`/sessions`、`/chat` 在旧 Web 过渡期间保留。命令与结账/退款记录按主体读取，旧操作保留原 key、请求体和授权绑定，换聊天不会变成新的业务意图。
+聊天通过 `POST /api/{buyer|merchant}/conversations` 创建，列表和恢复分别使用 `GET /conversations`、`GET /conversations/{id}`，流式调用为 `POST /conversations/{id}/chat`。原 `/session`、`/sessions`、`/chat` 保留为历史协议兼容接口，正式客户端不使用它们。命令与结账/退款记录按主体读取，旧操作保留原 key、请求体和授权绑定，换聊天不会变成新的业务意图。
 
 当前为单进程、单实例 Python 服务；SQLite 存储对话、意图、恢复记录和记忆，使用 WAL，必须保存在持久目录，不能随容器重建丢弃。`state_path` 可配置，夹具重置先用 SQLite backup 保存原库；Java/MySQL 是交易权威来源。不得直接以多个 Uvicorn workers 扩容。默认最多 8 个活跃聊天任务、每用户 2 个，同一对话串行；超额返回 429，普通业务请求不占模型任务名额。这些是任务上限配置，不是容量测量。
 
@@ -54,20 +54,16 @@ make init-local setup-java setup-python
 cd ../shopmate
 uv sync --frozen
 python3 scripts/local_runtime.py up
+npm --prefix web ci
+npm --prefix web run build
 uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 ```
 
-`up` 要求 ShopMate API 已停止；首次初始化统一零售夹具，已有该版本数据时保留当前业务变更。另开终端启动前端：
+`up` 要求 ShopMate API 已停止；首次初始化统一零售夹具，已有该版本数据时保留当前业务变更。构建后由 Python 同源提供商家 Web，访问 `http://127.0.0.1:8101/`，不需要另起 Next/Node 服务。开发 Web 时另开终端 `npm --prefix web run dev`，3100 端口将 API 请求代理到 8101。
 
-```sh
-npm --prefix web ci
-npm --prefix web run build
-npm --prefix web run start
-```
+操作员账号为 `shopmate-fixture-operator`，本地生成密码保存在忽略的 `.run/operator_password`。Bearer 只保留在页面内存，刷新后重新登录。Android 构建与安装见 [android/README.md](android/README.md)，模拟器连接 `http://10.0.2.2:8101`。
 
-访问 `http://127.0.0.1:3100`。登录账号为 `shopmate-fixture-operator`，生成的密码保存在忽略的 `.run/operator_password`，不写入文档或执行记录。Bearer 只保留在页面内存，刷新需重新登录。
-
-启动脚本使用独立的 `shopmate` Compose project 和数据卷，不重置 CityBuddy 默认演示库。Auth/Commerce 使用 9081/9082，ShopMate API 使用 8101，前端使用 3100。停止 API 和前端各自的终端后，运行 `python3 scripts/local_runtime.py stop` 停止本项目 Java 与数据服务、保留卷。
+启动脚本使用独立的 `shopmate` Compose project 和数据卷，不重置 CityBuddy 默认演示库。Auth/Commerce 使用 9081/9082，ShopMate API/Web 使用 8101。停止 API 后运行 `python3 scripts/local_runtime.py stop` 停止本项目 Java 与数据服务、保留卷。对话数据库必须保留在 `.run` 或另一个持久目录中。
 
 ## 模型、预算与时间
 

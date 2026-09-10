@@ -18,7 +18,7 @@ test("paged reads forward identity and query; server read failures reject rather
     globalThis.fetch = async (input, init) => {
       assert.equal(String(input), "/api/merchant/listings?query=desk+lamp&offset=24&limit=24");
       assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer test-only-token");
-      assert.equal(new Headers(init?.headers).get("X-Session-Id"), "session-one");
+      assert.equal(new Headers(init?.headers).get("X-Session-Id"), null);
       assert.equal(init?.cache, "no-store");
       return new Response(JSON.stringify({ category: "unavailable", detail: "目录读取失败" }), { status: 503 });
     };
@@ -29,9 +29,12 @@ test("paged reads forward identity and query; server read failures reject rather
 test("stopping the actual chat fetch aborts its body and the next turn has a new controller", async () => {
   const original = globalThis.fetch;
   const api = new ShopMateApi("", "/api/merchant");
+  api.session = "conversation-one";
   let firstSignal: AbortSignal | undefined;
   try {
-    globalThis.fetch = async (_, init) => {
+    globalThis.fetch = async (url, init) => {
+      assert.equal(String(url), "/api/merchant/conversations/conversation-one/chat");
+      assert.equal(new Headers(init?.headers).has("X-Session-Id"), false);
       firstSignal = init?.signal as AbortSignal;
       return new Response(new ReadableStream({ start(controller) {
         controller.enqueue(new TextEncoder().encode('event: text_delta\ndata: {"text":"已读取部分商品"}\n\n'));

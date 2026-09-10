@@ -7,7 +7,7 @@ const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === "web-shared/api.ts") return { url: new URL("../../vendor/commerce-agents/examples/web-shared/api.ts", import.meta.url).href, shortCircuit: true };
   return nextResolve(specifier, context);
 } });
-const { BuyerApi } = await import("../lib/buyer-api.ts");
+const { BuyerApi } = await import("./fixtures/legacy-buyer-api.ts");
 hooks.deregister();
 
 test("policy keywords reject empty, oversized and more-than-eight-word queries with visible guidance", () => {
