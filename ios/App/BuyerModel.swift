@@ -109,12 +109,15 @@ final class BuyerModel: ObservableObject {
         hasMoreProducts = false; confirmation = nil; assistantPage = ["page_type": "home"]
         chat.clear(); chat.draft = ""; chat.conversationKey = UUID().uuidString
     }
-    func reload() {
+    @discardableResult
+    func reload() -> Task<Void, Never> {
         loadTask?.cancel()
-        loadTask = Task {
+        let task = Task {
             do { try await refresh(); if !chat.running { try await restoreConversation() } }
             catch { report(error) }
         }
+        loadTask = task
+        return task
     }
     private func refresh() async throws {
         let cart = try await api.call("/cart")
@@ -146,7 +149,6 @@ final class BuyerModel: ObservableObject {
             let approved = try jsonObject(Data(body.utf8))
             confirm("确认按当前报价创建订单，合计 \(money(quote["subtotalMinor"]))？") {
                 self.write(path: "/checkouts", body: approved)
-                self.tab = 3
             }
         } catch { report(error) }
     }
@@ -170,6 +172,7 @@ final class BuyerModel: ObservableObject {
                 let remaining = try storage.pending().filter { $0.key != value.key }
                 try storage.savePending(remaining); pending = remaining
                 selected = nil
+                if value.path == "/checkouts" { tab = 3 }
                 try await refresh()
             } catch {
                 if let failure = error as? BuyerFailure, let command,

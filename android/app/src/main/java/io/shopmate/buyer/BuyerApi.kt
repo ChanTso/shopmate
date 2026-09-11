@@ -68,6 +68,12 @@ class BuyerApi(
                 403 -> "当前账号无权执行此操作"
                 404 -> "记录不存在，请刷新后核对"
                 429 -> "助手当前繁忙，请稍后再试"
+                409 -> when (payload.text("category")) {
+                    "stale_cart" -> "购物车已更新，请刷新后重新核对商品和数量。"
+                    "stale_quote" -> "商品报价已变化，请刷新后重新确认价格。"
+                    "unknown_cart" -> "上次购物车操作尚待核对，请先恢复原操作。"
+                    else -> payload.text("detail", payload.text("message", "操作与当前状态冲突，请刷新核对"))
+                }
                 else ->
                     payload.text("detail", payload.text("message", "请求未完成（${response.code}），请刷新核对"))
             }

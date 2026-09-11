@@ -118,14 +118,13 @@ final class BuyerAppTests: XCTestCase {
                 request.reply("event: text_delta\ndata: {\"text\":\"本轮的新回答\"}\n\nevent: turn_complete\ndata: {}\n\n", type: "text/event-stream")
             } else { request.reply("{}") }
         }
-        model.reload()
+        let oldLoad = model.reload()
         await fulfillment(of: [historyStarted], timeout: 3)
         model.send("继续推荐")
         try await settle { !model.chat.running }
         XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
         delayed?.reply("{\"items\":[{\"kind\":\"user\",\"text\":\"旧历史\"}]}")
-        // Await the native network callback, not just the response being enqueued.
-        try await Task.sleep(for: .milliseconds(150))
+        await oldLoad.value
         XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
         model.logout()
     }
@@ -152,6 +151,25 @@ final class BuyerAppTests: XCTestCase {
         XCTAssertTrue(model.chat.messages.isEmpty)
         XCTAssertNil(model.storage.conversation)
         XCTAssertNil(model.error)
+        model.logout()
+    }
+
+    @MainActor
+    func testConflictingCheckoutKeepsCartAndExplainsRecovery() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.tab = 2
+        model.quote = ["version": 24, "currency": "CNY", "subtotalMinor": 3900, "checkoutReady": true,
+                       "items": [["productId": "cup", "quantity": 1, "productVersion": 1, "unitPriceMinor": 3900]]]
+        BuyerTestProtocol.handle = { request in
+            request.reply("{\"category\":\"stale_cart\",\"detail\":\"Shopping request conflicts with current business state\"}", status: 409)
+        }
+        model.confirmCheckout()
+        try XCTUnwrap(model.confirmation).action()
+        try await settle { !model.writing }
+        XCTAssertEqual(model.tab, 2)
+        XCTAssertEqual(model.error, "购物车已更新，请刷新后重新核对商品和数量。")
+        XCTAssertTrue(model.pending.isEmpty)
         model.logout()
     }
 
@@ -194,8 +212,8 @@ private final class BuyerTestProtocol: URLProtocol {
             headerFields: ["Content-Type": "text/event-stream"])!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
     }
-    func reply(_ body: String, type: String = "application/json") {
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+    func reply(_ body: String, type: String = "application/json", status: Int = 200) {
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
             headerFields: ["Content-Type": type])!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
