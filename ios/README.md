@@ -22,3 +22,13 @@ Run `BuyerTests` on an iPhone simulator with the ShopMate scheme. Tests exercise
 - The model is remote. The phone contains no model, service or payment-signing credentials. The shopping and checkout endpoints use the same backend as Android.
 - Unknown writes retain the original key/body. Explicit retry replays that intent; payment retries use the original checkout. Stopping generation does not undo committed business actions. Restart restores saved history, not an event-offset stream or a background model job.
 - Existing Java performance measurements remain server-only evidence. Simulator recordings demonstrate interaction; they are not physical-device frame-rate measurements. Explicitly rejected reservations remain in history but permit a newly confirmed attempt with the current activity version.
+
+## Native streaming replay
+
+The separate `StreamingReplay` scheme hosts the real SwiftUI conversation with 60 history messages and 240 four-character deltas at 50 ms intervals. Run it on a simulator when comparing render changes:
+
+```sh
+xcodebuild -project ios/ShopMate.xcodeproj -scheme StreamingReplay -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+```
+
+XCTest records three iterations of elapsed time, process CPU time, memory and a rendered frame attachment. Keep the source revision, device/runtime and workload with any saved result. This is a render-layer baseline, not model latency, frame pacing or physical-device capacity. It runs separately from correctness tests because simulator load affects performance measurements.

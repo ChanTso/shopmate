@@ -160,7 +160,7 @@ final class BuyerAppTests: XCTestCase {
         defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
         model.tab = 2
         model.quote = ["version": 24, "currency": "CNY", "subtotalMinor": 3900, "checkoutReady": true,
-                       "items": [["productId": "cup", "quantity": 1, "productVersion": 1, "unitPriceMinor": 3900]]]
+                       "items": [["productId": "cup", "quantity": 1, "productVersion": 1, "unitPriceMinor": 3900, "currency": "CNY", "orderable": true]]]
         BuyerTestProtocol.handle = { request in
             request.reply("{\"category\":\"stale_cart\",\"detail\":\"Shopping request conflicts with current business state\"}", status: 409)
         }
