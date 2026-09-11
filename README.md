@@ -115,6 +115,6 @@ npm --prefix web run build
 
 [评测索引](evals/records/README.md)保留旧七商品/42 日 UTC 版本的 **78/90** 与定向 **21/24**；它们不描述当前零售数据或本次完整批。[历史浏览器演示、截图和 SQL](docs/demo-20260906/README.md)仍对应旧版，当前双端页面、记忆与恢复记录见新版验收。
 
-## iOS buyer loop
+## Native buyer clients
 
-The [SwiftUI buyer client](ios/README.md) uses the same Kotlin Multiplatform core as Android for streaming messages, checkout contracts and recovery. It covers consultation through simulated payment; Android retains the full buyer feature set. Both use the existing ShopMate/CityBuddy services.
+The [SwiftUI buyer client](ios/README.md) uses the same Kotlin Multiplatform core as Android for streaming messages, checkout contracts and recovery. Android and iOS cover the same buyer business: catalog and variants, contextual chat, cart, reviewed checkout, simulated payment, orders/refunds, seckill, profile and editable memory. Platform UI, networking and lifecycle stay native. Both use the existing ShopMate/CityBuddy services.
