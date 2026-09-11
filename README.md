@@ -4,6 +4,10 @@
 
 项目复用 [commerce-agents](vendor/commerce-agents/README.md) 的商家与购物核心、Messages 运行时和零售页面组件；业务工具、身份、持久会话及实际写入接入 CityBuddy。原 [Apache-2.0 许可证](vendor/commerce-agents/LICENSE)、版权声明和[图片来源](web/public/products/IMAGE-CREDITS.md)保留。
 
+## 产品展示
+
+[静态产品官网](site/README.md)位于 `site/`，与商家 React 工作台 `web/` 分开。官网使用实际客户端画面与滚动交互，不依赖在线模型或交易服务；完整业务演示在本地运行。Android 与 SwiftUI 买家客户端共享 KMP 协议与恢复核心，构建说明分别见 `android/README.md`、`ios/README.md`。
+
 ## 当前能力
 
 - **经营分析**：主 Agent 组织查询与追问，复杂计算交给分析子 Agent；它通过受限 SQL 取数，也可在独立 Python 容器内计算完整查询结果。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
