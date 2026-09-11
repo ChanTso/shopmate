@@ -1,0 +1,701 @@
+{
+  "version": "shopmate-demo-zh-CN-1",
+  "products": {
+    "AR-1001": {
+      "source_title": "ACME Everyday 12-Cup Programmable Drip Coffee Maker",
+      "fields": {
+        "title": "十二杯定时滴滤咖啡机",
+        "short_description": "十二杯容量，支持定时冲煮、浓郁模式与保温。玻璃壶身，适合日常分享。",
+        "long_description": "十二杯容量，支持定时冲煮、浓郁模式与保温。玻璃壶身，适合日常分享。"
+      }
+    },
+    "AR-1002": {
+      "source_title": "ACME Signature 15-Bar Espresso Machine with Steam Wand",
+      "fields": {
+        "title": "15 Bar 意式咖啡机 · 蒸汽奶泡款",
+        "short_description": "15 Bar 压力与蒸汽奶泡棒，1.8L 水箱，适合在家制作意式咖啡与奶咖。",
+        "long_description": "15 Bar 压力与蒸汽奶泡棒，1.8L 水箱，适合在家制作意式咖啡与奶咖。"
+      }
+    },
+    "AR-1003": {
+      "source_title": "ACME Signature 8-Inch Forged Chef's Knife",
+      "fields": {
+        "title": "8 英寸锻造主厨刀",
+        "short_description": "8 英寸锻造刀刃，层压木柄，全龙骨结构，适合日常备菜。不可放入洗碗机。",
+        "long_description": "8 英寸锻造刀刃，层压木柄，全龙骨结构，适合日常备菜。不可放入洗碗机。"
+      }
+    },
+    "AR-1004": {
+      "source_title": "ACME Signature 6-Quart Enameled Cast Iron Dutch Oven",
+      "fields": {
+        "title": "6 夸脱珐琅铸铁炖锅",
+        "short_description": "6 夸脱珐琅铸铁锅，可用于炖煮、烤面包与汤品，烤箱耐温 260°C。",
+        "long_description": "6 夸脱珐琅铸铁锅，可用于炖煮、烤面包与汤品，烤箱耐温 260°C。"
+      }
+    },
+    "AR-1005": {
+      "source_title": "ACME Everyday Ceramic Nonstick 10-Piece Cookware Set",
+      "fields": {
+        "title": "陶瓷不粘锅具十件套",
+        "short_description": "十件陶瓷不粘锅具，适用于电磁炉，不含 PFAS。",
+        "long_description": "十件陶瓷不粘锅具，适用于电磁炉，不含 PFAS。"
+      }
+    },
+    "AR-1006": {
+      "source_title": "ACME Home HEPA Air Purifier for Large Rooms",
+      "fields": {
+        "title": "大空间 HEPA 空气净化器",
+        "short_description": "适合卧室与开放式客厅的安静净化设备，支持滤芯更换提醒。",
+        "long_description": "适合卧室与开放式客厅的安静净化设备，支持滤芯更换提醒。"
+      }
+    },
+    "AR-1007": {
+      "source_title": "ACME Everyday Robot Vacuum with Self-Empty Base",
+      "fields": {
+        "title": "自动集尘扫地机器人",
+        "short_description": "激光建图、分房间清扫计划与自动集尘底座，减轻日常清洁负担。",
+        "long_description": "激光建图、分房间清扫计划与自动集尘底座，减轻日常清洁负担。"
+      }
+    },
+    "AR-1008": {
+      "source_title": "ACME Rest Weighted Blanket, Queen",
+      "fields": {
+        "title": "Queen 规格重力毯",
+        "short_description": "均匀缝制的玻璃珠填充，配可拆洗竹纤维外罩；提供三种重量。",
+        "long_description": "均匀缝制的玻璃珠填充，配可拆洗竹纤维外罩；提供三种重量。"
+      }
+    },
+    "AR-1101": {
+      "source_title": "ACME Select 27\" 4K IPS Monitor with USB-C",
+      "fields": {
+        "title": "27 英寸 4K IPS 显示器 · USB-C",
+        "short_description": "出厂校色 4K 面板，一根 USB-C 线即可连接笔记本画面与电源。",
+        "long_description": "出厂校色 4K 面板，一根 USB-C 线即可连接笔记本画面与电源。"
+      }
+    },
+    "AR-1102": {
+      "source_title": "ACME Studio Mesh Office Chair",
+      "fields": {
+        "title": "透气网布办公椅",
+        "short_description": "可调腰托、四向扶手与透气网布椅背，适合全天办公。",
+        "long_description": "可调腰托、四向扶手与透气网布椅背，适合全天办公。"
+      }
+    },
+    "AR-1103": {
+      "source_title": "ACME Studio 48\" Electric Standing Desk",
+      "fields": {
+        "title": "48 英寸电动升降桌",
+        "short_description": "双电机升降、四档记忆高度与竹制桌面，坐站之间轻松切换。",
+        "long_description": "双电机升降、四档记忆高度与竹制桌面，坐站之间轻松切换。"
+      }
+    },
+    "AR-1104": {
+      "source_title": "ACME Select Low-Profile Mechanical Keyboard",
+      "fields": {
+        "title": "矮轴机械键盘",
+        "short_description": "安静段落轴、三设备蓝牙连接，续航约六周。",
+        "long_description": "安静段落轴、三设备蓝牙连接，续航约六周。"
+      }
+    },
+    "AR-1105": {
+      "source_title": "ACME Select Noise-Cancelling Headphones",
+      "fields": {
+        "title": "主动降噪耳机",
+        "short_description": "自适应降噪，适合开放办公室与旅途，续航约 40 小时。",
+        "long_description": "自适应降噪，适合开放办公室与旅途，续航约 40 小时。"
+      }
+    },
+    "AR-1106": {
+      "source_title": "ACME Select 1080p Webcam with Auto-Framing",
+      "fields": {
+        "title": "1080p 自动取景摄像头",
+        "short_description": "清晰低光画面，自动跟随取景，配实体隐私遮挡片。",
+        "long_description": "清晰低光画面，自动跟随取景，配实体隐私遮挡片。"
+      }
+    },
+    "AR-1107": {
+      "source_title": "ACME Studio Adjustable Aluminum Laptop Stand",
+      "fields": {
+        "title": "可调节铝合金笔记本支架",
+        "short_description": "将屏幕抬至视线高度，折叠后可放进背包。",
+        "long_description": "将屏幕抬至视线高度，折叠后可放进背包。"
+      }
+    },
+    "AR-1108": {
+      "source_title": "ACME Select LED Desk Lamp with Wireless Charger",
+      "fields": {
+        "title": "无线充电 LED 台灯",
+        "short_description": "桌面照明与无线充电合二为一，为阅读和日常工作留出整洁空间。",
+        "long_description": "桌面照明与无线充电合二为一，为阅读和日常工作留出整洁空间。"
+      }
+    },
+    "AR-1201": {
+      "source_title": "ACME Basecamp 2-Person Backpacking Tent",
+      "fields": {
+        "title": "双人轻量徒步帐篷",
+        "short_description": "2.1kg 自立式三季帐篷，可容纳两人，约四分钟完成搭建。",
+        "long_description": "2.1kg 自立式三季帐篷，可容纳两人，约四分钟完成搭建。"
+      }
+    },
+    "AR-1202": {
+      "source_title": "ACME Basecamp 4-Person Family Tent",
+      "fields": {
+        "title": "四人家庭露营帐篷",
+        "short_description": "可站立的家庭帐篷，带分隔帘与门厅遮棚。",
+        "long_description": "可站立的家庭帐篷，带分隔帘与门厅遮棚。"
+      }
+    },
+    "AR-1203": {
+      "source_title": "ACME Basecamp 20°F Insulated Sleeping Bag",
+      "fields": {
+        "title": "20°F 保暖睡袋",
+        "short_description": "合成纤维保暖填充，潮湿时仍能保温，收纳体积小巧。",
+        "long_description": "合成纤维保暖填充，潮湿时仍能保温，收纳体积小巧。"
+      }
+    },
+    "AR-1204": {
+      "source_title": "ACME Signature Two-Burner Camp Stove",
+      "fields": {
+        "title": "双炉头露营炉",
+        "short_description": "便携双头丙烷炉，配电子点火与折叠挡风板。",
+        "long_description": "便携双头丙烷炉，配电子点火与折叠挡风板。"
+      }
+    },
+    "AR-1205": {
+      "source_title": "ACME Journey 45L Hard Cooler",
+      "fields": {
+        "title": "45L 硬壳保温箱",
+        "short_description": "适合夏日周末出行的硬壳保温箱，坚固锁扣便于携带。",
+        "long_description": "适合夏日周末出行的硬壳保温箱，坚固锁扣便于携带。"
+      }
+    },
+    "AR-1206": {
+      "source_title": "ACME Basecamp 400-Lumen Rechargeable Headlamp",
+      "fields": {
+        "title": "400 流明充电头灯",
+        "short_description": "轻量 USB-C 充电头灯，配红光模式，方便夜间使用。",
+        "long_description": "轻量 USB-C 充电头灯，配红光模式，方便夜间使用。"
+      }
+    },
+    "AR-1207": {
+      "source_title": "ACME Journey 55L Hiking Backpack",
+      "fields": {
+        "title": "55L 徒步背包",
+        "short_description": "可调背长、承托腰带与附带雨罩，适合徒步出行。",
+        "long_description": "可调背长、承托腰带与附带雨罩，适合徒步出行。"
+      }
+    },
+    "AR-1208": {
+      "source_title": "ACME Basecamp Gravity Water Filter, 3L",
+      "fields": {
+        "title": "3L 重力净水袋",
+        "short_description": "悬挂即可利用重力过滤，无须泵压，流速约每分钟 1.5L。",
+        "long_description": "悬挂即可利用重力过滤，无须泵压，流速约每分钟 1.5L。"
+      }
+    },
+    "AR-1301": {
+      "source_title": "ACME Fit 6mm Non-Slip Yoga Mat",
+      "fields": {
+        "title": "6mm 防滑瑜伽垫",
+        "short_description": "软木表层搭配天然橡胶缓冲底层，出汗时依然抓地。",
+        "long_description": "软木表层搭配天然橡胶缓冲底层，出汗时依然抓地。"
+      }
+    },
+    "AR-1302": {
+      "source_title": "ACME Fit Adjustable Dumbbells, 5-50 lb Pair",
+      "fields": {
+        "title": "5–50 磅可调哑铃 · 一对",
+        "short_description": "旋钮快速调节重量，双托盘收纳，用一对哑铃完成多种训练。",
+        "long_description": "旋钮快速调节重量，双托盘收纳，用一对哑铃完成多种训练。"
+      }
+    },
+    "AR-1303": {
+      "source_title": "ACME Fit Cast Iron Kettlebell, 35 lb",
+      "fields": {
+        "title": "35 磅铸铁壶铃",
+        "short_description": "一体铸铁与细腻粉末涂层，握持平滑，适合力量训练。",
+        "long_description": "一体铸铁与细腻粉末涂层，握持平滑，适合力量训练。"
+      }
+    },
+    "AR-1304": {
+      "source_title": "ACME Fit Resistance Band Set with Door Anchor",
+      "fields": {
+        "title": "门锚弹力带训练套装",
+        "short_description": "五条可叠加弹力带、握把与门锚，收纳后可放进抽屉。",
+        "long_description": "五条可叠加弹力带、握把与门锚，收纳后可放进抽屉。"
+      }
+    },
+    "AR-1305": {
+      "source_title": "ACME Fit High-Density Foam Roller",
+      "fields": {
+        "title": "高密度泡沫轴",
+        "short_description": "坚实纹理滚轴，不易变形，适合训练后的肌肉放松。",
+        "long_description": "坚实纹理滚轴，不易变形，适合训练后的肌肉放松。"
+      }
+    },
+    "AR-1306": {
+      "source_title": "ACME Fit Speed Rope with Ball Bearings",
+      "fields": {
+        "title": "滚珠轴承竞速跳绳",
+        "short_description": "滚珠轴承转动顺滑，绳长可快调，盒内附备用绳。",
+        "long_description": "滚珠轴承转动顺滑，绳长可快调，盒内附备用绳。"
+      }
+    },
+    "AR-1307": {
+      "source_title": "ACME Fit Indoor Exercise Bike",
+      "fields": {
+        "title": "室内健身单车",
+        "short_description": "安静磁阻系统与平板支架，可连接常用训练应用。",
+        "long_description": "安静磁阻系统与平板支架，可连接常用训练应用。"
+      }
+    },
+    "AR-1308": {
+      "source_title": "ACME Fit Percussion Massage Gun",
+      "fields": {
+        "title": "筋膜按摩枪",
+        "short_description": "安静的按摩体验，适合跑步和日常运动后放松。",
+        "long_description": "安静的按摩体验，适合跑步和日常运动后放松。"
+      }
+    },
+    "AR-1401": {
+      "source_title": "ACME Playroom Stacking Wooden Block Set (54 pc)",
+      "fields": {
+        "title": "木质堆叠积木 · 54 件",
+        "short_description": "54 件木质积木，自由搭建，也可作为家庭堆叠游戏。",
+        "long_description": "54 件木质积木，自由搭建，也可作为家庭堆叠游戏。"
+      }
+    },
+    "AR-1402": {
+      "source_title": "ACME Makers 540-Piece Building Brick Set",
+      "fields": {
+        "title": "创意拼插积木 · 540 件",
+        "short_description": "540 块拼插积木与 12 种搭建方案，可与常见积木组合使用。",
+        "long_description": "540 块拼插积木与 12 种搭建方案，可与常见积木组合使用。"
+      }
+    },
+    "AR-1403": {
+      "source_title": "ACME Makers Coding Robot Kit",
+      "fields": {
+        "title": "编程机器人套装",
+        "short_description": "先组装，再编程控制循线、避障与路线巡游。",
+        "long_description": "先组装，再编程控制循线、避障与路线巡游。"
+      }
+    },
+    "AR-1404": {
+      "source_title": "ACME Playroom Family Trail Board Game",
+      "fields": {
+        "title": "家庭探险桌游",
+        "short_description": "合作搭建路径的家庭桌游，适合多人一起探索。",
+        "long_description": "合作搭建路径的家庭桌游，适合多人一起探索。"
+      }
+    },
+    "AR-1405": {
+      "source_title": "ACME Makers 86-Piece Art Studio Kit",
+      "fields": {
+        "title": "儿童绘画工具箱 · 86 件",
+        "short_description": "水彩、粉彩和马克笔收纳于可展开木盒，让创作与整理更方便。",
+        "long_description": "水彩、粉彩和马克笔收纳于可展开木盒，让创作与整理更方便。"
+      }
+    },
+    "AR-1406": {
+      "source_title": "ACME Playroom Otter Plush, 40 cm",
+      "fields": {
+        "title": "水獭毛绒玩偶 · 40cm",
+        "short_description": "柔软面料与再生填充，可机洗，日常陪伴更省心。",
+        "long_description": "柔软面料与再生填充，可机洗，日常陪伴更省心。"
+      }
+    },
+    "AR-1407": {
+      "source_title": "ACME Playroom National Parks 1000-Piece Puzzle",
+      "fields": {
+        "title": "国家公园拼图 · 1000 片",
+        "short_description": "切割清晰的拼图片，附参考海报，适合沉浸式拼搭。",
+        "long_description": "切割清晰的拼图片，附参考海报，适合沉浸式拼搭。"
+      }
+    },
+    "AR-1408": {
+      "source_title": "ACME Makers 3-Wheel Kids Scooter",
+      "fields": {
+        "title": "儿童三轮滑板车",
+        "short_description": "倾斜转向设计配发光轮，让初学骑行更有趣。",
+        "long_description": "倾斜转向设计配发光轮，让初学骑行更有趣。"
+      }
+    },
+    "AR-1501": {
+      "source_title": "ACME Paws Orthopedic Memory Foam Dog Bed, Large",
+      "fields": {
+        "title": "大号记忆棉宠物窝",
+        "short_description": "10cm 记忆棉承托，配可拆洗外罩，适合大体型犬日常休息。",
+        "long_description": "10cm 记忆棉承托，配可拆洗外罩，适合大体型犬日常休息。"
+      }
+    },
+    "AR-1502": {
+      "source_title": "ACME Paws 5-Level Cat Tree with Scratching Posts",
+      "fields": {
+        "title": "五层猫爬架 · 含磨爪柱",
+        "short_description": "五层活动空间、两处高台与小窝，兼顾攀爬、磨爪和休息。",
+        "long_description": "五层活动空间、两处高台与小窝，兼顾攀爬、磨爪和休息。"
+      }
+    },
+    "AR-1503": {
+      "source_title": "ACME Paws Automatic Pet Feeder",
+      "fields": {
+        "title": "自动宠物喂食器",
+        "short_description": "支持定时定量投喂与录音呼唤，配断电备用电池。",
+        "long_description": "支持定时定量投喂与录音呼唤，配断电备用电池。"
+      }
+    },
+    "AR-1504": {
+      "source_title": "ACME Paws Retractable Leash, 5 m",
+      "fields": {
+        "title": "5m 伸缩牵引绳",
+        "short_description": "反光牵引带、一键制动与舒适握柄，适合日常散步。",
+        "long_description": "反光牵引带、一键制动与舒适握柄，适合日常散步。"
+      }
+    },
+    "AR-1505": {
+      "source_title": "ACME Paws Hooded Litter Box with Carbon Filter",
+      "fields": {
+        "title": "活性炭过滤封闭猫砂盆",
+        "short_description": "高围挡、活性炭过滤与前置摆门，减少猫砂外带。",
+        "long_description": "高围挡、活性炭过滤与前置摆门，减少猫砂外带。"
+      }
+    },
+    "AR-1506": {
+      "source_title": "ACME Paws Insulated Dog Jacket",
+      "fields": {
+        "title": "宠物保暖外套",
+        "short_description": "防泼水外层与胸背牵引开口，适合较冷天气散步。",
+        "long_description": "防泼水外层与胸背牵引开口，适合较冷天气散步。"
+      }
+    },
+    "AR-1507": {
+      "source_title": "ACME Paws Interactive Feather Wand Bundle",
+      "fields": {
+        "title": "羽毛逗猫棒组合",
+        "short_description": "两根伸缩逗猫棒与八个替换头，让互动多些变化。",
+        "long_description": "两根伸缩逗猫棒与八个替换头，让互动多些变化。"
+      }
+    },
+    "AR-1508": {
+      "source_title": "ACME Paws 10-Gallon Aquarium Starter Kit",
+      "fields": {
+        "title": "10 加仑水族入门套装",
+        "short_description": "包含鱼缸、过滤器、加热器与照明，适合水族入门。",
+        "long_description": "包含鱼缸、过滤器、加热器与照明，适合水族入门。"
+      }
+    },
+    "AR-1601": {
+      "source_title": "ACME Glow Fast-Dry Hair Dryer",
+      "fields": {
+        "title": "速干吹风机",
+        "short_description": "高速电机与轻量机身，让日常吹干更轻松。",
+        "long_description": "高速电机与轻量机身，让日常吹干更轻松。"
+      }
+    },
+    "AR-1602": {
+      "source_title": "ACME Daily Sonic Electric Toothbrush, 2-Pack",
+      "fields": {
+        "title": "声波电动牙刷 · 两支装",
+        "short_description": "两支机身、四枚刷头与五种模式，适合日常分人使用。",
+        "long_description": "两支机身、四枚刷头与五种模式，适合日常分人使用。"
+      }
+    },
+    "AR-1603": {
+      "source_title": "ACME Glow Vitamin C Brightening Serum Duo",
+      "fields": {
+        "title": "维 C 焕亮精华双支装",
+        "short_description": "无香型维 C 精华双支组合，分支密封便于逐次使用。",
+        "long_description": "无香型维 C 精华双支组合，分支密封便于逐次使用。"
+      }
+    },
+    "AR-1604": {
+      "source_title": "ACME Daily Precision Beard Trimmer Kit",
+      "fields": {
+        "title": "精密胡须修剪套装",
+        "short_description": "十三枚限位梳、钢制刀片与长续航，适合胡须细节修剪。",
+        "long_description": "十三枚限位梳、钢制刀片与长续航，适合胡须细节修剪。"
+      }
+    },
+    "AR-1605": {
+      "source_title": "ACME Glow Mineral SPF 50 Sunscreen, 3-Pack",
+      "fields": {
+        "title": "SPF 50 矿物防晒 · 三支装",
+        "short_description": "氧化锌配方与 SPF 50 防护，适合日常防晒。",
+        "long_description": "氧化锌配方与 SPF 50 防护，适合日常防晒。"
+      }
+    },
+    "AR-1606": {
+      "source_title": "ACME Rest Mulberry Silk Pillowcase",
+      "fields": {
+        "title": "桑蚕丝枕套",
+        "short_description": "22 姆米桑蚕丝，隐藏拉链；提供标准与加大尺寸、四种颜色。",
+        "long_description": "22 姆米桑蚕丝，隐藏拉链；提供标准与加大尺寸、四种颜色。"
+      }
+    },
+    "AR-1607": {
+      "source_title": "ACME Daily Salon-Grade Manicure Set, 18 Pieces",
+      "fields": {
+        "title": "专业修甲套装 · 18 件",
+        "short_description": "不锈钢修甲工具与拉链收纳盒，适合日常护理与赠礼。",
+        "long_description": "不锈钢修甲工具与拉链收纳盒，适合日常护理与赠礼。"
+      }
+    },
+    "AR-1801": {
+      "source_title": "ACME Journey 22\" Carry-On Spinner",
+      "fields": {
+        "title": "22 英寸万向轮登机箱",
+        "short_description": "2.9kg 聚碳酸酯登机箱，配顺滑万向轮，轻装出行。",
+        "long_description": "2.9kg 聚碳酸酯登机箱，配顺滑万向轮，轻装出行。"
+      }
+    },
+    "AR-1802": {
+      "source_title": "ACME Journey 28\" Checked Spinner",
+      "fields": {
+        "title": "28 英寸万向轮托运行李箱",
+        "short_description": "大容量托运行李箱，带约 15% 扩展空间与耐用外壳。",
+        "long_description": "大容量托运行李箱，带约 15% 扩展空间与耐用外壳。"
+      }
+    },
+    "AR-1803": {
+      "source_title": "ACME Journey Compression Packing Cubes, Set of 6",
+      "fields": {
+        "title": "压缩旅行收纳袋 · 六件套",
+        "short_description": "双拉链压缩收纳，附鞋袋，让行李分类清楚。",
+        "long_description": "双拉链压缩收纳，附鞋袋，让行李分类清楚。"
+      }
+    },
+    "AR-1804": {
+      "source_title": "ACME Rest Memory Foam Travel Pillow",
+      "fields": {
+        "title": "记忆棉旅行颈枕",
+        "short_description": "记忆棉承托下颌，卷起后体积约缩小一半。",
+        "long_description": "记忆棉承托下颌，卷起后体积约缩小一半。"
+      }
+    },
+    "AR-1805": {
+      "source_title": "ACME Select Universal Travel Adapter with 65W GaN Charging",
+      "fields": {
+        "title": "65W GaN 多国旅行转换插头",
+        "short_description": "兼容多种插座，支持笔记本快充，盒内附备用保险丝。",
+        "long_description": "兼容多种插座，支持笔记本快充，盒内附备用保险丝。"
+      }
+    },
+    "AR-1806": {
+      "source_title": "ACME Journey Hanging Toiletry Bag",
+      "fields": {
+        "title": "悬挂式洗漱收纳包",
+        "short_description": "可挂于毛巾杆并平铺展开，分区收纳洗漱用品。",
+        "long_description": "可挂于毛巾杆并平铺展开，分区收纳洗漱用品。"
+      }
+    },
+    "AR-1807": {
+      "source_title": "ACME Select Item Tracker, 4-Pack",
+      "fields": {
+        "title": "物品定位器 · 四件装",
+        "short_description": "约一年电池续航，使用可更换纽扣电池，方便管理随身物品。",
+        "long_description": "约一年电池续航，使用可更换纽扣电池，方便管理随身物品。"
+      }
+    },
+    "AR-2101": {
+      "source_title": "ACME Kids Under-the-Sea Twin Bedding Set",
+      "fields": {
+        "title": "海底世界 Twin 床品套装",
+        "short_description": "包含 Twin 被褥、床笠与枕套，印有鲸鱼、海龟和海星图案。",
+        "long_description": "包含 Twin 被褥、床笠与枕套，印有鲸鱼、海龟和海星图案。"
+      }
+    },
+    "AR-2102": {
+      "source_title": "ACME Kids Peel-and-Stick Ocean Wall Decals (36 pc)",
+      "fields": {
+        "title": "可移除海洋墙贴 · 36 件",
+        "short_description": "36 张可移除海洋墙贴，从鲸鱼到海马自由组合。",
+        "long_description": "36 张可移除海洋墙贴，从鲸鱼到海马自由组合。"
+      }
+    },
+    "AR-2103": {
+      "source_title": "ACME Kids Tide-Pool Print Area Rug 4x5 ft",
+      "fields": {
+        "title": "潮汐图案地毯 · 4×5 英尺",
+        "short_description": "短绒游戏地毯，印有潮池、灯塔与珊瑚礁地图。",
+        "long_description": "短绒游戏地毯，印有潮池、灯塔与珊瑚礁地图。"
+      }
+    },
+    "AR-2104": {
+      "source_title": "ACME Makers 300-Piece Meadow Puzzle",
+      "fields": {
+        "title": "草地风景拼图 · 300 片",
+        "short_description": "300 片草地风景拼图，适合午后拼搭与装裱。",
+        "long_description": "300 片草地风景拼图，适合午后拼搭与装裱。"
+      }
+    },
+    "AR-2105": {
+      "source_title": "ACME Playroom Storybook Bear (14 in)",
+      "fields": {
+        "title": "故事小熊玩偶 · 14 英寸",
+        "short_description": "轻微加重的小熊玩偶，刺绣眼睛，无纽扣与电池。",
+        "long_description": "轻微加重的小熊玩偶，刺绣眼睛，无纽扣与电池。"
+      }
+    },
+    "AR-2106": {
+      "source_title": "ACME Kids Toy Storage Bins (Set of 3)",
+      "fields": {
+        "title": "玩具收纳箱 · 三件套",
+        "short_description": "三个可折叠布艺收纳箱，适合整理玩偶、积木与书籍。",
+        "long_description": "三个可折叠布艺收纳箱，适合整理玩偶、积木与书籍。"
+      }
+    },
+    "AR-2107": {
+      "source_title": "ACME Kids Rocket Table Lamp",
+      "fields": {
+        "title": "火箭造型台灯",
+        "short_description": "火箭轮廓灯罩与三档暖光，适合阅读角落。",
+        "long_description": "火箭轮廓灯罩与三档暖光，适合阅读角落。"
+      }
+    },
+    "AR-2108": {
+      "source_title": "ACME Playroom Solar System Poster Set (4 pc)",
+      "fields": {
+        "title": "太阳系海报 · 四张装",
+        "short_description": "四张哑光海报，展示行星、月相、距离与发射时间线。",
+        "long_description": "四张哑光海报，展示行星、月相、距离与发射时间线。"
+      }
+    },
+    "AR-2109": {
+      "source_title": "ACME Kids Deep Sea Blackout Curtains (2 panels)",
+      "fields": {
+        "title": "深海图案遮光窗帘 · 两片装",
+        "short_description": "两片遮光窗帘，低调同色波纹，帮助营造安静睡眠空间。",
+        "long_description": "两片遮光窗帘，低调同色波纹，帮助营造安静睡眠空间。"
+      }
+    },
+    "AR-1901": {
+      "source_title": "ACME Sleep Queen Platform Bed Frame",
+      "fields": {
+        "title": "Queen 平台床架",
+        "short_description": "Queen 平台床架与亚麻质感软包床头，无须另配弹簧床箱。",
+        "long_description": "Queen 平台床架与亚麻质感软包床头，无须另配弹簧床箱。"
+      }
+    },
+    "AR-1902": {
+      "source_title": "ACME Sleep Hybrid Mattress",
+      "fields": {
+        "title": "复合支撑床垫",
+        "short_description": "中等偏硬的复合支撑床垫，压缩运输，展开后约两天回弹。",
+        "long_description": "中等偏硬的复合支撑床垫，压缩运输，展开后约两天回弹。"
+      }
+    },
+    "AR-1903": {
+      "source_title": "ACME Sleep Washed-Cotton Duvet Set, Queen",
+      "fields": {
+        "title": "Queen 水洗棉被套组合",
+        "short_description": "水洗棉被套与两只枕套，自然褶皱也舒适好看。",
+        "long_description": "水洗棉被套与两只枕套，自然褶皱也舒适好看。"
+      }
+    },
+    "AR-1721": {
+      "source_title": "ACME Beauty Eye Palette",
+      "fields": {
+        "title": "多色眼影盘",
+        "short_description": "十二种日常中性色，包含八色哑光与四色微闪。",
+        "long_description": "十二种日常中性色，包含八色哑光与四色微闪。"
+      }
+    },
+    "AR-1722": {
+      "source_title": "ACME Beauty Tinted Moisturizer SPF 30",
+      "fields": {
+        "title": "SPF 30 润色保湿霜",
+        "short_description": "轻薄透气的自然润色，兼具保湿与 SPF 30 防晒。",
+        "long_description": "轻薄透气的自然润色，兼具保湿与 SPF 30 防晒。"
+      }
+    },
+    "AR-1723": {
+      "source_title": "ACME Beauty Long-Wear Mascara",
+      "fields": {
+        "title": "持久睫毛膏",
+        "short_description": "成膜持久，温水即可卸除，适合日常眼妆。",
+        "long_description": "成膜持久，温水即可卸除，适合日常眼妆。"
+      }
+    },
+    "AR-2001": {
+      "source_title": "ACME Pantry Atlantic Salmon Fillets (2 lb, frozen)",
+      "fields": {
+        "title": "冷冻大西洋三文鱼片 · 2 磅",
+        "short_description": "四片独立真空包装三文鱼，便于按餐取用与解冻。",
+        "long_description": "四片独立真空包装三文鱼，便于按餐取用与解冻。"
+      }
+    },
+    "AR-2002": {
+      "source_title": "ACME Pantry Lemon-Herb Marinade & Glaze",
+      "fields": {
+        "title": "柠檬香草腌料与淋酱",
+        "short_description": "清新柠檬香草风味，既可腌制，也可用作鱼肉或鸡肉淋酱。",
+        "long_description": "清新柠檬香草风味，既可腌制，也可用作鱼肉或鸡肉淋酱。"
+      }
+    },
+    "AR-2003": {
+      "source_title": "ACME Pantry Weeknight Stir-Fry Dinner Kit",
+      "fields": {
+        "title": "工作日晚餐快炒食材包",
+        "short_description": "炒面、姜蒜酱汁与酥脆配料，搭配蛋白质和蔬菜即可烹调。",
+        "long_description": "炒面、姜蒜酱汁与酥脆配料，搭配蛋白质和蔬菜即可烹调。"
+      }
+    },
+    "AR-2004": {
+      "source_title": "ACME Pantry 90% Lean Ground Beef (1.5 lb)",
+      "fields": {
+        "title": "九成瘦绞牛肉 · 1.5 磅",
+        "short_description": "单餐份量的真空包装瘦绞牛肉，可用于意面、炖菜或汉堡。",
+        "long_description": "单餐份量的真空包装瘦绞牛肉，可用于意面、炖菜或汉堡。"
+      }
+    },
+    "AR-2005": {
+      "source_title": "ACME Pantry Fresh Pasta Duo — Rigatoni & Fettuccine",
+      "fields": {
+        "title": "鲜意面组合 · 通心粉与宽面",
+        "short_description": "两款鲜意面组合，约四分钟煮熟，让晚餐更方便。",
+        "long_description": "两款鲜意面组合，约四分钟煮熟，让晚餐更方便。"
+      }
+    },
+    "AR-2006": {
+      "source_title": "ACME Pantry Slow-Simmered Tomato-Basil Sauce",
+      "fields": {
+        "title": "慢炖番茄罗勒酱",
+        "short_description": "八种配料慢炖而成，无额外添加糖。",
+        "long_description": "八种配料慢炖而成，无额外添加糖。"
+      }
+    },
+    "AR-2007": {
+      "source_title": "ACME Pantry Garlic Brioche Dinner Rolls (8 pc)",
+      "fields": {
+        "title": "蒜香布里欧修餐包 · 八个装",
+        "short_description": "八枚黄油蒜香布里欧修餐包，入炉约五分钟即可享用。",
+        "long_description": "八枚黄油蒜香布里欧修餐包，入炉约五分钟即可享用。"
+      }
+    },
+    "AR-2008": {
+      "source_title": "ACME Pantry Rainbow Veggie Roasting Mix (2 lb)",
+      "fields": {
+        "title": "缤纷烘烤蔬菜组合 · 2 磅",
+        "short_description": "预切缤纷蔬菜，一盘烤制约 25 分钟，省去备菜步骤。",
+        "long_description": "预切缤纷蔬菜，一盘烤制约 25 分钟，省去备菜步骤。"
+      }
+    },
+    "AR-2009": {
+      "source_title": "ACME Pantry Caesar Salad Kit (family size)",
+      "fields": {
+        "title": "家庭装凯撒沙拉食材包",
+        "short_description": "家庭份量，包含罗马生菜、酱汁、面包丁与帕尔马干酪片。",
+        "long_description": "家庭份量，包含罗马生菜、酱汁、面包丁与帕尔马干酪片。"
+      }
+    },
+    "AR-2010": {
+      "source_title": "ACME Pantry Weekend Brownie Skillet Kit",
+      "fields": {
+        "title": "周末布朗尼烘焙组合",
+        "short_description": "含巧克力块的平底锅布朗尼烘焙组合，适合周末分享。",
+        "long_description": "含巧克力块的平底锅布朗尼烘焙组合，适合周末分享。"
+      }
+    }
+  }
+}

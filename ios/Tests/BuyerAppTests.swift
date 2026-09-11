@@ -54,4 +54,53 @@ final class BuyerAppTests: XCTestCase {
         try api.setRoot("https://example.com/")
         XCTAssertEqual(api.root, "https://example.com")
     }
+    func testSearchResultsCannotReplaceCartOrOrderSnapshots() throws {
+        let cached: Object = ["product_id": "AR-1001", "title": "缓存里的旧商品名", "image_url": "/catalog.webp", "category": "home-kitchen"]
+        let snapshots: [Object] = [
+            ["productId": "AR-1001", "name": "购物车最新名称", "imageUrl": "/cart.webp", "totalPriceMinor": 7960],
+            ["productId": "AR-1001", "title": "下单时的名称", "content": ["imageUrl": "/order.webp"], "totalPriceMinor": 7580]
+        ]
+        for snapshot in snapshots {
+            for catalog in [[cached], []] {
+                let display = productForDisplay(snapshot, catalog: catalog)
+                XCTAssertEqual(ProductPresentation.title(display), ProductPresentation.title(snapshot))
+                XCTAssertEqual(ProductPresentation.imageURL(display, baseURL: "https://store.example"), ProductPresentation.imageURL(snapshot, baseURL: "https://store.example"))
+                XCTAssertEqual(display["totalPriceMinor"] as? Int, snapshot["totalPriceMinor"] as? Int)
+            }
+        }
+        let missingArtwork: Object = ["productId": "AR-1001", "name": "下单时的名称"]
+        let enriched = productForDisplay(missingArtwork, catalog: [cached])
+        XCTAssertEqual(ProductPresentation.title(enriched), "下单时的名称")
+        XCTAssertEqual(text(enriched, "image_url"), "/catalog.webp")
+    }
+
+    func testRefundAmountUsesExactMinorUnits() throws {
+        XCTAssertEqual(try refundMinor("79.60"), 7960)
+        XCTAssertEqual(try refundMinor("0.01"), 1)
+        for value in ["0", "-1", "1.001", "1e2", "NaN", "92233720368547759"] {
+            XCTAssertThrowsError(try refundMinor(value), value)
+        }
+    }
+    func testReservationReplaysOriginalIdentityAndTerminalResult() throws {
+        let original = SeckillTicket(key: "one-intent", activityId: "sale", activityVersion: 7)
+        let admitted = original.result(["reservationId": "reservation", "state": "ADMITTED"])
+        XCTAssertFalse(admitted.terminal)
+        let completed = admitted.result(["reservationId": "reservation", "state": "ORDERED", "orderId": "order"])
+        let restored = try JSONDecoder().decode(SeckillTicket.self, from: JSONEncoder().encode(completed))
+        XCTAssertEqual(restored.key, original.key)
+        XCTAssertEqual(restored.activityVersion, 7)
+        XCTAssertEqual(restored.orderId, "order")
+        XCTAssertTrue(restored.terminal)
+        XCTAssertTrue(original.result(["reservationId": "r", "state": "REJECTED"]).terminal)
+    }
+    @MainActor
+    func testDevelopmentLocalNetworkDoesNotAllowArbitraryHTTP() throws {
+        let api = BuyerAPI()
+        try api.setRoot("http://shopmate-mac.local:8101")
+        try api.setCommerceRoot("http://shopmate-mac.local:9082")
+        XCTAssertThrowsError(try api.setRoot("http://shopmate-mac.local.attacker.example"))
+        XCTAssertThrowsError(try api.setRoot("http://example.com"))
+        XCTAssertThrowsError(try api.setRoot("https://example.com/path"))
+    }
+
 }

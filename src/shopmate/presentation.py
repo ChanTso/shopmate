@@ -31,6 +31,7 @@ from .commerce_client import (
     ListingView,
     ProductView,
 )
+from .product_assets import image_url
 
 
 def price_minor(value: float, *, allow_zero: bool = False) -> int:
@@ -131,7 +132,7 @@ def listing(product: ListingView | ProductView) -> RetailListingDetails:
         category=content.get("category"),
         content_quality=product.contentQuality,
         attributes=attributes,
-        image_url=content.get("imageUrl"),
+        image_url=image_url(product.id, content.get("imageUrl")),
         short_description=product.shortDescription,
         long_description=content.get("longDescription"),
         review_snippets=content.get("reviewHighlights", []),

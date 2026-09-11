@@ -305,7 +305,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reserve(offer: JsonObject) {
         if (state.value.writing) return
-        val previous = store.tickets().lastOrNull { it.activityId == offer.text("activityId") }
+        val previous = store.tickets().lastOrNull { it.activityId == offer.text("activityId") && it.state != "REJECTED" }
         if (previous != null) { retrySeckill(previous); return }
         retrySeckill(SeckillTicket(UUID.randomUUID().toString(), offer.text("activityId"),
             requireNotNull(offer.number("activityVersion"))))

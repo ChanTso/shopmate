@@ -31,6 +31,7 @@ func majorMoney(_ value: Any?) -> String {
 @MainActor
 final class BuyerAPI {
     var root = "http://localhost:8101"
+    var commerceRoot = "http://localhost:9082"
     var token: String?
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -39,17 +40,28 @@ final class BuyerAPI {
         return URLSession(configuration: configuration)
     }()
 
-    func setRoot(_ value: String) throws {
+    static func serviceRoot(_ value: String) throws -> String {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: raw), let host = url.host,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-              url.path.isEmpty, url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1"].contains(host)) else {
+              url.path.isEmpty, url.scheme == "https" || (url.scheme == "http" && localHost(host)) else {
             throw BuyerFailure(status: 400, category: "", message: "请输入 HTTPS 服务地址；本机可用 localhost")
         }
-        root = raw
+        return raw
     }
+    private static func localHost(_ host: String) -> Bool {
+        if ["localhost", "127.0.0.1", "::1"].contains(host) { return true }
+        #if DEBUG
+        return host.hasSuffix(".local")
+        #else
+        return false
+        #endif
+    }
+    func setRoot(_ value: String) throws { root = try Self.serviceRoot(value) }
+    func setCommerceRoot(_ value: String) throws { commerceRoot = try Self.serviceRoot(value) }
 
-    func request(_ path: String, body: Object? = nil) throws -> URLRequest {
+
+    func request(_ path: String, body: Object? = nil, method: String? = nil) throws -> URLRequest {
         guard let url = URL(string: root + "/api/buyer" + path) else {
             throw BuyerFailure(status: 400, category: "", message: "服务地址无效")
         }
@@ -60,6 +72,7 @@ final class BuyerAPI {
             request.httpBody = try jsonData(body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        if let method { request.httpMethod = method }
         return request
     }
 
@@ -70,11 +83,34 @@ final class BuyerAPI {
                             message: message.isEmpty ? "请求未完成，请刷新核对（\(response.statusCode)）" : message)
     }
 
-    func call(_ path: String, body: Object? = nil) async throws -> Object {
-        let (data, response) = try await session.data(for: request(path, body: body))
+    func call(_ path: String, body: Object? = nil, method: String? = nil) async throws -> Object {
+        let origin = root, identity = token
+        let (data, response) = try await session.data(for: request(path, body: body, method: method))
+        try Task.checkCancellation()
+        guard root == origin, token == identity else { throw CancellationError() }
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200..<300).contains(http.statusCode) else { throw failure(http, data: data) }
         return try jsonObject(data)
+    }
+
+    func seckill(_ path: String, body: Object? = nil, key: String? = nil) async throws -> Object {
+        guard let url = URL(string: commerceRoot + "/api" + path) else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        if let key { request.setValue(key, forHTTPHeaderField: "Idempotency-Key") }
+        if let body {
+            request.httpMethod = "POST"; request.httpBody = try jsonData(body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let origin = commerceRoot, identity = token
+        let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard commerceRoot == origin, token == identity else { throw CancellationError() }
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        let value = try jsonObject(data)
+        let rejected = key != nil && http.statusCode == 409 && text(value, "state") == "REJECTED" && !text(value, "reservationId").isEmpty
+        guard (200..<300).contains(http.statusCode) || rejected else { throw failure(http, data: data) }
+        return value
     }
 
     func stream(_ path: String, body: Object, line: (String) throws -> Void) async throws {
