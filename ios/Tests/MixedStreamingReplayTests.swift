@@ -63,8 +63,8 @@ final class MixedStreamingReplayTests: XCTestCase {
                     while model.chat.running { try await Task.sleep(for: .milliseconds(10)) }
                     XCTAssertNil(model.error)
                     let last = try XCTUnwrap(model.chat.messages.last)
-                    XCTAssertEqual(last.segments.filter { $0.block == nil }.map(\.text).joined().count, 960)
-                    XCTAssertEqual(last.segments.filter { $0.block != nil }.count, 2)
+                    XCTAssertEqual(last.segments.filter { !$0.hasBlock }.map(\.text).joined().count, 960)
+                    XCTAssertEqual(last.segments.filter { $0.hasBlock }.count, 2)
                     XCTAssertTrue(last.segments.allSatisfy(\.final))
                     let rendered = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                         window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
