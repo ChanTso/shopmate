@@ -23,7 +23,7 @@
 .chapter-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;width:100%;position:relative}
 .chapter-nav button{--chapter-weight:0;--number-size:calc(30px + 16px * var(--chapter-weight));--number-width:calc(var(--number-size) * 1.15);position:relative;min-width:0;height:86px;padding:0;border:0;background:none;text-align:left;color:#655e52;font-family:var(--chapters);font-weight:400}
 .chapter-pair{display:block;position:absolute;left:0;top:0;white-space:nowrap;font-size:46px;line-height:1.1}
-.chapter-number{display:inline-block;vertical-align:baseline;width:var(--number-width);font-family:inherit;font-size:var(--number-size);font-weight:400;font-variant-numeric:lining-nums tabular-nums;letter-spacing:-1px;line-height:1}
+.chapter-number{display:inline-block;vertical-align:baseline;width:var(--number-width);font-family:inherit;font-size:var(--number-size);font-weight:400;font-variant-numeric:normal;letter-spacing:-1px;line-height:1}
 .chapter-label{display:inline-block;vertical-align:baseline;margin-left:10px;font-family:inherit;font-size:22px;font-weight:400;line-height:1.25;letter-spacing:.4px}
 .buyer-chapters .chapter-label{transform:translate(calc((var(--number-width) + 10px) * (var(--wide-nav) - 1)),calc(32px * (1 - var(--wide-nav))))}
 .chapter-track{position:absolute;bottom:0;left:0;right:0;height:2px;background:#d9ceba}

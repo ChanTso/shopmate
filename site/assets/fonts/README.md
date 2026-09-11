@@ -1,6 +1,6 @@
 # Display typefaces
 
-The showcase uses Noto Serif SC for Chinese display text and Cormorant Garamond for Latin display text and chapter numerals. Body text, controls and business figures keep their existing system sans-serif families. The local variable fonts retain the site's existing CSS weights; English italic captions use a real italic face.
+The showcase uses Noto Serif SC for Chinese display text and Cormorant Garamond for Latin display text and chapter numerals. Body text, controls and business figures keep their existing system sans-serif families. The local variable fonts retain the site's existing CSS weights; English italic captions use a real italic face. Chapter numerals use Cormorant's default proportional old-style figures, matching the selected typography sample rather than enabling lining or tabular alternates.
 
 Sources are the [Cormorant Garamond](https://github.com/google/fonts/tree/main/ofl/cormorantgaramond) and [Noto Serif SC](https://github.com/google/fonts/tree/main/ofl/notoserifsc) Google Fonts distributions, downloaded on 2026-09-11. Original SIL Open Font Licenses are preserved alongside the subsets.
 
