@@ -25,7 +25,7 @@ struct RefundActionView: View {
                 Text(receipt.isEmpty ? "请核对退款申请" : "退款申请已受理").font(.headline)
             }
             if !order.isEmpty {
-                let product = productForDisplay(object(order, "product"), model: model)
+                let product = productForDisplay(object(order, "product"), catalog: model.products)
                 HStack(spacing: 12) {
                     ProductImage(model: model, product: product).frame(width: 65, height: 70).clipShape(RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 7) { Text(ProductPresentation.title(product)).font(.subheadline.weight(.medium)).lineLimit(2); Text("订单 · " + text(action, "orderId").suffix(8)).font(.caption2).foregroundStyle(mutedInk) }
@@ -51,7 +51,7 @@ struct OrderDetailPanel: View {
     @State private var amount = ""
     var body: some View {
         let product = object(order, "product")
-        let display = productForDisplay(product, model: model)
+        let display = productForDisplay(product, catalog: model.products)
         let fulfillment = object(order, "fulfillment")
         let refund = model.actions.first { text(object($0, "action"), "orderId") == text(order, "orderId") && !object($0, "receipt").isEmpty }
         Panel {
@@ -108,12 +108,16 @@ struct OrderDetailPanel: View {
     }
 }
 
-// Current catalog presentation enriches a historical order without changing its price or quantity.
-@MainActor
-func productForDisplay(_ source: Object, model: BuyerModel) -> Object {
-    guard let current = model.products.first(where: { ProductPresentation.productID($0) == ProductPresentation.productID(source) }) else { return source }
+// Search results may be stale; cart and order snapshots own their names and supplied artwork.
+func productForDisplay(_ source: Object, catalog: [Object]) -> Object {
+    guard let current = catalog.first(where: { ProductPresentation.productID($0) == ProductPresentation.productID(source) }) else { return source }
     var result = source
-    for key in ["title", "image_url", "category"] { if let value = current[key] { result[key] = value } }
+    if text(source, "category").isEmpty { result["category"] = current["category"] }
+    let supplied = [text(source, "image_url"), text(source, "imageUrl"), text(object(source, "content"), "imageUrl")]
+    if supplied.allSatisfy({ $0.isEmpty }) {
+        let images = [text(current, "image_url"), text(current, "imageUrl"), text(object(current, "content"), "imageUrl")]
+        result["image_url"] = images.first { !$0.isEmpty }
+    }
     return result
 }
 

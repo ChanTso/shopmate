@@ -6,10 +6,11 @@ import argparse
 import asyncio
 import hashlib
 import json
+import sqlite3
+from contextlib import closing
 
 from shopmate.auth import AuthClient, RequestIdentity
 from shopmate.commerce_client import CommerceClient
-from shopmate.sessions import SessionStore
 from shopmate.settings import ROOT, Settings
 
 COPY = ROOT / "scripts/data/demo-catalog-zh-CN.json"
@@ -27,7 +28,6 @@ async def apply_copy(*, apply: bool, selected: list[str]):
 
     settings = Settings.load()
     auth, commerce = AuthClient(settings), CommerceClient(settings.commerce_url)
-    store = SessionStore(settings.state_path)
     results = []
     output = ROOT / ".run/demo-catalog-localization.json"
     try:
@@ -35,7 +35,16 @@ async def apply_copy(*, apply: bool, selected: list[str]):
             "shopmate-fixture-operator", (ROOT / ".run/operator_password").read_text().strip()
         )
         user = RequestIdentity(login["subject"], login["accessToken"])
-        binding = store.storefront(user.subject).authorization_id
+        with closing(
+            sqlite3.connect(settings.state_path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as db:
+            row = db.execute(
+                "SELECT id FROM bindings WHERE owner=? AND role='merchant' AND storefront=1",
+                (user.subject,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Open the merchant storefront once before applying demo copy")
+        binding = row[0]
         for product_id, value in products.items():
             token = await auth.exchange(user, binding, "merchant:read")
             current = await commerce.listing(product_id, token, binding)
@@ -78,7 +87,6 @@ async def apply_copy(*, apply: bool, selected: list[str]):
             )
             print(product_id, "localized")
     finally:
-        store.close()
         await auth.close()
         await commerce.close()
 

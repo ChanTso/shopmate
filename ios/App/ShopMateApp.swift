@@ -266,7 +266,7 @@ struct CartView: View {
                 if rows(model.quote, "items").isEmpty { ContentUnavailableView("装下一点喜欢", systemImage: "bag", description: Text("还没有商品，去探索属于你的生活好物。")) }
                 ForEach(rows(model.quote, "items").map { IdentifiedObject(id: text($0, "productId"), value: $0) }) { row in
                     let item = row.value
-                    let display = productForDisplay(item, model: model)
+                    let display = productForDisplay(item, catalog: model.products)
                     Panel {
                         HStack(alignment: .top, spacing: 14) {
                             ProductImage(model: model, product: display).frame(width: 86, height: 96).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -321,8 +321,8 @@ struct CheckoutView: View {
                         HStack { Label("待付款", systemImage: "clock").font(.headline).foregroundStyle(accent); Spacer(); Text(money(checkout["totalMinor"])).font(.title2.weight(.semibold)) }
                         ForEach(rows(checkout, "orders").map { IdentifiedObject(id: text($0, "orderId"), value: $0) }) { row in
                             HStack(spacing: 12) {
-                                ProductImage(model: model, product: productForDisplay(object(row.value, "product"), model: model)).frame(width: 68, height: 72).clipShape(RoundedRectangle(cornerRadius: 12))
-                                Text(ProductPresentation.title(productForDisplay(object(row.value, "product"), model: model))).font(.subheadline.weight(.medium)).lineLimit(2)
+                                ProductImage(model: model, product: productForDisplay(object(row.value, "product"), catalog: model.products)).frame(width: 68, height: 72).clipShape(RoundedRectangle(cornerRadius: 12))
+                                Text(ProductPresentation.title(productForDisplay(object(row.value, "product"), catalog: model.products))).font(.subheadline.weight(.medium)).lineLimit(2)
                             }
                         }
                         HStack {

@@ -54,6 +54,26 @@ final class BuyerAppTests: XCTestCase {
         try api.setRoot("https://example.com/")
         XCTAssertEqual(api.root, "https://example.com")
     }
+    func testSearchResultsCannotReplaceCartOrOrderSnapshots() throws {
+        let cached: Object = ["product_id": "AR-1001", "title": "缓存里的旧商品名", "image_url": "/catalog.webp", "category": "home-kitchen"]
+        let snapshots: [Object] = [
+            ["productId": "AR-1001", "name": "购物车最新名称", "imageUrl": "/cart.webp", "totalPriceMinor": 7960],
+            ["productId": "AR-1001", "title": "下单时的名称", "content": ["imageUrl": "/order.webp"], "totalPriceMinor": 7580]
+        ]
+        for snapshot in snapshots {
+            for catalog in [[cached], []] {
+                let display = productForDisplay(snapshot, catalog: catalog)
+                XCTAssertEqual(ProductPresentation.title(display), ProductPresentation.title(snapshot))
+                XCTAssertEqual(ProductPresentation.imageURL(display, baseURL: "https://store.example"), ProductPresentation.imageURL(snapshot, baseURL: "https://store.example"))
+                XCTAssertEqual(display["totalPriceMinor"] as? Int, snapshot["totalPriceMinor"] as? Int)
+            }
+        }
+        let missingArtwork: Object = ["productId": "AR-1001", "name": "下单时的名称"]
+        let enriched = productForDisplay(missingArtwork, catalog: [cached])
+        XCTAssertEqual(ProductPresentation.title(enriched), "下单时的名称")
+        XCTAssertEqual(text(enriched, "image_url"), "/catalog.webp")
+    }
+
     func testRefundAmountUsesExactMinorUnits() throws {
         XCTAssertEqual(try refundMinor("79.60"), 7960)
         XCTAssertEqual(try refundMinor("0.01"), 1)
