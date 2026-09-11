@@ -21,6 +21,8 @@ final class StreamingReplayTests: XCTestCase {
         let snapshot = try jsonText(["items": history])
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.windowLevel = .normal + 1
         window.rootViewController = UIHostingController(rootView: NavigationStack {
             ConversationView(model: model, chat: model.chat)
         })
@@ -47,6 +49,13 @@ final class StreamingReplayTests: XCTestCase {
                         model.chat.revision += 1
                         try await Task.sleep(for: .milliseconds(50))
                     }
+                    let rendered = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    let attachment = XCTAttachment(image: rendered)
+                    attachment.name = "Native replay final frame"
+                    attachment.lifetime = .keepAlways
+                    self.add(attachment)
                     model.chat.running = false
                     XCTAssertEqual(model.chat.messages.last?.segments.last?.text.count, 960)
                 } catch { XCTFail("Replay failed: \(error)") }

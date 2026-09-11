@@ -131,7 +131,7 @@ final class BuyerAppTests: XCTestCase {
     }
 
     @MainActor
-    func testStopThenNewConversationRejectsLateStream() async throws {
+    func testStopCancelsNativeTransportBeforeNewConversation() async throws {
         let (model, session, defaults, suite) = try isolatedModel()
         defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
         model.storage.conversation = "cancel-test"
