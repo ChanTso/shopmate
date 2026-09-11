@@ -2,6 +2,7 @@ package io.shopmate.buyer
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.SubcomposeAsyncImage
 import kotlinx.serialization.json.*
 
@@ -95,13 +102,23 @@ fun Sheet(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-fun BuyerApp(vm: BuyerViewModel = viewModel()) {
+fun BuyerApp(vm: BuyerViewModel = viewModel(factory = viewModelFactory {
+    initializer { BuyerViewModel(this[androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]!!) }
+})) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, vm) {
+        val observer = LifecycleEventObserver { _, _ -> vm.setForeground(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+        lifecycle.addObserver(observer)
+        vm.setForeground(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        onDispose { lifecycle.removeObserver(observer); vm.setForeground(false) }
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     if (!state.signedIn) {
         LoginScreen(vm, state)
         return
     }
     val savedScreens = rememberSaveableStateHolder()
+    BackHandler(enabled = state.productOpen || state.screen != "首页") { vm.back() }
     val expanded = LocalConfiguration.current.screenWidthDp >= 600
     val pages =
         listOf(
@@ -178,6 +195,9 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                         Icon(Icons.Outlined.Refresh, "刷新")
                     }
                 }
+                if (state.returnScreen != null && state.screen == "助手") {
+                    TextButton(onClick = vm::back) { Text(if (state.returnToProduct) "返回刚才的商品" else "返回${state.returnScreen}") }
+                }
                 if (state.error != null || state.notice != null) {
                     Surface(
                         color = if (state.error != null) Color(0xFFF9DFD7) else Line,
@@ -188,7 +208,7 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                state.error ?: state.notice.orEmpty(),
+                                listOfNotNull(state.notice, state.error).joinToString("\n"),
                                 Modifier.weight(1f),
                                 fontSize = 13.sp,
                             )
@@ -202,10 +222,11 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                     val wide = maxWidth >= 760.dp
                     Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f)) {
+                            savedScreens.SaveableStateProvider(state.screen) {
                             when (state.screen) {
                                 "首页" -> CatalogScreen(vm, state)
                                 "限量发售" -> SeckillScreen(vm, state) { label, action -> confirm = label to action }
-                                "助手" -> savedScreens.SaveableStateProvider("assistant") { ChatScreen(vm, state) }
+                                "助手" -> ChatScreen(vm, state)
                                 "购物车" ->
                                     CartScreen(vm, state) { label, action ->
                                         confirm = label to action
@@ -216,11 +237,12 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
                                     }
                                 else -> ProfileScreen(vm, state)
                             }
+                            }
                         }
                         if (wide && state.screen != "助手") {
                             VerticalDivider(color = Line)
                             Box(Modifier.width(390.dp)) {
-                                savedScreens.SaveableStateProvider("assistant") { ChatScreen(vm, state) }
+                                savedScreens.SaveableStateProvider("助手") { ChatScreen(vm, state) }
                             }
                         }
                     }
@@ -228,7 +250,12 @@ fun BuyerApp(vm: BuyerViewModel = viewModel()) {
             }
         }
     }
-    state.selected?.let { ProductDialog(it, vm, state.writing) }
+    if (state.productOpen) {
+        state.selected?.let { ProductDialog(it, vm, state.writing, state.variantId) }
+            ?: AlertDialog(onDismissRequest = vm::closeProduct, title = { Heading("读取商品") },
+                text = { CircularProgressIndicator() }, confirmButton = {},
+                dismissButton = { TextButton(onClick = vm::closeProduct) { Text("返回") } })
+    }
     confirm?.let { (message, action) ->
         AlertDialog(
             onDismissRequest = { confirm = null },
@@ -331,6 +358,7 @@ fun LoginScreen(vm: BuyerViewModel, state: BuyerState) {
 fun CatalogScreen(vm: BuyerViewModel, state: BuyerState) {
     var query by rememberSaveable { mutableStateOf(state.query) }
     LazyColumn(
+        modifier = Modifier.testTag("catalog-list"),
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -422,7 +450,7 @@ fun CatalogScreen(vm: BuyerViewModel, state: BuyerState) {
                     }
                 }
             }
-        items(state.products.chunked(2)) { pair ->
+        items(state.products.chunked(2), key = { it.first().product_id }) { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 pair.forEach { product -> Box(Modifier.weight(1f)) { ProductTile(product, vm) } }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -471,13 +499,9 @@ fun ProductTile(product: Product, vm: BuyerViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProductDialog(product: Product, vm: BuyerViewModel, writing: Boolean) {
-    var chosen by
-        remember(product.product_id) {
-            mutableStateOf<Product?>(
-                if (product.variants.isEmpty() && product.options.isEmpty()) product else null
-            )
-        }
+fun ProductDialog(product: Product, vm: BuyerViewModel, writing: Boolean, variantId: String? = null) {
+    val chosen = product.variants.firstOrNull { it.product_id == variantId }
+        ?: product.takeIf { it.variants.isEmpty() && it.options.isEmpty() }
     ModalBottomSheet(
         onDismissRequest = vm::closeProduct,
         containerColor = Paper,
@@ -508,8 +532,9 @@ fun ProductDialog(product: Product, vm: BuyerViewModel, writing: Boolean) {
                 Text("选择规格", fontWeight = FontWeight.Bold)
                 product.variants.forEach { variant ->
                     FilterChip(
+                        modifier = Modifier.testTag("variant-${variant.product_id}"),
                         selected = chosen?.product_id == variant.product_id,
-                        onClick = { chosen = variant },
+                        onClick = { vm.chooseVariant(variant.product_id) },
                         label = {
                             Text(
                                 variant.option_values.values.joinToString(" / ").ifBlank {
@@ -530,7 +555,6 @@ fun ProductDialog(product: Product, vm: BuyerViewModel, writing: Boolean) {
                 OutlinedButton(
                     onClick = {
                         vm.askProduct(chosen ?: product)
-                        vm.closeProduct()
                     },
                     modifier = Modifier.weight(1f),
                 ) {

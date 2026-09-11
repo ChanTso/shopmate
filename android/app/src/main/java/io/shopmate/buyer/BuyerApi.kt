@@ -35,7 +35,7 @@ private fun serviceRoot(value: String): String {
 
 class ApiFailure(val status: Int, val category: String, message: String) : IOException(message)
 
-class BuyerApi(
+open class BuyerApi(
     private val client: OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -80,13 +80,13 @@ class BuyerApi(
         return ApiFailure(response.code, payload.text("category"), message.take(600))
     }
 
-    suspend fun json(
+    open suspend fun json(
         path: String,
         body: JsonObject? = null,
         method: String = if (body == null) "GET" else "POST",
     ): JsonObject = execute(request(path, body, method))
 
-    suspend fun seckill(path: String, body: JsonObject? = null, key: String? = null): JsonObject =
+    open suspend fun seckill(path: String, body: JsonObject? = null, key: String? = null): JsonObject =
         execute(Request.Builder().url("$commerceRoot/api$path")
             .apply {
                 token?.let { header("Authorization", "Bearer $it") }

@@ -17,6 +17,7 @@ struct ShopMateApp: App {
 
 struct BuyerRoot: View {
     @ObservedObject var model: BuyerModel
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
@@ -25,10 +26,15 @@ struct BuyerRoot: View {
                         .padding().background(Color(red: 0.98, green: 0.86, blue: 0.82))
                 }
                 if model.signedIn {
+                    if model.tab == 1, model.productReturn != nil {
+                        Button { model.returnToProduct() } label: {
+                            Label("返回刚才的商品", systemImage: "arrow.left").font(.subheadline)
+                        }.padding(.horizontal, 20).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if geometry.size.width >= 850 { wideLayout(width: geometry.size.width) }
                     else {
                         TabView(selection: $model.tab) {
-                            NavigationStack { CatalogView(model: model) }.tabItem { Label("探索", systemImage: "house") }.tag(0)
+                            catalogNavigation.tabItem { Label("探索", systemImage: "house") }.tag(0)
                             NavigationStack { ConversationView(model: model, chat: model.chat) }.tabItem { Label("助手", systemImage: "sparkles") }.tag(1)
                             NavigationStack { CartView(model: model) }.tabItem { Label("购物车", systemImage: "bag") }.tag(2)
                             NavigationStack { CheckoutView(model: model) }.tabItem { Label("订单", systemImage: "receipt") }.tag(3)
@@ -38,12 +44,21 @@ struct BuyerRoot: View {
                 } else { LoginView(model: model) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(paper)
         }
+        .onChange(of: scenePhase, initial: true) { _, phase in model.setApplicationActive(phase == .active) }
         .alert(item: $model.confirmation) { value in
             Alert(title: Text("请核对后确认"), message: Text(value.message),
                   primaryButton: .default(Text("确认提交"), action: value.action), secondaryButton: .cancel(Text("再看一下")))
         }
-        .sheet(isPresented: Binding(get: { model.selected != nil }, set: { if !$0 { model.selected = nil } })) {
+        .sheet(isPresented: Binding(get: { model.selected != nil }, set: { if !$0 { model.closeProduct() } })) {
             if let product = model.selected { NavigationStack { ProductView(model: model, product: product) } }
+        }
+    }
+    private var catalogNavigation: some View {
+        NavigationStack(path: $model.catalogPath) {
+            CatalogView(model: model)
+                .navigationDestination(for: CatalogRoute.self) { route in
+                    switch route { case .seckill: SeckillView(model: model) }
+                }
         }
     }
     private func wideLayout(width: CGFloat) -> some View {
@@ -58,16 +73,14 @@ struct BuyerRoot: View {
                 railItem(4, "我的", "person")
                 Spacer()
             }.padding(.top, 26).frame(width: 84).background(Color.white.opacity(0.52))
-            NavigationStack {
-                Group {
-                    switch model.tab {
-                    case 2: CartView(model: model)
-                    case 3: CheckoutView(model: model)
-                    case 4: RecoveryView(model: model)
-                    default: CatalogView(model: model)
-                    }
+            Group {
+                switch model.tab {
+                case 2: NavigationStack { CartView(model: model) }
+                case 3: NavigationStack { CheckoutView(model: model) }
+                case 4: NavigationStack { RecoveryView(model: model) }
+                default: catalogNavigation
                 }
-            }.id(model.tab).frame(maxWidth: .infinity)
+            }.frame(maxWidth: .infinity)
             Rectangle().fill(softBorder.opacity(0.7)).frame(width: 1)
             NavigationStack { ConversationView(model: model, chat: model.chat, embedded: true) }
                 .frame(width: min(470, max(360, width * 0.38)))
@@ -136,7 +149,7 @@ struct CatalogView: View {
                 HStack {
                     Label("精选生活 · 官方商店", systemImage: "leaf").font(.caption).foregroundStyle(mutedInk)
                     Spacer()
-                    NavigationLink { SeckillView(model: model) } label: { Label("限量发售", systemImage: "bolt.fill").font(.caption.weight(.medium)) }
+                    NavigationLink(value: CatalogRoute.seckill) { Label("限量发售", systemImage: "bolt.fill").font(.caption.weight(.medium)) }
                 }
                 VStack(alignment: .leading, spacing: 16) {
                     HStack { Image(systemName: "sparkles"); Text("把日常，过成喜欢的样子").tracking(1) }.font(.caption).foregroundStyle(Color(red: 0.83, green: 0.72, blue: 0.52))
@@ -161,14 +174,15 @@ struct CatalogView: View {
                                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                             }.background(.white).clipShape(RoundedRectangle(cornerRadius: 20))
                                 .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(softBorder.opacity(0.3), lineWidth: 0.7))
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plain).id(item.id)
                     }
-                }
+                }.scrollTargetLayout()
                 if model.searching { ProgressView().frame(maxWidth: .infinity) }
                 else if model.hasMoreProducts { Button("继续发现好物") { model.search(append: true) }.buttonStyle(.bordered).frame(maxWidth: .infinity) }
-                if !model.searching && model.products.isEmpty { ContentUnavailableView.search(text: model.searchQuery) }
+                if !model.searching && model.products.isEmpty { ContentUnavailableView.search(text: model.submittedSearchQuery) }
             }.padding(20)
-        }.searchable(text: $model.searchQuery, prompt: "搜索商品，寻找生活灵感")
+        }.scrollPosition(id: $model.catalogPosition, anchor: .top)
+            .searchable(text: $model.searchQuery, prompt: "搜索商品，寻找生活灵感")
             .onSubmit(of: .search) { model.search() }
             .background(paper).navigationTitle("ShopMate").toolbar { Button { model.reload() } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新") }
     }
@@ -230,7 +244,7 @@ struct ProductView: View {
                 }
                 Button { model.askProduct(product) } label: { Label("就这件商品问助手", systemImage: "sparkles").frame(maxWidth: .infinity) }.buttonStyle(.bordered).controlSize(.large)
             }.padding(20)
-        }.background(paper).navigationTitle("商品详情").navigationBarTitleDisplayMode(.inline).toolbar { Button("完成") { model.selected = nil } }
+        }.background(paper).navigationTitle("商品详情").navigationBarTitleDisplayMode(.inline).toolbar { Button("完成") { model.closeProduct() } }
             .alert("确认加入购物车", isPresented: $approveAdd) {
                 Button("确认提交") { model.add(product) }; Button("再看一下", role: .cancel) { }
             } message: { Text("加入 \(ProductPresentation.title(product)) × 1，结账时再次核对当前报价。") }

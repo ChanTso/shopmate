@@ -27,7 +27,7 @@ struct ConversationView: View {
                                     Text(message.user ? "我的想法" : "ShopMate").font(.caption.weight(.semibold))
                                 }.foregroundStyle(message.user ? mutedInk : accent)
                                 ForEach(Array(message.segments.enumerated()), id: \.offset) { _, segment in
-                                    if let raw = segment.blockJson, let block = try? jsonObject(Data(raw.utf8)) {
+                                    if let block = ChatCardPayload.decode(segment) {
                                         RecommendationCard(model: model, block: block, ready: segment.final)
                                     } else { Text(segment.text).font(.system(size: 16)).lineSpacing(6).textSelection(.enabled) }
                                 }

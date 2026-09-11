@@ -229,6 +229,7 @@ struct SeckillView: View {
                 }
                 if model.offers.isEmpty { Text("当前没有可展示的活动") }
                 Text("我的预约").font(.title2.bold())
+                if let notice = model.reservationNotice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
                 ForEach(model.tickets) { ticket in
                     Panel {
                         Text(statusLabel(ticket.state)).font(.headline)
@@ -242,7 +243,9 @@ struct SeckillView: View {
                 }
             }.padding(18)
         }.background(paper).navigationTitle("限量发售")
-            .task { await model.loadSeckill() }
+            .onAppear { model.setSeckillVisible(true) }
+            .onDisappear { model.setSeckillVisible(false) }
+            .task { await model.loadSeckill(refreshReservations: false) }
             .toolbar { Button("刷新") { Task { await model.loadSeckill() } } }
     }
     private func rejection(_ code: String) -> String {

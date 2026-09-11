@@ -30,7 +30,6 @@ data class SeckillTicket(
 
 @Composable
 fun SeckillScreen(vm: BuyerViewModel, state: BuyerState, confirm: (String, () -> Unit) -> Unit) {
-    LaunchedEffect(Unit) { vm.loadSeckill() }
     LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Heading("限量发售")
