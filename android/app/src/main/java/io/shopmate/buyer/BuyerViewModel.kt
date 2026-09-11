@@ -1,7 +1,7 @@
 package io.shopmate.buyer
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import java.net.URLEncoder
 import java.util.UUID
@@ -22,6 +22,10 @@ data class BuyerState(
     val nextOffset: Int? = null,
     val query: String = "",
     val selected: Product? = null,
+    val productOpen: Boolean = false,
+    val variantId: String? = null,
+    val returnScreen: String? = null,
+    val returnToProduct: Boolean = false,
     val quote: Quote? = null,
     val orders: List<JsonObject> = emptyList(),
     val checkouts: List<JsonObject> = emptyList(),
@@ -45,14 +49,17 @@ data class ChatState(
     val draft: String = "",
 )
 
-class BuyerViewModel(application: Application) : AndroidViewModel(application) {
-    val api = BuyerApi()
-    private val store = DeviceStore(application)
+class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewModel() {
+    constructor(application: Application) : this(BuyerApi(), DeviceStore(application))
     private val mutable = MutableStateFlow(BuyerState())
     val state = mutable.asStateFlow()
     private val mutableChat = MutableStateFlow(ChatState())
     val chat = mutableChat.asStateFlow()
     private var seckillJob: Job? = null
+    private var seckillLoadJob: Job? = null
+    private var foreground = false
+    private var productJob: Job? = null
+    private var productRequest = 0L
     private var chatJob: Job? = null
     private var restoreJob: Job? = null
     private var catalogJob: Job? = null
@@ -146,7 +153,10 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigate(screen: String) {
-        update { it.copy(screen = screen, selected = null) }
+        cancelProductRequest()
+        update { it.copy(screen = screen, selected = null, productOpen = false,
+            variantId = null, returnScreen = null, returnToProduct = false) }
+        updateSeckillVisibility()
         when (screen) {
             "购物车" -> refreshCart()
             "订单" -> refreshOrders()
@@ -179,16 +189,61 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openProduct(id: String) = launchRead {
-        val product =
-            wireJson.decodeFromJsonElement<Product>(
-                api.json("/products/${URLEncoder.encode(id, "UTF-8")}").getValue("product")
-            )
-        update { it.copy(selected = product) }
+    private fun cancelProductRequest() {
+        productRequest++
+        productJob?.cancel()
     }
 
+    fun openProduct(id: String) {
+        cancelProductRequest()
+        val request = productRequest
+        update { it.copy(selected = null, productOpen = true, variantId = null, error = null) }
+        productJob = launchRead {
+            try {
+                val product = wireJson.decodeFromJsonElement<Product>(
+                    api.json("/products/${URLEncoder.encode(id, "UTF-8")}").getValue("product")
+                )
+                currentCoroutineContext().ensureActive()
+                if (request == productRequest) update { it.copy(selected = product) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (request == productRequest) {
+                    update { it.copy(productOpen = false) }
+                    report(e)
+                }
+            }
+        }
+    }
+
+    fun chooseVariant(id: String) { update { it.copy(variantId = id) } }
+
     fun closeProduct() {
-        update { it.copy(selected = null) }
+        cancelProductRequest()
+        update { it.copy(selected = null, productOpen = false, variantId = null) }
+    }
+
+    fun back() {
+        if (state.value.productOpen) { closeProduct(); return }
+        val returnScreen = state.value.returnScreen
+        if (state.value.screen == "助手" && returnScreen != null) {
+            update { it.copy(screen = returnScreen, productOpen = it.returnToProduct && it.selected != null,
+                returnScreen = null, returnToProduct = false) }
+            updateSeckillVisibility()
+        } else if (state.value.screen != "首页") navigate("首页")
+    }
+
+    fun setForeground(active: Boolean) {
+        if (foreground == active) return
+        foreground = active
+        updateSeckillVisibility()
+    }
+
+    private fun updateSeckillVisibility() {
+        if (foreground && state.value.screen == "限量发售") loadSeckill()
+        else {
+            seckillLoadJob?.cancel()
+            seckillJob?.cancel()
+        }
     }
 
     fun refresh() {
@@ -265,8 +320,7 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                 api.json(request.path, request.body)
                 store.savePending(store.pending().filterNot { it.key == key })
                 update { it.copy(pending = store.pending(), notice = "操作已受理，请以最新业务状态为准") }
-                readCart()
-                readOrders()
+                refreshAccepted()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -290,11 +344,16 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
         write(original.path, original.body, original)
     }
 
-    fun loadSeckill() = launchRead {
-        update { it.copy(tickets = store.tickets()) }
-        val offers = api.seckill("/seckill/activities").rows("activities")
-        update { it.copy(offers = offers) }
-        pollSeckill()
+    fun loadSeckill() {
+        seckillLoadJob?.cancel()
+        seckillLoadJob = launchRead {
+            update { it.copy(tickets = store.tickets()) }
+            // Reconcile saved reservations even when the activities listing is temporarily unavailable.
+            pollSeckill()
+            val offers = api.seckill("/seckill/activities").rows("activities")
+            currentCoroutineContext().ensureActive()
+            update { it.copy(offers = offers) }
+        }
     }
 
     private fun saveTicket(ticket: SeckillTicket) {
@@ -322,7 +381,9 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
                     api.seckill("/seckill/activities/${original.activityId}/reservations",
                         buildJsonObject { put("quantity", 1); put("expectedActivityVersion", original.activityVersion) }, original.key)
                     else api.seckill("/reservations/${original.reservationId}")
+                currentCoroutineContext().ensureActive()
                 saveTicket(original.result(result))
+                update { it.copy(notice = "预约结果已保存；获准后仍需等待成单") }
                 pollSeckill()
             } finally { update { it.copy(writing = false) } }
         }
@@ -330,12 +391,25 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun pollSeckill() {
         seckillJob?.cancel()
-        seckillJob = launchRead {
-            repeat(30) {
-                val pending = store.tickets().filter { it.reservationId != null && !it.terminal }
-                if (pending.isEmpty()) return@launchRead
-                for (ticket in pending) saveTicket(ticket.result(api.seckill("/reservations/${ticket.reservationId}")))
-                delay(2000)
+        if (!foreground || state.value.screen != "限量发售") return
+        seckillJob = viewModelScope.launch {
+            try {
+                repeat(30) {
+                    val pending = store.tickets().filter { it.reservationId != null && !it.terminal }
+                    if (pending.isEmpty()) return@launch
+                    for (ticket in pending) {
+                        val reply = api.seckill("/reservations/${ticket.reservationId}")
+                        currentCoroutineContext().ensureActive()
+                        saveTicket(ticket.result(reply))
+                    }
+                    if (store.tickets().none { it.reservationId != null && !it.terminal }) return@launch
+                    delay(2000)
+                }
+                update { it.copy(notice = "预约仍在处理中，已暂停自动查询；可手动刷新原预约") }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                report(e)
+                update { it.copy(notice = "原预约已保存，暂时无法更新结果；请刷新核对，不要重新预约") }
             }
         }
     }
@@ -393,12 +467,22 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
         launchRead {
             try {
                 api.json(path, emptyObject)
-                readOrders()
-                readCart()
-                update { it.copy(notice = "已刷新执行结果") }
+                update { it.copy(notice = "操作已受理，请以最新业务状态为准") }
+                refreshAccepted()
             } finally {
                 update { it.copy(writing = false) }
             }
+        }
+    }
+
+    private suspend fun refreshAccepted() {
+        try {
+            readCart()
+            readOrders()
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            report(e)
+            update { it.copy(notice = "操作已受理，但最新状态暂时无法刷新；请核对原记录，不要重复提交") }
         }
     }
 
@@ -411,7 +495,11 @@ class BuyerViewModel(application: Application) : AndroidViewModel(application) {
             put("page_type", "product")
             put("product_id", product.product_id)
         }
-        update { it.copy(screen = "助手") }
+        cancelProductRequest()
+        update { it.copy(screen = "助手", productOpen = false,
+            returnScreen = it.screen.takeIf { screen -> screen != "助手" },
+            returnToProduct = it.selected != null) }
+        updateSeckillVisibility()
         updateChat { it.copy(draft = "帮我分析 ${product.title}，是否适合我？") }
     }
 

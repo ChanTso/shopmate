@@ -20,6 +20,8 @@ struct BuyerApproval: Identifiable {
     let action: () -> Void
 }
 
+enum CatalogRoute: Hashable { case seckill }
+
 @MainActor
 final class BuyerModel: ObservableObject {
     let api: BuyerAPI
@@ -36,6 +38,8 @@ final class BuyerModel: ObservableObject {
     @Published var confirmation: BuyerApproval?
     func confirm(_ message: String, action: @escaping () -> Void) { confirmation = BuyerApproval(message: message, action: action) }
     @Published var selected: Object?
+    @Published private(set) var productReturn: Object?
+    private var productReturnTab = 0
     @Published var tab = 0
     @Published var orders: [Object] = []
     @Published var actions: [Object] = []
@@ -47,13 +51,20 @@ final class BuyerModel: ObservableObject {
     @Published var delivery: Object = [:]
     @Published var offers: [Object] = []
     @Published var tickets: [SeckillTicket] = []
+    @Published private(set) var reservationNotice: String?
     @Published var searchQuery = ""
+    @Published private(set) var submittedSearchQuery = ""
+    @Published var catalogPosition: String?
+    @Published var catalogPath: [CatalogRoute] = []
     @Published var hasMoreProducts = false
     @Published var searching = false
     var assistantPage: Object = ["page_type": "home"]
     private var nextProductOffset: Int?
     private var searchTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
+    private var applicationActive = false
+    private var seckillVisible = false
+    private var productTask: Task<Void, Never>?
     private var chatTask: Task<Void, Never>?
     private var chatGeneration = UUID()
     private var loadTask: Task<Void, Never>?
@@ -93,6 +104,7 @@ final class BuyerModel: ObservableObject {
                 try storage.saveToken(text(value, "accessToken"))
                 api.token = text(value, "accessToken")
                 signedIn = true; pending = try storage.pending()
+                search()
                 try await refresh()
                 try await restoreConversation()
             } catch { report(error) }
@@ -100,17 +112,21 @@ final class BuyerModel: ObservableObject {
     }
     func logout() {
         chatGeneration = UUID()
-        chatTask?.cancel(); loadTask?.cancel(); writeTask?.cancel(); searchTask?.cancel(); pollTask?.cancel()
+        chatTask?.cancel(); loadTask?.cancel(); writeTask?.cancel(); searchTask?.cancel(); pollTask?.cancel(); productTask?.cancel()
+        pollTask = nil; seckillVisible = false; reservationNotice = nil
         do { try storage.logout() } catch { self.error = error.localizedDescription }
         api.token = nil; signedIn = false; loading = false; writing = false
-        products = []; quote = [:]; checkouts = []; pending = []; selected = nil; tab = 0
+        products = []; quote = [:]; checkouts = []; pending = []; selected = nil; productReturn = nil; tab = 0
         orders = []; actions = []; commands = []; conversations = []; profile = [:]; memories = []
         policies = []; delivery = [:]; offers = []; tickets = []; searchQuery = ""; searching = false
-        hasMoreProducts = false; confirmation = nil; assistantPage = ["page_type": "home"]
+        hasMoreProducts = false; nextProductOffset = nil; submittedSearchQuery = ""
+        catalogPosition = nil; catalogPath = []
+        confirmation = nil; assistantPage = ["page_type": "home"]
         chat.clear(); chat.draft = ""; chat.conversationKey = UUID().uuidString
     }
     @discardableResult
     func reload() -> Task<Void, Never> {
+        if products.isEmpty && !searching { search() }
         loadTask?.cancel()
         let task = Task {
             do { try await refresh(); if !chat.running { try await restoreConversation() } }
@@ -128,17 +144,25 @@ final class BuyerModel: ObservableObject {
         self.orders = rows(try await api.call("/orders"), "orders")
         actions = rows(try await api.call("/actions"), "actions")
         commands = rows(try await api.call("/commands"), "commands")
-        if products.isEmpty { search() }
+        let confirmed = Set(commands.filter { text($0, "state") == "confirmed" }.map { text($0, "request_key") })
+        let saved = try storage.pending()
+        let remaining = saved.filter { !confirmed.contains($0.key) }
+        if remaining.count != saved.count { try storage.savePending(remaining) }
+        pending = remaining
     }
     func openProduct(_ id: String) {
-        loadTask?.cancel()
-        loadTask = Task {
+        productTask?.cancel()
+        productTask = Task {
             do {
                 let escaped = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
                 let value = try await api.call("/products/" + escaped)
-                try Task.checkCancellation(); selected = object(value, "product")
+                try Task.checkCancellation(); selected = object(value, "product"); productReturn = nil
             } catch { report(error) }
         }
+    }
+    func closeProduct() {
+        productTask?.cancel()
+        selected = nil
     }
     func add(_ product: Object) {
         write(path: "/cart/add", body: ["productId": text(product, "product_id"), "quantity": 1])
@@ -171,9 +195,9 @@ final class BuyerModel: ObservableObject {
                 try Task.checkCancellation()
                 let remaining = try storage.pending().filter { $0.key != value.key }
                 try storage.savePending(remaining); pending = remaining
-                selected = nil
+                closeProduct()
                 if value.path == "/checkouts" { tab = 3 }
-                try await refresh()
+                await refreshAfterAcceptedWrite()
             } catch {
                 if let failure = error as? BuyerFailure, let command,
                    !WriteRecovery.shared.retain(status: Int32(failure.status), category: failure.category) {
@@ -193,8 +217,16 @@ final class BuyerModel: ObservableObject {
             defer { writing = false }
             do {
                 _ = try await api.call("/checkouts/" + text(checkout, "checkoutId") + "/pay", body: [:])
-                try Task.checkCancellation(); try await refresh()
+                try Task.checkCancellation(); await refreshAfterAcceptedWrite()
             } catch { report(error) }
+        }
+    }
+    private func refreshAfterAcceptedWrite() async {
+        do { try await refresh() }
+        catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+            report(error)
+            self.error = "操作已受理，业务状态刷新未完成，请刷新核对。" + error.localizedDescription
         }
     }
     func stop() { chatTask?.cancel(); chat.activity = "正在停止生成" }
@@ -248,9 +280,17 @@ final class BuyerModel: ObservableObject {
         }
     }
     func search(append: Bool = false) {
-        searchTask?.cancel()
-        let query = searchQuery
-        let offset = append ? (nextProductOffset ?? products.count) : 0
+        let offset: Int
+        if append {
+            guard !searching, let nextProductOffset else { return }
+            offset = nextProductOffset
+        } else {
+            searchTask?.cancel()
+            submittedSearchQuery = searchQuery
+            products = []; nextProductOffset = nil; hasMoreProducts = false; catalogPosition = nil
+            offset = 0
+        }
+        let query = submittedSearchQuery
         searching = true
         searchTask = Task {
             do {
@@ -309,14 +349,20 @@ final class BuyerModel: ObservableObject {
     func askProduct(_ product: Object) {
         assistantPage = ["page_type": "product", "product_id": text(product, "product_id")]
         chat.draft = "帮我分析「" + text(product, "title") + "」，是否适合我？"
-        selected = nil; tab = 1
+        productReturnTab = tab
+        closeProduct(); productReturn = product; tab = 1
+    }
+    func returnToProduct() {
+        guard let product = productReturn else { return }
+        productTask?.cancel()
+        selected = product; productReturn = nil; tab = productReturnTab
     }
     func transact(_ path: String) {
         guard !writing else { return }
         writing = true
         writeTask = Task {
             defer { writing = false }
-            do { _ = try await api.call(path, body: [:]); try Task.checkCancellation(); try await refresh() }
+            do { _ = try await api.call(path, body: [:]); try Task.checkCancellation(); await refreshAfterAcceptedWrite() }
             catch { report(error) }
         }
     }
@@ -335,11 +381,12 @@ final class BuyerModel: ObservableObject {
             retry(original)
         } catch { report(error) }
     }
-    func loadSeckill() async {
+    func loadSeckill(refreshReservations: Bool = true) async {
+        if refreshReservations { pollSeckill() }
         do {
             tickets = try storage.tickets()
             let result = try await api.seckill("/seckill/activities")
-            try Task.checkCancellation(); offers = rows(result, "activities"); pollSeckill()
+            try Task.checkCancellation(); offers = rows(result, "activities")
         } catch { report(error) }
     }
     private func saveTicket(_ ticket: SeckillTicket) throws {
@@ -369,16 +416,34 @@ final class BuyerModel: ObservableObject {
             } catch { report(error) }
         }
     }
+    func setApplicationActive(_ active: Bool) {
+        guard applicationActive != active else { return }
+        applicationActive = active
+        pollSeckill()
+    }
+    func setSeckillVisible(_ visible: Bool) {
+        guard seckillVisible != visible else { return }
+        seckillVisible = visible
+        pollSeckill()
+    }
     private func pollSeckill() {
         pollTask?.cancel()
+        pollTask = nil
+        guard applicationActive && seckillVisible else { return }
+        reservationNotice = nil
         pollTask = Task {
             do {
-                for _ in 0..<30 {
+                for attempt in 0..<30 {
                     let waiting = try storage.tickets().filter { $0.reservationId != nil && !$0.terminal }
                     if waiting.isEmpty { return }
                     for ticket in waiting {
                         let reply = try await api.seckill("/reservations/" + (ticket.reservationId ?? ""))
                         try Task.checkCancellation(); try saveTicket(ticket.result(reply))
+                    }
+                    if !tickets.contains(where: { $0.reservationId != nil && !$0.terminal }) { return }
+                    if attempt == 29 {
+                        reservationNotice = "预约仍待确认，可点击“查询原预约”继续核对。"
+                        return
                     }
                     try await Task.sleep(for: .seconds(2))
                 }

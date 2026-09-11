@@ -14,7 +14,7 @@ import kotlinx.serialization.encodeToString
 /**
  * Business receipts remain on the server. Local intent survives process death before a response.
  */
-class DeviceStore(context: Context) {
+class DeviceStore(context: Context) : BuyerStorage {
     private val prefs = context.getSharedPreferences("buyer", Context.MODE_PRIVATE)
     private val key: SecretKey by lazy {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -33,28 +33,28 @@ class DeviceStore(context: Context) {
                 }
                 .generateKey()
     }
-    var endpoint: String
+    override var endpoint: String
         get() = prefs.getString("endpoint", "http://10.0.2.2:8101")!!
         set(value) {
             check(prefs.edit().putString("endpoint", value).commit())
         }
 
-    var commerceEndpoint: String
+    override var commerceEndpoint: String
         get() = prefs.getString("commerceEndpoint", "http://10.0.2.2:9082")!!
         set(value) { check(prefs.edit().putString("commerceEndpoint", value).commit()) }
 
-    fun tickets(): List<SeckillTicket> =
+    override fun tickets(): List<SeckillTicket> =
         prefs.getString(scoped("seckill:$commerceEndpoint"), null)?.let { wireJson.decodeFromString(it) }
             ?: emptyList()
 
-    fun saveTickets(values: List<SeckillTicket>) {
+    override fun saveTickets(values: List<SeckillTicket>) {
         check(prefs.edit().putString(scoped("seckill:$commerceEndpoint"), wireJson.encodeToString(values)).commit())
     }
 
-    val owner: String
+    override val owner: String
         get() = prefs.getString("owner", "")!!
 
-    fun token(): String? {
+    override fun token(): String? {
         val raw = prefs.getString("token", null) ?: return null
         return try {
             val bytes = Base64.decode(raw, Base64.NO_WRAP)
@@ -70,7 +70,7 @@ class DeviceStore(context: Context) {
         }
     }
 
-    fun login(owner: String, token: String) {
+    override fun login(owner: String, token: String) {
         val cipher =
             Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key) }
         val encoded =
@@ -78,23 +78,23 @@ class DeviceStore(context: Context) {
         check(prefs.edit().putString("owner", owner).putString("token", encoded).commit())
     }
 
-    fun logout() {
+    override fun logout() {
         check(prefs.edit().remove("token").remove("owner").commit())
     }
 
     private fun scoped(name: String) = "$endpoint|$owner|$name"
 
-    var conversation: String?
+    override var conversation: String?
         get() = prefs.getString(scoped("conversation"), null)
         set(value) {
             check(prefs.edit().putString(scoped("conversation"), value).commit())
         }
 
-    fun pending(): List<PendingWrite> =
+    override fun pending(): List<PendingWrite> =
         prefs.getString(scoped("pending"), null)?.let { wireJson.decodeFromString(it) }
             ?: emptyList()
 
-    fun savePending(values: List<PendingWrite>) {
+    override fun savePending(values: List<PendingWrite>) {
         check(prefs.edit().putString(scoped("pending"), wireJson.encodeToString(values)).commit()) {
             "无法保存操作，请检查设备存储"
         }

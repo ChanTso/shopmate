@@ -113,6 +113,8 @@ data class ChatSegment(
     val slot: String = "",
     val final: Boolean = true,
 ) {
+    // Avoid exporting nested JsonObject collections just to ask Swift whether a card exists.
+    val hasBlock: Boolean get() = block != null
     val blockJson: String? get() = block?.toString()
 }
 

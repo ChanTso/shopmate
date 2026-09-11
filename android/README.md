@@ -26,6 +26,8 @@ Run shared tests with `./gradlew :shared:jvmTest`; on macOS, also run `:shared:i
 - Normal shopping uses the buyer bearer without a conversation. The assistant creates a conversation only when a message is sent.
 - A ViewModel owns separate shopping and conversation state flows; only the assistant subscribes to text deltas. The active stream survives activity recreation. Wide windows show an assistant alongside shopping; compact windows use the assistant tab. Explicit stop cancels the HTTP stream. Process death restores saved server history rather than pretending generation continued.
 - Long replies follow the latest content until the reader scrolls up. Returning to the latest content resumes following. A saveable screen holder retains reading position across navigation, and is discarded on logout.
+- Product details belong to the current request. A new target or dismissal cancels the old read; late results cannot reopen it. Catalog position and selected variant survive the product-to-assistant return path.
+- A successful write and a failed follow-up refresh are distinct states; the original confirmed intent is not recreated merely because a read failed.
 - Checkout submits the exact integer-minor-unit quote and versions the customer reviewed. Price or inventory conflicts require a fresh quote and another confirmation.
 - Before an idempotent write, the client durably saves its original key and body, scoped by server and authenticated owner. Unknown outcomes can retry that original intent. Payment and refund confirmation use the existing checkout/action identifier and server receipts.
 - Bearer tokens are encrypted with an Android Keystore key; app backup is disabled. Passwords are never stored. Conversation content and long-term memory remain on the server.
@@ -35,6 +37,6 @@ This app does not claim that backend benchmark throughput measures mobile render
 
 ## Limited offers
 
-The home-page limited-offer entry calls CityBuddy directly for activities, reservation and status. Login settings expose a separate Commerce origin (emulator default `http://10.0.2.2:9082`). The same direct buyer bearer is used; no conversation, Python hop or SQLite write sits on the reservation path. Original reservation intent is saved before sending and scoped by endpoint and buyer. Short bounded polling can be resumed manually; admission is never displayed as a completed order.
+The home-page limited-offer entry calls CityBuddy directly for activities, reservation and status. Login settings expose a separate Commerce origin (emulator default `http://10.0.2.2:9082`). The same direct buyer bearer is used; no conversation, Python hop or SQLite write sits on the reservation path. Original reservation intent is saved before sending and scoped by endpoint and buyer. Automatic polling runs only while the app is in the foreground and the offer screen is visible. It stops on terminal results or after 30 rounds; resuming checks the saved reservation and manual refresh remains available; admission is never displayed as a completed order.
 
 After an order is created, its payment action uses ShopMate's server-side mock-payment signer and Java's persisted payment attempt. The APK contains no callback secret. The isolated runtime prepares one ten-unit offer once, without replenishing it on restart. This is a functional demo, not a new capacity result.
