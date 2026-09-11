@@ -48,7 +48,22 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  StreamingReplayTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/StreamingReplayTests.swift]
+    dependencies:
+      - target: ShopMate
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
+  StreamingReplay:
+    build:
+      targets:
+        ShopMate: all
+    test:
+      targets: [StreamingReplayTests]
   ShopMate:
     build:
       targets:

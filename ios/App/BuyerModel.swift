@@ -22,8 +22,8 @@ struct BuyerApproval: Identifiable {
 
 @MainActor
 final class BuyerModel: ObservableObject {
-    let api = BuyerAPI()
-    let storage = BuyerStorage()
+    let api: BuyerAPI
+    let storage: BuyerStorage
     let chat = ConversationState()
     @Published var signedIn = false
     @Published var loading = false
@@ -59,7 +59,11 @@ final class BuyerModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var writeTask: Task<Void, Never>?
 
-    init() {
+    convenience init() { self.init(api: BuyerAPI(), storage: BuyerStorage()) }
+
+    init(api: BuyerAPI, storage: BuyerStorage) {
+        self.api = api
+        self.storage = storage
         do {
             try api.setRoot(storage.endpoint)
             try api.setCommerceRoot(storage.commerceEndpoint)
@@ -105,12 +109,15 @@ final class BuyerModel: ObservableObject {
         hasMoreProducts = false; confirmation = nil; assistantPage = ["page_type": "home"]
         chat.clear(); chat.draft = ""; chat.conversationKey = UUID().uuidString
     }
-    func reload() {
+    @discardableResult
+    func reload() -> Task<Void, Never> {
         loadTask?.cancel()
-        loadTask = Task {
+        let task = Task {
             do { try await refresh(); if !chat.running { try await restoreConversation() } }
             catch { report(error) }
         }
+        loadTask = task
+        return task
     }
     private func refresh() async throws {
         let cart = try await api.call("/cart")
@@ -142,7 +149,6 @@ final class BuyerModel: ObservableObject {
             let approved = try jsonObject(Data(body.utf8))
             confirm("确认按当前报价创建订单，合计 \(money(quote["subtotalMinor"]))？") {
                 self.write(path: "/checkouts", body: approved)
-                self.tab = 3
             }
         } catch { report(error) }
     }
@@ -166,6 +172,7 @@ final class BuyerModel: ObservableObject {
                 let remaining = try storage.pending().filter { $0.key != value.key }
                 try storage.savePending(remaining); pending = remaining
                 selected = nil
+                if value.path == "/checkouts" { tab = 3 }
                 try await refresh()
             } catch {
                 if let failure = error as? BuyerFailure, let command,
@@ -198,9 +205,11 @@ final class BuyerModel: ObservableObject {
     }
     private func restoreConversation() async throws {
         guard let id = storage.conversation else { return }
+        let generation = chatGeneration
         let saved = try await api.call("/conversations/" + id)
         try Task.checkCancellation()
-        guard !chat.running, storage.conversation == id else { return }
+        // A completed newer turn must not be replaced by an older in-flight history response.
+        guard !chat.running, storage.conversation == id, chatGeneration == generation else { return }
         try chat.timeline.restore(payload: jsonText(saved)); chat.messages = chat.timeline.messages; chat.revision += 1
     }
     func send(_ raw: String) {

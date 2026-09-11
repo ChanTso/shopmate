@@ -33,12 +33,18 @@ final class BuyerAPI {
     var root = "http://localhost:8101"
     var commerceRoot = "http://localhost:9082"
     var token: String?
-    private let session: URLSession = {
+    private let session: URLSession
+
+    init(session: URLSession? = nil) {
+        self.session = session ?? Self.makeSession()
+    }
+
+    private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 600
         return URLSession(configuration: configuration)
-    }()
+    }
 
     static func serviceRoot(_ value: String) throws -> String {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -78,7 +84,13 @@ final class BuyerAPI {
 
     func failure(_ response: HTTPURLResponse, data: Data = Data()) -> BuyerFailure {
         let value = (try? jsonObject(data)) ?? [:]
-        let message = response.statusCode == 401 ? "登录已过期，请重新登录" : text(value, "detail")
+        let category = text(value, "category")
+        let recoveryMessages = [
+            "stale_cart": "购物车已更新，请刷新后重新核对商品和数量。",
+            "stale_quote": "商品报价已变化，请刷新后重新确认价格。",
+            "unknown_cart": "上次购物车操作尚待核对，请先恢复原操作。"
+        ]
+        let message = response.statusCode == 401 ? "登录已过期，请重新登录" : (recoveryMessages[category] ?? text(value, "detail"))
         return BuyerFailure(status: response.statusCode, category: text(value, "category"),
                             message: message.isEmpty ? "请求未完成，请刷新核对（\(response.statusCode)）" : message)
     }
