@@ -94,8 +94,8 @@ struct CatalogView: View {
                 NavigationLink { SeckillView(model: model) } label: { Label("限量发售", systemImage: "bolt.fill").font(.headline) }
                 Text("探索生活好物").font(.title2.bold())
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 14) {
-                    ForEach(model.products.indices, id: \.self) { index in
-                        let product = model.products[index]
+                    ForEach(model.products.map { IdentifiedObject(id: text($0, "product_id"), value: $0) }) { item in
+                        let product = item.value
                         Button { model.openProduct(text(product, "product_id")) } label: {
                             VStack(alignment: .leading, spacing: 10) {
                                 ProductImage(model: model, product: product).frame(height: 150).clipped()
@@ -208,6 +208,11 @@ struct CartView: View {
     }
 }
 
+struct IdentifiedObject: Identifiable {
+    let id: String
+    let value: Object
+}
+
 struct CheckoutView: View {
     @ObservedObject var model: BuyerModel
     var body: some View {
@@ -215,8 +220,8 @@ struct CheckoutView: View {
             LazyVStack(spacing: 16) {
                 let outstanding = model.checkouts.filter { rows($0, "orders").contains { text($0, "status") == "UNPAID" } }
                 if model.orders.isEmpty && model.checkouts.isEmpty { Text("暂无订单记录") }
-                ForEach(outstanding.indices, id: \.self) { i in
-                    let checkout = outstanding[i]
+                ForEach(outstanding.map { IdentifiedObject(id: text($0, "checkoutId"), value: $0) }) { item in
+                    let checkout = item.value
                     Panel {
                         Text(text(checkout, "paymentStatus") == "PAID" ? "已付款" : "待核对付款").font(.headline)
                         Text(money(checkout["totalMinor"])).font(.title2).foregroundStyle(accent)
@@ -233,9 +238,9 @@ struct CheckoutView: View {
                         }
                     }
                 }
-                ForEach(model.actions.indices, id: \.self) { RefundActionView(model: model, row: model.actions[$0]) }
+                ForEach(model.actions.map { IdentifiedObject(id: text(object($0, "action"), "pendingActionId"), value: $0) }) { item in RefundActionView(model: model, row: item.value) }
                 Text("最近订单").font(.headline)
-                ForEach(model.orders.indices, id: \.self) { OrderDetailPanel(model: model, order: model.orders[$0]) }
+                ForEach(model.orders.map { IdentifiedObject(id: text($0, "orderId"), value: $0) }) { item in OrderDetailPanel(model: model, order: item.value) }
             }.padding(18)
         }.background(paper).navigationTitle("订单与回执").toolbar { Button("刷新") { model.reload() } }
     }

@@ -18,12 +18,10 @@ struct ConversationView: View {
                                 Button("帮我推荐一款咖啡机") { chat.draft = "帮我推荐一款有货的咖啡机" }
                             }
                         }
-                        ForEach(chat.messages.indices, id: \.self) { i in
-                            let message = chat.messages[i]
+                        ForEach(Array(chat.messages.enumerated()), id: \.offset) { _, message in
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(message.user ? "我" : "SHOPMATE").font(.caption.bold()).foregroundStyle(accent)
-                                ForEach(message.segments.indices, id: \.self) { j in
-                                    let segment = message.segments[j]
+                                ForEach(Array(message.segments.enumerated()), id: \.offset) { _, segment in
                                     if let raw = segment.blockJson, let block = try? jsonObject(Data(raw.utf8)) {
                                         RecommendationCard(model: model, block: block, ready: segment.final)
                                     } else { Text(segment.text).textSelection(.enabled) }
