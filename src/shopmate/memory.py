@@ -133,7 +133,12 @@ async def extract_memory(agent, messages, session) -> str:
                 agent.client,
                 memory.model,
                 transcript,
-                extraction_prompt=memory.extraction_prompt,
+                extraction_prompt=(
+                    memory.extraction_prompt
+                    + "\nThe saved fact value is displayed directly to the user. "
+                    "Write it in the language of the user's statement; preserve product names "
+                    "and keep the existing key/category schema."
+                ),
                 fence=memory.fence,
                 write_filter=memory.write_filter,
                 source_session_id=session.session_id,
