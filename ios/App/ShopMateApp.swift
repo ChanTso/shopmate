@@ -213,12 +213,10 @@ struct CheckoutView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                ForEach(model.actions.indices, id: \.self) { RefundActionView(model: model, row: model.actions[$0]) }
-                ForEach(model.orders.indices, id: \.self) { OrderDetailPanel(model: model, order: model.orders[$0]) }
+                let outstanding = model.checkouts.filter { rows($0, "orders").contains { text($0, "status") == "UNPAID" } }
                 if model.orders.isEmpty && model.checkouts.isEmpty { Text("暂无订单记录") }
-                Text("结账记录").font(.headline)
-                ForEach(model.checkouts.indices, id: \.self) { i in
-                    let checkout = model.checkouts[i]
+                ForEach(outstanding.indices, id: \.self) { i in
+                    let checkout = outstanding[i]
                     Panel {
                         Text(text(checkout, "paymentStatus") == "PAID" ? "已付款" : "待核对付款").font(.headline)
                         Text(money(checkout["totalMinor"])).font(.title2).foregroundStyle(accent)
@@ -235,6 +233,9 @@ struct CheckoutView: View {
                         }
                     }
                 }
+                ForEach(model.actions.indices, id: \.self) { RefundActionView(model: model, row: model.actions[$0]) }
+                Text("最近订单").font(.headline)
+                ForEach(model.orders.indices, id: \.self) { OrderDetailPanel(model: model, order: model.orders[$0]) }
             }.padding(18)
         }.background(paper).navigationTitle("订单与回执").toolbar { Button("刷新") { model.reload() } }
     }

@@ -6,7 +6,7 @@ struct DeliveryView: View {
         let estimate = object(value, "estimate")
         ForEach(rows(estimate, "options").indices, id: \.self) { index in
             let option = rows(estimate, "options")[index]
-            Text([text(option, "method"), text(option, "earliestDate"), text(option, "latestDate"), money(option["feeMinor"], currency: text(estimate, "currency"))].filter { !$0.isEmpty }.joined(separator: " · "))
+            Text([(["delivery": "配送", "pickup": "自提"][text(option, "method")] ?? text(option, "method")), text(option, "earliestDate"), text(option, "latestDate"), money(option["feeMinor"], currency: text(estimate, "currency"))].filter { !$0.isEmpty }.joined(separator: " · "))
         }
         if !value.isEmpty { Text("配送仅为估算，不代表已发货或已收取运费。").font(.footnote).foregroundStyle(.secondary) }
     }
