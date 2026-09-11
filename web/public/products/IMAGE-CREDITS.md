@@ -1,10 +1,10 @@
 # Product image credits
 
-Every image in this directory is dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+The reused photos listed in the table below are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 (or is a public-domain work). Sources are listed for provenance; CC0 requires no attribution.
 Images were curated so that no real brand, logo, or identifiable person appears, and they illustrate
 the *category* of each fictional ACME product — they do not depict the fictional products themselves.
-Products without an image here intentionally fall back to the storefront's built-in emoji tiles.
+Products without an image here use the storefront's category tiles. Native image-set copies are format-converted versions of the same assets.
 
 | File | Fictional product | Source | Creator | License |
 |---|---|---|---|---|
@@ -17,3 +17,9 @@ Products without an image here intentionally fall back to the storefront's built
 | `AR-1508.webp` | ACME Paws 10-Gallon Aquarium Starter Kit | [flickr](https://www.flickr.com/photos/43296902@N00/103922316) | Dennis S. Hurd | CC0 1.0 |
 | `AR-2104.webp` | ACME Makers 300-Piece Meadow Puzzle | [rawpixel](https://www.rawpixel.com/image/5924996/photo-image-public-domain-free-game) | — | CC0 1.0 |
 | `AR-2108.webp` | ACME Playroom Solar System Poster Set (4 pc) | [rawpixel](https://www.rawpixel.com/image/7689067/map-the-solar-system) | libraryofcongress | Public domain (1880s print, Library of Congress) |
+
+## Original product concept visuals
+
+`AR-1001.webp`, `AR-1003.webp` and `AR-1004.webp` are original studio-style concept visuals for the fictional drip coffee maker, forged chef’s knife and enameled Dutch oven. They are not photographs of manufactured ACME products. They are distributed with this project under the repository license.
+
+`SM-LIMITED-CUP.webp` and `AR-1005.webp` are original studio-style concept visuals for the fictional travel tumbler and ten-piece ceramic cookware set, under the same repository license.

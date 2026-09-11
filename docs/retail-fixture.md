@@ -95,3 +95,16 @@ uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 旧 `evals/` 任务和[公开历史成绩](../evals/records/README.md)采用七商品、42 日 UTC 数据及不同代码版本，不能直接在此夹具下宣称复现同一分数。旧 78/90、定向 21/24 和[浏览器截图](demo-20260906/README.md)继续保留原始版本与分母；本说明不声明新版真实模型或端到端验收已通过。
 
 新版验收应先固定这套业务数据与报告口径，再使用参考 SQL、实际用户可见结果和 Java 写入终态判定。权限、未批准写入、版本冲突、并发与重复批准以及停止恢复分别检查，不以任务执行结束代替业务成功。
+
+## 中文演示目录与商品图
+
+中文商品文案维护在 `scripts/data/demo-catalog-zh-CN.json`，不改写上游原始目录或历史订单快照。预览与应用：
+
+```sh
+uv run python scripts/localize_demo_catalog.py
+uv run python scripts/localize_demo_catalog.py --apply
+```
+
+脚本从现有忽略目录读取操作员凭证，通过 `LISTING_UPDATE` 建草案，再走操作员批准。它更新当前商品标题和介绍，保留价格、库存、历史成交金额与原始快照；已有非初始商家标题保持不动。`--product AR-1001` 可限定单品。重置原始夹具后，可显式重新应用中文文案；不在每次服务启动时覆盖运营修改。
+
+买家与商家共用 `web/public/products/` 的同 SKU 素材；权威目录已指定图片时优先使用指定值，仅在未指定且对应素材实际存在时补齐展示路径。原生 iOS 的图片集是这些文件的格式转换副本，用于缩略图展示。来源与原创商品概念图说明见该目录的 `IMAGE-CREDITS.md`。

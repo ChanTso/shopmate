@@ -2,47 +2,72 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f6f2e9">
-<title>ShopMate — 选购有灵感，经营有把握</title>
-<meta name="description" content="一间商店，两种视角。ShopMate 将原生购物体验、AI 选购助手与商家经营工作台连在一起。">
-<meta property="og:title" content="ShopMate · 选购有灵感，经营有把握">
-<meta property="og:description" content="Android 与 iOS 原生购物助手，和属于经营者的 AI 工作台。">
-<meta property="og:type" content="website"><meta property="og:image" content="https://chantso.github.io/shopmate/assets/social.jpg">
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
-<script src="motion.js" defer></script>
+<meta name="theme-color" content="#f6f2e9"><title>ShopMate — 选购有灵感，经营有把握</title>
+<meta name="description" content="一间商店，两种视角。原生购物助手与商家经营工作台，让每个决定都有下一步。">
+<meta property="og:title" content="ShopMate · 选购有灵感，经营有把握"><meta property="og:type" content="website"><meta property="og:image" content="https://chantso.github.io/shopmate/assets/social.jpg">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="merchant.css"><script src="merchant.js" defer></script><script src="motion.js" defer></script>
 </head>
 <body>
-<a class="skip" href="#buyer">跳到产品体验</a>
-<header class="header"><a class="wordmark" href="#top" aria-label="ShopMate 首页"><span class="mark">S</span>ShopMate<span class="brand-dot">.</span></a><nav aria-label="主导航"><a href="#buyer">购物体验</a><a href="#merchant">经营工作台</a><a class="github" href="https://github.com/ChanTso/shopmate" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav></header>
+<svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="android-icon" viewBox="0 0 24 24"><path d="m7 6-2-3m12 3 2-3M3 15a9 9 0 0 1 18 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/><circle cx="16" cy="11" r="1" fill="currentColor"/><path d="M3 17h18v3H3z" fill="currentColor"/></symbol>
+<symbol id="apple-icon" viewBox="0 0 24 24"><path d="M16.7 2c.1 1.3-.5 2.6-1.2 3.4-.8.9-2.1 1.6-3.3 1.4-.2-1.3.5-2.5 1.3-3.4.8-.8 2.1-1.4 3.2-1.4ZM20 17.7c-.5 1.2-.8 1.8-1.5 2.8-.9 1.2-2 2.6-3.3 2.6-1.2 0-1.5-.8-3.2-.8s-2 .8-3.3.8c-1.3 0-2.3-1.3-3.2-2.5C3 17 2.5 12 4 9.6c1-1.7 2.6-2.7 4.2-2.7 1.4 0 2.3.8 3.4.8 1.1 0 1.8-.8 3.4-.8 1.4 0 2.9.8 3.8 2-3.4 1.9-2.8 6.8 1.2 8.8Z" fill="currentColor"/></symbol>
+<symbol id="web-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="12" cy="12" rx="4" ry="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 12h18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+</defs></svg>
+<a class="skip" href="#buyer">跳到购物体验</a>
+<header class="header"><a class="wordmark" href="#top"><span class="mark">S</span>ShopMate<span class="red">.</span></a><nav aria-label="主导航"><a href="#buyer">购物体验</a><a href="#merchant">经营工作台</a><a class="github" href="https://github.com/ChanTso/shopmate" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav></header>
 <main id="top">
-<section class="hero wrap" aria-labelledby="hero-title">
-<div class="hero-copy"><p class="eyebrow"><span class="live-dot"></span> 一间商店 · 两种视角</p><h1 id="hero-title">选购有灵感。<br>经营有<span class="accent-word">把握。</span></h1><p class="lede">好物不必反复找，<br>好主意也能有下一步。</p><p class="hero-detail">ShopMate 把购物、对话和经营连在一起。<br>助手帮你整理选择，重要的决定留给你。</p><a class="button" href="#buyer">看看如何发生 <span aria-hidden="true">↓</span></a><p class="platforms">ANDROID <span>／</span> iOS <span>／</span> WEB</p></div>
-<div class="hero-scene" aria-label="ShopMate 原生应用与生活选品展示">
-<div class="scene-backdrop"></div><figure class="photo photo-coffee"><img src="assets/AR-1002.webp" alt="一杯刚萃取的咖啡" width="682" height="512"><figcaption>A little better, every day.</figcaption></figure>
-<div class="hero-phone phone"><img src="assets/ios-assistant.webp" alt="iOS 实际界面：助手查到有货的咖啡机，展示价格、商品卡与取舍" width="922" height="2000" fetchpriority="high"></div>
-<div class="floating-note"><span class="note-icon" aria-hidden="true">✳</span><div><strong>先了解，再选择。</strong><span>规格、价格、取舍，一起看清。</span></div></div><span class="scene-index">01 — MADE FOR EVERYDAY</span>
+<section class="experience" aria-label="从选购到确认的买家体验">
+<div class="experience-stage">
+<div class="stage-inner">
+<div class="hero-copy"><p class="eyebrow"><i></i> 一间商店 · 两种视角</p><h1>选购有灵感。<br>经营有<span class="red">把握。</span></h1><p class="hero-lede">好物不必反复找，<br>好主意也能有下一步。</p><p class="hero-detail">ShopMate 把购物、对话和经营连在一起。<br>助手帮你整理选择，重要的决定留给你。</p><a class="button" href="#buyer">看看如何发生 <span>↓</span></a><div class="platforms" aria-label="支持 Android、iOS 与 Web"><span><svg><use href="#android-icon"/></svg>Android</span><span><svg><use href="#apple-icon"/></svg>iOS</span><span><svg><use href="#web-icon"/></svg>Web</span></div></div>
+<div class="scene-decor" aria-hidden="true"><div class="arch"></div><figure class="coffee-note"><img src="assets/AR-1002.webp" alt=""><figcaption>A little better, every day.</figcaption></figure><div class="floating-note"><span>✳</span><p><strong>先了解，再选择。</strong><small>规格、价格、取舍，一起看清。</small></p></div></div>
+<div class="device-anchor"><div class="device-float"><div class="device-shell">
+<div class="screen-media phone-media">
+<video data-film="0" muted playsinline loop preload="metadata" poster="assets/ios-assistant.webp" aria-label="原生购物助手输入与推荐演示"><source src="assets/buyer-discover.mp4" type="video/mp4"></video>
+<video data-film="1" muted playsinline loop preload="none" poster="assets/ios-orders.webp" aria-label="原生购物车、订单确认与付款演示"><source src="assets/buyer-confirm.mp4" type="video/mp4"></video>
+<video data-film="2" muted playsinline loop preload="none" poster="assets/ios-memory.webp" aria-label="原生购物偏好管理演示"><source src="assets/buyer-memory.mp4" type="video/mp4"></video>
+</div>
+<div class="screen-media wide-media"><video data-film="3" muted playsinline loop preload="none" poster="assets/ios-wide.webp" aria-label="iOS 宽屏商品和对话并行演示"><source src="assets/buyer-wide.mp4" type="video/mp4"></video></div>
+</div></div></div>
+<div class="buyer-copy" aria-label="购物体验章节">
+<p class="eyebrow">01 / THE BUYER EXPERIENCE</p>
+<div class="step-index"><span id="step-count">01</span><span class="step-rule"></span><span>04</span></div>
+<div class="copy-stack">
+<article data-copy="0" class="active"><h2>说出需求，<br>也看清取舍。</h2><p>告诉助手预算与场景。<br>从查找、比较，到一份有理由的推荐。</p><div class="step-tags"><span>自然表达</span><span>商品卡片</span><span>继续追问</span></div></article>
+<article data-copy="1"><h2>每个重要动作，<br>都由你确认。</h2><p>看清商品、金额和变更，再轻点确认。<br>从下单到售后，进展始终有迹可循。</p><div class="step-tags"><span>核对订单</span><span>本人确认</span><span>查看结果</span></div></article>
+<article data-copy="2"><h2>懂你的偏好，<br>也听你的改变。</h2><p>紧凑一点，容易清洁一点。<br>喜欢可以记住，也可以随时修改或忘记。</p><div class="step-tags"><span>偏好记忆</span><span>自由编辑</span><span>由你管理</span></div></article>
+</div>
+<div class="step-nav" aria-label="切换买家章节"><button data-go="0" aria-pressed="true">01 <span>选购</span></button><button data-go="1" aria-pressed="false">02 <span>确认</span></button><button data-go="2" aria-pressed="false">03 <span>偏好</span></button><button data-go="3" aria-pressed="false">04 <span>展开</span></button></div>
+</div>
+<div class="wide-copy"><p class="eyebrow">MORE ROOM. SAME CONVERSATION.</p><h2>屏幕变大，思路不必打断。</h2><p>一边看商品，一边继续聊。喜欢的体验，自然展开。</p></div>
+<button class="motion-control" id="pause-motion" data-pause type="button" aria-pressed="false" aria-label="暂停演示动画"><span class="pause-glyph">Ⅱ</span><span class="pause-text">暂停演示</span></button>
+<span class="scroll-hint">SCROLL TO EXPLORE <i>↓</i></span>
+</div></div>
+<div id="buyer" class="scroll-anchor"></div>
+</section>
+<section id="merchant" class="merchant-section" aria-labelledby="merchant-title">
+<div class="merchant-stage wrap"><div class="merchant-heading"><div><p class="eyebrow">02 / THE MERCHANT WORKSPACE</p><h2 id="merchant-title">看清经营，<span>从容行动。</span></h2></div><p>从数据里的变化，<br>到一份可以批准的方案。</p></div>
+<div id="merchant-mount"><!-- Local walkthrough of existing merchant capabilities; fixture values are illustrative, not measured results. -->
+<div class="merchant-demo" data-scene="0" data-phase="0" aria-label="商家工作台交互演示">
+  <div class="md-window"><span class="md-dots" aria-hidden="true">● ● ●</span><span>ShopMate · 商家工作台</span><span>↗</span></div>
+  <div class="md-shell">
+    <aside class="md-sidebar"><div class="md-brand"><b>S</b><span>ShopMate<small>官方商店 · 经营工作台</small></span></div><nav class="md-nav" aria-label="工作台导航示意"><span data-nav="overview">◷　经营概览</span><span data-nav="changes">▣　提案与审批</span><span>▦　商品目录</span><span>◇　库存健康</span><span>▤　订单与售后</span><span>⚑　营销活动</span></nav><div class="md-side-note"><b>✳</b><strong>经营有据，行动有度</strong><p>从业务事实出发，<br>让每一步都有依据。</p></div></aside>
+    <div class="md-workspace"><header class="md-topbar"><div><strong data-md-title>经营概览</strong><small>ShopMate 官方商店</small></div><div class="md-top-actions"><span class="md-period">近 7 天⌄</span><span class="md-trigger">✳ 经营助手</span><span class="md-avatar">林</span></div></header>
+      <div class="md-scenes">
+        <section class="md-scene md-overview" data-md-scene="0"><div class="md-kpis"><div><span>已支付成交额</span><strong data-md-counter="12864" data-md-money>¥12,864</strong><small>按历史成交价 · 退款前</small></div><div><span>成交订单</span><strong data-md-counter="160">160</strong><small>付款成功的 SKU 子单</small></div><div><span>客单价</span><strong>¥80.40</strong><small>报告期间每单成交额</small></div></div>
+          <div class="md-overview-grid"><div class="md-card md-chart-card"><div class="md-card-heading"><h3>经营趋势</h3><span>已支付成交额</span></div><div class="md-chart" aria-label="近七天成交趋势示意"><div class="md-chart-lines"><span>3,000</span><span>2,000</span><span>1,000</span></div><div class="md-bars"><i style="--height:40.7%;--delay:0ms"><span>04</span></i><i style="--height:55%;--delay:70ms"><span>05</span></i><i style="--height:49%;--delay:140ms"><span>06</span></i><i style="--height:65.3%;--delay:210ms"><span>07</span></i><i style="--height:57.8%;--delay:280ms"><span>08</span></i><i style="--height:71%;--delay:350ms"><span>09</span></i><i style="--height:90%;--delay:420ms"><span>10</span></i></div></div><div class="md-chart-footer">从数字，找到下一步。<span>让助手解读变化 →</span></div></div><div class="md-opportunity"><span class="md-kicker">✳ 从这里开始</span><h3>让下一步<br>更有依据。</h3><div><small>库存健康</small><strong>3 个低库存商品</strong><span>结合库存与销量，准备补货方案。</span></div><div><small>商品经营</small><strong>看清成交贡献</strong><span>分析具体商品，而不是只看总额。</span></div></div></div>
+          <div class="md-attention"><b>◇</b><div><strong>十二杯定时滴滤咖啡机</strong><small>AR-1001 · 当前库存 18 件</small></div><span class="md-stock">低库存</span><span class="md-attention-link">分析库存 →</span></div></section>
+        <section class="md-scene md-analysis" data-md-scene="1" hidden><div class="md-analysis-sheet"><span class="md-kicker">经营洞察</span><h2>知道发生了什么。<br>也知道从哪里着手。</h2><p>基于历史成交与当前商品数据，<br>给每一个建议找到依据。</p><div class="md-insight-grid"><div><span>报告期间</span><strong>近 7 天</strong></div><div><span>分析对象</span><strong>商品成交</strong></div></div><div class="md-insight-row"><span>按付款成功时间统计</span><b>✓</b></div><div class="md-insight-row"><span>使用订单中的历史价格</span><b>✓</b></div><div class="md-product"><div class="md-product-art"><img src="assets/AR-1001.webp" alt="滴滤咖啡机" loading="lazy"></div><div><small>AR-1001</small><strong>十二杯定时滴滤咖啡机</strong><span>当前售价 ¥79.60</span></div></div></div>
+          <div class="md-chat"><header><span class="md-ai-mark">✳</span><div><strong>ShopMate 经营助手</strong><small>让分析继续成为行动</small></div><i></i></header><div class="md-chat-content"><div class="md-user-bubble" data-md-question></div><div class="md-tool-steps"><div><i></i><span>查询历史成交</span><b>✓</b></div><div><i></i><span>分析子 Agent · 核对商品</span><b>✓</b></div></div><div class="md-agent-answer"><span>✳ SHOPMATE</span><p data-md-answer></p></div><div class="md-proposal-peek"><b>▣</b><div><strong>商品调价草案</strong><small>十二杯定时滴滤咖啡机</small></div><span>查看差异 →</span></div></div><div class="md-composer"><span data-md-input></span><b>↑</b></div></div></section>
+        <section class="md-scene md-approval" data-md-scene="2" hidden><div class="md-approval-main"><span class="md-kicker">提案与审批</span><h2>先看清变化，<br>再决定下一步。</h2><div class="md-change-card"><div class="md-card-heading"><h3>商品调价草案</h3><span class="md-status md-pending">待批准</span><span class="md-status md-done">已执行</span></div><div class="md-product"><div class="md-product-art"><img src="assets/AR-1001.webp" alt="滴滤咖啡机" loading="lazy"></div><div><small>AR-1001</small><strong>十二杯定时滴滤咖啡机</strong><span>核对商品与售价后，再确认执行。</span></div></div><div class="md-price-diff"><div><span>当前价格</span><del>¥79.60</del></div><i>→</i><div><span>批准后价格</span><strong>¥75.60</strong></div></div><div class="md-change-note">◇ 基于当前商品版本准备</div><div class="md-approval-actions"><span class="md-approve-target">批准并执行　↗</span><span class="md-discard">取消草案</span><span class="md-pointer" aria-hidden="true">↖</span></div><div class="md-receipt"><b>✓</b><div><strong>调价已执行</strong><span>商品价格已更新 · 执行回执已保存</span></div></div></div></div><div class="md-approval-story"><div class="md-round-mark">✳</div><h3>你批准的，<br>才会发生。</h3><ol><li><b>01</b><span>助手准备方案</span><i>✓</i></li><li><b>02</b><span>逐项核对变更</span><i>✓</i></li><li class="md-final-step"><b>03</b><span>批准后执行</span><i>✓</i></li></ol><p>每一次变更，<br>都有清楚的状态与回执。</p></div></section>
+      </div></div></div>
+</div>
+</div>
+<div class="merchant-chapters"><button data-merchant="0" aria-pressed="true"><span>01</span> 看清变化</button><button data-merchant="1" aria-pressed="false"><span>02</span> 准备方案</button><button data-merchant="2" aria-pressed="false"><span>03</span> 确认执行</button></div>
+<button class="motion-control merchant-pause" data-pause type="button" aria-pressed="false" aria-label="暂停演示动画"><span class="pause-glyph">Ⅱ</span><span class="pause-text">暂停演示</span></button>
 </div>
 </section>
-<div class="intro-band"><p>从「我想要」<span class="draw-arrow" aria-hidden="true">⟶</span>到「就这个」。</p><span>把对话放进生活，而不只是聊天框。</span></div>
-<section id="buyer" class="buyer-section wrap" aria-labelledby="buyer-title">
-<div class="section-head"><p class="eyebrow">01 / THE BUYER EXPERIENCE</p><h2 id="buyer-title">从一句话，<br>到一份确定的选择。</h2><p>有目标时直接选购，拿不准时问问助手。<br>同一份购物车，同一笔真实订单。</p></div>
-<div class="story-layout">
-<div class="story-device"><div class="phone story-phone">
-<img class="story-frame active" data-frame="0" src="assets/ios-assistant.webp" alt="iOS 购物助手展示实际推荐与商品卡" width="922" height="2000" loading="lazy">
-<img class="story-frame" data-frame="1" src="assets/ios-refund.webp" alt="iOS 订单页面显示一元部分退款已受理及回执" width="922" height="2000" loading="lazy">
-<img class="story-frame" data-frame="2" src="assets/android-memory.webp" alt="Android 上查看和管理长期购物偏好" width="922" height="2000" loading="lazy">
-</div><div class="demo-controls"><span id="frame-platform">iOS · 实际运行界面</span><button id="pause-motion" type="button" aria-pressed="false">暂停动效 <span aria-hidden="true">Ⅱ</span></button></div></div>
-<div class="story-steps">
-<article class="story-step active" data-step="0"><button class="step-heading" type="button" aria-pressed="true" data-short="选购建议"><span class="step-number">01</span><span class="step-title">说出需求，<br>也看清取舍。</span></button><p>从预算和使用场景出发，查询商品、比较规格，把推荐组织成可以继续操作的卡片。</p><span class="detail-line">商品查询 <b>·</b> 对比与规划 <b>·</b> 详情上下文</span></article>
-<article class="story-step" data-step="1"><button class="step-heading" type="button" aria-pressed="false" data-short="确认操作"><span class="step-number">02</span><span class="step-title">每个重要动作，<br>都由你确认。</span></button><p>下单前核对报价，退款前核对金额。执行后看得到状态和回执，中断后也能重新核对原操作。</p><span class="detail-line">报价确认 <b>·</b> 订单与售后 <b>·</b> 原请求恢复</span></article>
-<article class="story-step" data-step="2"><button class="step-heading" type="button" aria-pressed="false" data-short="管理偏好"><span class="step-number">03</span><span class="step-title">记得你的偏好，<br>也听你的改变。</span></button><p>紧凑一点，容易清洁一点。偏好可以留下，也可以查看、修改或删除；价格和订单始终向商店查询。</p><span class="detail-line">可管理的记忆 <b>·</b> 历史对话 <b>·</b> 自主选择</span></article>
-</div></div>
-<p class="caption">以上为 Android / iOS 本地实际运行截图，随滚动切换，也可点击标题浏览。交易演示使用模拟支付。</p>
-</section>
-<section class="wide-section" aria-labelledby="native-title"><div class="wrap"><div class="wide-heading"><div><p class="eyebrow">MORE ROOM. SAME CONVERSATION.</p><h2 id="native-title">屏幕变大，<br>思路不必打断。</h2></div><p>在手机上随手问，<br>在宽屏里一边看商品、一边继续聊。</p></div><figure class="landscape"><img src="assets/android-wide.webp" alt="Android 宽屏实际界面，商品浏览和购物助手并列显示" width="1800" height="1200" loading="lazy"><figcaption>Android 自适应双栏 · 商品与对话并行</figcaption></figure><div class="native-footer"><span>Android · Jetpack Compose</span><span>共享业务核心 · Kotlin Multiplatform</span><span>iOS · SwiftUI</span></div></div></section>
-<section id="merchant" class="merchant-section wrap" aria-labelledby="merchant-title"><div class="section-head merchant-heading"><div><p class="eyebrow">02 / THE MERCHANT WORKSPACE</p><h2 id="merchant-title">看清经营，<br>从容行动。</h2></div><p>让数据解释变化，让助手准备方案。<br>从分析到提案，再到批准执行，<br>每一步都有清楚的落点。</p></div><div class="merchant-window"><div class="window-bar"><span class="window-dots" aria-hidden="true">● ● ●</span><span>ShopMate / 商家工作台</span><span aria-hidden="true">↗</span></div><img src="assets/merchant.webp" alt="真实商家工作台：商品调价从64元改为63元，显示审批结果和执行回执" width="1320" height="900" loading="lazy"></div><div class="merchant-steps"><article><span>01 / 理解变化</span><h3>分析实际经营数据</h3><p>经营助手与只读分析子 Agent 协作，查询报表，解释变化。</p></article><article><span>02 / 形成方案</span><h3>把建议变成可核对提案</h3><p>商品、库存、调价和营销操作，先把变更内容摆在眼前。</p></article><article><span>03 / 确认执行</span><h3>批准之后，记录结果</h3><p>由操作员批准，业务后端校验版本并执行，保留可查看的回执。</p></article></div></section>
-<section id="engineering" class="engineering"><div class="wrap"><p class="eyebrow">THOUGHTFUL INSIDE, TOO.</p><h2>顺手的背后，<br>是清楚的分工。</h2><div class="engineering-grid"><article><span class="eng-index">01</span><h3>体验留在原生。</h3><p>Compose 与 SwiftUI 各自照顾平台交互；KMP 共享流式协议、卡片归并和原请求恢复规则。</p></article><article><span class="eng-index">02</span><h3>助手有能力，也有边界。</h3><p>Skills、上下文与记忆配合搜索和分析沙箱；任务预算约束执行，重要写入需要确认。</p></article><article><span class="eng-index">03</span><h3>交易交给可靠的后端。</h3><p>CityBuddy 承担身份、库存、订单和账务。普通购物与对话分离，秒杀直接接入交易服务。</p></article></div><div class="architecture-line"><span>Android / iOS / Web</span><i aria-hidden="true">↔</i><span>ShopMate Agent</span><i aria-hidden="true">↔</i><span>CityBuddy 交易与身份</span></div></div></section>
-<section class="closing wrap"><span class="closing-mark" aria-hidden="true">S</span><p>给生活一点灵感。<br>给每个决定一份把握。</p><a href="#top">回到开始 <span aria-hidden="true">↑</span></a></section>
-</main>
-<footer class="footer wrap"><span class="wordmark">ShopMate<span class="brand-dot">.</span></span><p>产品展示 · 原生客户端与商家工作台<br>本站不接入在线交易或模型服务。</p><span>Made for thoughtful choices.</span></footer>
+<section class="engineering wrap"><p class="eyebrow">THOUGHTFUL INSIDE, TOO.</p><h2>顺手的背后，<br>是清楚的分工。</h2><div class="engineering-grid"><article><span>01</span><h3>体验留在原生。</h3><p>Compose 与 SwiftUI 照顾各自的平台交互，KMP 连接共享的流式协议与恢复规则。</p></article><article><span>02</span><h3>助手有能力，也有边界。</h3><p>上下文、记忆与分析相互配合。从整理选择到形成提案，把重要决定留给你。</p></article><article><span>03</span><h3>每一步，都有可靠的落点。</h3><p>CityBuddy 承担身份、库存与交易。购物可以独立完成，助手随时加入。</p></article></div></section>
+<section class="closing wrap"><span>S</span><p>给生活一点灵感。<br>给每个决定一份把握。</p><a href="#top">回到开始 ↑</a></section>
+</main><footer class="footer wrap"><span class="wordmark">ShopMate<span class="red">.</span></span><span>Made for thoughtful choices.</span></footer>
 </body></html>

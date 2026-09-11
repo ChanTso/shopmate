@@ -26,6 +26,7 @@ from shopping_agent.types import (
 from .auth import current_context
 from .buyer_client import CartView, OrderView, RetailProduct
 from .commerce_client import CommerceError
+from .product_assets import image_url
 
 
 class BuyerCartItem(CartItem):
@@ -75,7 +76,7 @@ def product_details(value: RetailProduct) -> ProductDetails:
             currency=value.currency,
             rating=content.get("rating"),
             review_count=content.get("reviewCount"),
-            image_url=content.get("imageUrl"),
+            image_url=image_url(value.id, content.get("imageUrl")),
             category=content.get("category"),
             labels=content.get("labels", []),
             attributes=content.get("attributes", {}),
@@ -104,7 +105,7 @@ def shopping_cart(value: CartView) -> BuyerCart:
                 title=item.name,
                 price=item.unitPriceMinor / 100,
                 quantity=item.quantity,
-                image_url=item.imageUrl,
+                image_url=image_url(item.productId, item.imageUrl),
                 option_values=item.optionValues,
                 variant_of=item.familyId,
                 currency=item.currency,

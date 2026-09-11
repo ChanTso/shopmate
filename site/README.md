@@ -1,6 +1,6 @@
 # ShopMate product showcase
 
-A standalone static product site. It presents actual Android, iOS and merchant-workspace screens. It never connects to the retail API or a model provider. The single GitHub link leads to this repository; client build and runtime instructions remain in their existing READMEs.
+A standalone static product site for the native buyer applications and merchant workspace. It does not connect to the retail API or a model provider. The single GitHub link leads to this repository; build and runtime instructions remain in the application READMEs.
 
 Preview from the repository root:
 
@@ -8,8 +8,25 @@ Preview from the repository root:
 python3 -m http.server 4173 --bind 127.0.0.1 --directory site
 ```
 
-The buyer device changes screenshots as the page scrolls and cycles when idle. The pause control and reduced-motion preference stop automatic animation. Images are compressed WebP; there is no external font service, player, analytics, cookie banner or client framework dependency.
+## Presentation
 
-`assets/IMAGE-CREDITS.md` preserves the source notices for category photography. Other screenshots were captured from the local demo application, using fictional retail data. Android/merchant captures are from the preceding verified client delivery; iOS recommendation/refund captures are from the native completion work on 2026-09-11. Screenshots are not frame-rate or production-capacity evidence.
+One sticky device moves from the introduction into three buyer chapters and then expands into the native iPad two-pane layout. Scroll position selects the chapter; its screen continues playing while the visitor stops scrolling. The merchant section uses crisp HTML/SVG scenes with animated analysis and approval steps. There is no external font service, analytics, player UI or framework dependency.
 
-GitHub Pages should publish only this directory. The Pages workflow is prepared separately from application CI. Enabling Pages or publishing the pending branch is a remote release action; local preview is available independently.
+All four buyer clips use actual iOS Simulator application frames from the local demo on 2026-09-11. They show real model recommendations, checkout and mock-payment confirmations, persisted memory editing, and iPad shopping alongside chat. The clips are muted, inline H.264, with WebP posters. Inactive/offscreen clips pause. Both pause controls and the reduced-motion preference stop automatic playback.
+
+These are edited product demonstrations, not latency or frame-rate evidence: idle waits are shortened and some completed frames are held. The first input animation reverses and retimes a recording of native per-character deletion, producing a readable typing sequence without replacing the native screen. The following request, streamed response and final state come from the actual application.
+
+The merchant walkthrough is a DOM/SVG reconstruction of the workspace's existing analysis, proposal and approval interactions, using illustrative fixture values. Its animated totals and timing are presentation data, not a live business report or performance result. It does not submit approvals.
+
+## Media edits
+
+Local raw recordings remain in ignored `.run/site-media/`. Buyer clips use these ranges (seconds on their respective source timelines):
+
+- Discover: native input `0–19.5` reversed at 5× speed; conversation `20–21.5`, `37–38.5`, `40.5–47.5`; final screenshot held for 3 seconds.
+- Confirm: `6.2–9.5`, `12.1–13.7`, `22.9–27.2`, `42.6–46.1`, `260.2–262.3`, `264.6–266.1`, `270.65–270.75`; final paid frame held for 3 seconds.
+- Memory: `0–8`, `19–29`, `37–42`; actual preference editing and reload.
+- Wide: `65–70`, `70–78` retimed to 14%, `78–93`; rotated into the simulator's landscape display orientation.
+
+`assets/IMAGE-CREDITS.md` records image provenance. The demo identity and retail records are fictional. No credentials or runtime databases are included.
+
+GitHub Pages publishes only this directory through the Pages workflow. Local preview is independent of remote publication.

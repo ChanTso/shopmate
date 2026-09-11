@@ -41,3 +41,12 @@ async def test_merchant_web_serves_only_built_assets_without_swallowing_api_rout
         assert (await http.get("/api/not-a-route")).status_code == 404
         assert (await http.get("/buyer")).status_code == 404
         assert (await http.get("/assets/%2e%2e/%2e%2e/.env")).status_code == 404
+
+
+def test_missing_demo_picture_uses_only_the_same_sku_asset():
+    from shopmate.product_assets import image_url
+
+    assert image_url("AR-1001", None) == "/products/AR-1001.webp"
+    assert image_url("AR-1001", "https://shop.example/new.webp") == "https://shop.example/new.webp"
+    assert image_url("unrelated-coffee", None) is None
+    assert image_url("../../.env", None) is None
