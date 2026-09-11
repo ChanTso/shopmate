@@ -24,7 +24,7 @@ Local raw recordings remain in ignored `.run/site-media/`. Buyer clips use these
 
 - Discover: native input `0–19.5` reversed at 5× speed; conversation `20–21.5`, `37–38.5`, `40.5–47.5`; final screenshot held for 3 seconds.
 - Confirm: `6.2–9.5`, `12.1–13.7`, `22.9–27.2`, `42.6–46.1`, `260.2–262.3`, `264.6–266.1`, `270.65–270.75`; final paid frame held for 3 seconds.
-- Memory: `memory-typing-raw.mp4` ranges `0–4`, `27–38` retimed to 60%, `39–45`; the native edit field is updated through successive text prefixes and saved.
+- Memory: `memory-chat-input-raw.mp4` ranges `25–34` then `4–13`, each reversed at 4×, show native assistant input. `memory-chat-flow-raw.mp4` ranges `12–16` retimed to 32.5% and `39–43.5` show the actual request and remembered-preference response. `memory-raw.mp4` ranges `0–8`, `19–29`, `37–42` continue the same preference scenario into My, viewing, editing and reloading the saved preference.
 - Wide: `wide-typing-raw.mp4` range `65–100` reversed at 8× for input; `wide-raw.mp4` ranges `70–78` retimed to 14%, `78–93` for the actual request and response. Both are rotated into the simulator's landscape display orientation.
 
 `assets/IMAGE-CREDITS.md` records image provenance. The demo identity and retail records are fictional. No credentials or runtime databases are included.
@@ -32,3 +32,5 @@ Local raw recordings remain in ignored `.run/site-media/`. Buyer clips use these
 GitHub Pages publishes only this directory through the Pages workflow. Local preview is independent of remote publication.
 
 The curved S mark is maintained as a local SVG in `assets/logo.svg`; the favicon uses the same geometry. Merchant scenes share a fixed viewport, while their internal animations use an independent paused/offscreen-aware clock.
+
+Chapter tracks are divided along their actual button columns. On wide-screen expansion, buyer labels move beside their numerals and the tracks move with them. Anchor transitions take 1.25–1.7 seconds and can be interrupted; ordinary wheel scrolling remains native. The merchant growth animation uses a 2.4-second ease-out cubic curve on the animation frame clock.

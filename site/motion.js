@@ -29,8 +29,8 @@ function chapterProgress(nav, position) {
     button.querySelector('.chapter-number').style.transform = `scale(${lerp(.64,1,weight)})`;
     button.querySelector('.chapter-label').style.fontWeight = String(Math.round(lerp(500,700,weight)));
     button.setAttribute('aria-pressed',String(i===Math.round(position)));
+    button.querySelector('.chapter-track i').style.transform = `scaleX(${clamp(position-i+1)})`;
   });
-  nav.querySelector('.chapter-track i').style.transform = `scaleX(${(position+1)/items.length})`;
 }
 const ramp = (p,a,b) => smooth((p-a)/(b-a));
 function runFilms() {
@@ -107,6 +107,7 @@ function render() {
     copy.style.opacity=reduced.matches ? Number(i===current) : clamp(1-Math.abs(position-i));
   });
   films.slice(0,3).forEach((film,i)=>film.style.opacity=reduced.matches?Number(i===Math.min(current,2)):position>=2?(i===2?1:0):clamp(1-Math.abs(position-i)));
+  buyerNavigation.style.setProperty('--wide-nav',expand);
   buyerNavigation.style.opacity=smooth((transfer-.45)/.55);
   buyerNavigation.inert=transfer<.7;
   buyerNavigation.style.pointerEvents=transfer>.7?'auto':'none';
@@ -117,12 +118,51 @@ function render() {
   updateMerchant();
 }
 function requestRender(){if(!scheduled){scheduled=true;requestAnimationFrame(render);}}
+let scrollFrame=0;
+function cancelScroll(){cancelAnimationFrame(scrollFrame);scrollFrame=0;}
+function scrollToChapter(target,complete=()=>{}) {
+  cancelScroll();
+  const start=scrollY;
+  const distance=Math.max(0,Math.min(target,document.documentElement.scrollHeight-innerHeight))-start;
+  if(reduced.matches || Math.abs(distance)<1) {
+    scrollTo({top:start+distance,behavior:'instant'});complete();return;
+  }
+  const duration=1250+450*clamp(Math.abs(distance)/(innerHeight*4));
+  const started=performance.now();
+  function step(now) {
+    const progress=clamp((now-started)/duration);
+    const eased=progress<.5?4*progress**3:1-(-2*progress+2)**3/2;
+    scrollTo({top:start+distance*eased,behavior:'instant'});
+    if(progress<1) scrollFrame=requestAnimationFrame(step);
+    else {scrollFrame=0;complete();}
+  }
+  scrollFrame=requestAnimationFrame(step);
+}
+addEventListener('wheel',cancelScroll,{passive:true});
+addEventListener('touchstart',cancelScroll,{passive:true});
+addEventListener('popstate',cancelScroll);
+addEventListener('keydown',event=>{
+  if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' ','Tab'].includes(event.key)) cancelScroll();
+});
+document.querySelectorAll('a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{
+  if(event.defaultPrevented || event.button!==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const target=document.getElementById(link.hash.slice(1));
+  if(!target) return;
+  event.preventDefault();
+  if(location.hash!==link.hash) history.pushState(history.state,'',link.hash);
+  scrollToChapter(scrollY+target.getBoundingClientRect().top,()=>{
+    const hadTabIndex=target.hasAttribute('tabindex');
+    if(!hadTabIndex) target.setAttribute('tabindex','-1');
+    target.focus({preventScroll:true});
+    if(!hadTabIndex) target.addEventListener('blur',()=>target.removeAttribute('tabindex'),{once:true});
+  });
+}));
 buttons.forEach((button,i)=>button.addEventListener('click',()=>{
   const target=scrollY+experience.getBoundingClientRect().top+stops[i]*(experience.offsetHeight-innerHeight);
-  scrollTo({top:target,behavior:reduced.matches?'instant':'smooth'});
+  scrollToChapter(target);
 }));
 document.querySelectorAll('[data-pause]').forEach(control=>control.addEventListener('click',()=>setPaused(!paused)));
-reduced.addEventListener('change',()=>{setPaused(reduced.matches);requestRender();});
+reduced.addEventListener('change',()=>{cancelScroll();setPaused(reduced.matches);requestRender();});
 document.addEventListener('visibilitychange',()=>setPaused(paused));
 new IntersectionObserver(entries=>{buyerVisible=entries[0].isIntersecting;runFilms();},{threshold:.05}).observe(document.querySelector('.experience-stage'));
 addEventListener('scroll',requestRender,{passive:true});addEventListener('resize',requestRender);
@@ -152,6 +192,6 @@ function updateMerchant(){
 }
 document.querySelectorAll('[data-merchant]').forEach((button,i)=>button.addEventListener('click',()=>{
  const section=document.querySelector('.merchant-section');
- scrollTo({top:scrollY+section.getBoundingClientRect().top+([.08,.45,.8][i])*(section.offsetHeight-innerHeight),behavior:reduced.matches?'instant':'smooth'});
+ scrollToChapter(scrollY+section.getBoundingClientRect().top+([.08,.45,.8][i])*(section.offsetHeight-innerHeight));
 }));
 setPaused(paused);render();

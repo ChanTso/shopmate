@@ -9,21 +9,24 @@ function initMerchantDemo(root) {
   const input = root.querySelector('[data-md-input]');
   const bubble = root.querySelector('[data-md-question]');
   const response = root.querySelector('[data-md-answer]');
+  const counters = [...root.querySelectorAll('[data-md-counter]')];
+  const bars = [...root.querySelectorAll('.md-bars i')];
+  const easeOutCubic = progress => 1 - (1 - progress) ** 3;
   let scene = 0, manualPause = false, elapsed = 0, last = performance.now(), visible = true;
   const paused = () => manualPause || reduced.matches;
   const setPhase = value => { root.dataset.phase = String(value); };
   function render() {
     const t = elapsed;
     if (scene === 0) {
-      const progress = reduced.matches ? 1 : Math.min(t / 2900, 1);
-      const eased = progress * progress * (3 - 2 * progress);
-      root.querySelectorAll('[data-md-counter]').forEach(node => {
+      const progress = reduced.matches ? 1 : Math.min(t / 2400, 1);
+      const eased = easeOutCubic(progress);
+      counters.forEach(node => {
         const value = Math.round(Number(node.dataset.mdCounter) * eased).toLocaleString('en-US');
         node.textContent = (node.hasAttribute('data-md-money') ? '¥' : '') + value;
       });
-      root.querySelectorAll('.md-bars i').forEach((bar,i) => {
-        const p = reduced.matches ? 1 : Math.max(.03, Math.min((t-i*55)/2900,1));
-        const value = Math.max(.03,p*p*(3-2*p));
+      bars.forEach((bar,i) => {
+        const p = reduced.matches ? 1 : Math.max(0, Math.min((t-i*55)/2400,1));
+        const value = Math.max(.03,easeOutCubic(p));
         bar.style.transform = `scaleY(${value})`;
         bar.style.setProperty('--label-scale',1/value);
       });
@@ -50,14 +53,19 @@ function initMerchantDemo(root) {
     root.classList.toggle('md-paused', paused());
     last = performance.now(); render();
   }
-  function setMerchantPaused(flag) { manualPause = Boolean(flag); updatePause(); }
+  function setMerchantPaused(flag) {
+    const value = Boolean(flag);
+    if (manualPause === value) return;
+    manualPause = value; updatePause();
+  }
   reduced.addEventListener('change', updatePause);
+  document.addEventListener('visibilitychange', updatePause);
   const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; last = performance.now(); });
   observer.observe(root);
-  const timer = setInterval(() => {
-    const now = performance.now();
+  let frame;
+  function tick(now) {
     if (!paused() && visible && !document.hidden) {
-      elapsed += Math.min(now - last, 200);
+      elapsed += Math.max(0, Math.min(now - last, 100));
       const duration = scene === 0 ? 10000 : scene === 1 ? 12000 : 7200;
       if (elapsed > duration) {
         elapsed = 0;
@@ -69,9 +77,11 @@ function initMerchantDemo(root) {
       render();
     }
     last = now;
-  }, 50);
+    frame = requestAnimationFrame(tick);
+  }
+  frame = requestAnimationFrame(tick);
   updatePause();
-  return {setMerchantScene, setMerchantPaused, destroy() {clearInterval(timer); observer.disconnect(); reduced.removeEventListener('change', updatePause);}};
+  return {setMerchantScene, setMerchantPaused, destroy() {cancelAnimationFrame(frame); observer.disconnect(); reduced.removeEventListener('change', updatePause); document.removeEventListener('visibilitychange', updatePause);}};
 }
 
 const merchantPlayback=initMerchantDemo(document.querySelector(".merchant-demo"));
