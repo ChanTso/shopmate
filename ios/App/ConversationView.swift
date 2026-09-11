@@ -27,9 +27,7 @@ struct ConversationView: View {
                                     Text(message.user ? "我的想法" : "ShopMate").font(.caption.weight(.semibold))
                                 }.foregroundStyle(message.user ? mutedInk : accent)
                                 ForEach(Array(message.segments.enumerated()), id: \.offset) { _, segment in
-                                    if let block = ChatCardPayload.decode(segment) {
-                                        RecommendationCard(model: model, block: block, ready: segment.final)
-                                    } else { Text(segment.text).font(.system(size: 16)).lineSpacing(6).textSelection(.enabled) }
+                                    ChatSegmentView(model: model, segment: segment).equatable()
                                 }
                                 if !message.suggestions.isEmpty {
                                     VStack(alignment: .leading, spacing: 9) {
@@ -107,6 +105,24 @@ struct ConversationView: View {
             HStack(spacing: 13) { Image(systemName: icon).font(.title3).foregroundStyle(accent).frame(width: 30); Text(title).font(.subheadline.weight(.medium)); Spacer(); Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(mutedInk) }
                 .padding(17).foregroundStyle(ink).background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 17))
         }.buttonStyle(.plain)
+    }
+}
+
+struct ChatSegmentView: View, Equatable {
+    let model: BuyerModel
+    let segment: ChatSegment
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // The reducer replaces changed segments; unchanged cards retain their immutable instance.
+        lhs.model === rhs.model && lhs.segment === rhs.segment
+    }
+
+    var body: some View {
+        if let block = ChatCardPayload.decode(segment) {
+            RecommendationCard(model: model, block: block, ready: segment.final)
+        } else {
+            Text(segment.text).font(.system(size: 16)).lineSpacing(6).textSelection(.enabled)
+        }
     }
 }
 

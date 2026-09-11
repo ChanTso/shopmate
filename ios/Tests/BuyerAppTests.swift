@@ -509,3 +509,89 @@ private final class BuyerTestProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 }
+
+extension BuyerAppTests {
+    @MainActor
+    func testSameSlotCardUpdatesFromPartialToFinalAndReplacement() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.chat.timeline.begin(text: "请推荐一款咖啡机。")
+        model.chat.messages = model.chat.timeline.messages
+        model.chat.running = true
+        model.chat.activity = "整理商品"
+
+        let first: Object = ["component": "products", "stream_id": "same-slot", "payload": [
+            "title": "日常滴滤方案", "items": [["product": [
+                "product_id": "slot-drip", "title": "十二杯滴滤咖啡机", "price": 79.6,
+                "in_stock": true, "category": "home-kitchen"
+            ], "reason": "适合多人日常饮用。"]]
+        ]]
+        let replacement: Object = ["component": "products", "stream_id": "same-slot", "payload": [
+            "title": "更新为紧凑方案", "items": [["product": [
+                "product_id": "slot-espresso", "title": "紧凑浓缩咖啡机", "price": 249.0,
+                "in_stock": true, "category": "home-kitchen"
+            ], "reason": "更新后的选择：适合小台面。"]]
+        ]]
+        let decoder = StreamDecoder()
+        func publish(_ type: String, _ block: Object) throws -> ChatSegment {
+            for line in ["event: " + type, "data: " + (try jsonText(block)), ""] {
+                if let event = try decoder.line(raw: line) { try model.chat.timeline.accept(event: event) }
+            }
+            model.chat.messages = model.chat.timeline.messages
+            model.chat.revision += 1
+            let message = try XCTUnwrap(model.chat.messages.last)
+            XCTAssertFalse(message.user)
+            XCTAssertEqual(message.segments.count, 1)
+            let segment = try XCTUnwrap(message.segments.first)
+            XCTAssertEqual(segment.slot, "same-slot")
+            return segment
+        }
+
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.windowLevel = .normal + 1
+        window.rootViewController = UIHostingController(rootView: NavigationStack {
+            ConversationView(model: model, chat: model.chat)
+        }.tint(accent).preferredColorScheme(.light))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        func capture(_ name: String) async throws {
+            // Yield for SwiftUI publication and scrolling before capturing the actual window.
+            try await Task.sleep(for: .milliseconds(250))
+            window.layoutIfNeeded()
+            let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+        }
+
+        let partial = try publish("ui_partial", first)
+        XCTAssertFalse(partial.final)
+        try await capture("01 Partial - drip product with operation warning")
+
+        // Identical payload isolates the final flag that enables native card operations.
+        let finalized = try publish("ui", first)
+        XCTAssertTrue(finalized.final)
+        XCTAssertFalse(partial === finalized)
+        XCTAssertFalse(partial.final)
+        XCTAssertEqual(partial.blockJson, finalized.blockJson)
+        try await capture("02 Final - same drip product without operation warning")
+
+        let updated = try publish("ui", replacement)
+        XCTAssertTrue(updated.final)
+        XCTAssertFalse(finalized === updated)
+        XCTAssertNotEqual(finalized.blockJson, updated.blockJson)
+        let payload = object(try XCTUnwrap(ChatCardPayload.decode(updated)), "payload")
+        XCTAssertEqual(text(payload, "title"), "更新为紧凑方案")
+        let product = object(try XCTUnwrap(rows(payload, "items").first), "product")
+        XCTAssertEqual(text(product, "product_id"), "slot-espresso")
+        XCTAssertEqual(text(product, "title"), "紧凑浓缩咖啡机")
+        XCTAssertEqual(product["price"] as? Double, 249.0)
+        try await capture("03 Same slot replacement - espresso product at 249")
+    }
+}

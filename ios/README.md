@@ -19,6 +19,7 @@ Run `BuyerTests` on an iPhone simulator with the ShopMate scheme. Tests exercise
 
 - KMP owns SSE frame decoding, message/card reduction, exact checkout payloads and original-write recovery policy. Swift's byte-to-line adapter preserves empty lines (Foundation's convenience line sequence removes them); it does not implement a second SSE parser.
 - SwiftUI owns presentation. Conversation updates are separate from shopping state. URLSession owns native cancellation; Keychain stores the bearer and a scoped atomic file preserves pending intents before sending.
+- Immutable shared message segments form SwiftUI equality boundaries. Text deltas retain existing card instances; partial/final or same-slot content replacements invalidate the segment. Native card controls still observe shopping state.
 - Catalog requests do not wait for cart/order refresh. Pagination belongs to the submitted query, not the current search draft; a replaced or dismissed detail request is cancelled.
 - The model is remote. The phone contains no model, service or payment-signing credentials. The shopping and checkout endpoints use the same backend as Android.
 - Unknown writes retain the original key/body. Explicit retry replays that intent; payment retries use the original checkout. Stopping generation does not undo committed business actions. Restart restores saved history, not an event-offset stream or a background model job.
