@@ -15,6 +15,23 @@ final class BuyerStorage {
         get { defaults.string(forKey: "endpoint") ?? "http://localhost:8101" }
         set { defaults.set(newValue, forKey: "endpoint") }
     }
+    var commerceEndpoint: String {
+        get { defaults.string(forKey: "commerceEndpoint") ?? "http://localhost:9082" }
+        set { defaults.set(newValue, forKey: "commerceEndpoint") }
+    }
+    private func ticketsURL() throws -> URL {
+        let folder = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let service = SHA256.hash(data: Data(commerceEndpoint.utf8)).map { String(format: "%02x", $0) }.joined()
+        return folder.appendingPathComponent(scope + "-" + service + "-tickets.json")
+    }
+    func tickets() throws -> [SeckillTicket] {
+        let url = try ticketsURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try JSONDecoder().decode([SeckillTicket].self, from: Data(contentsOf: url))
+    }
+    func saveTickets(_ tickets: [SeckillTicket]) throws {
+        try JSONEncoder().encode(tickets).write(to: ticketsURL(), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
     var owner: String {
         get { defaults.string(forKey: "owner") ?? "" }
         set { defaults.set(newValue, forKey: "owner") }

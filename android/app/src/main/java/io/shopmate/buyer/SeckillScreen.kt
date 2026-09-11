@@ -43,7 +43,7 @@ fun SeckillScreen(vm: BuyerViewModel, state: BuyerState, confirm: (String, () ->
                 Heading(offer.text("name"))
                 Text(money(offer.number("unitPriceMinor"), offer.text("currency")), color = Vermilion)
                 Note("开始 ${offer.text("startsAt")}\n结束 ${offer.text("endsAt")}")
-                val existing = state.tickets.lastOrNull { it.activityId == offer.text("activityId") }
+                val existing = state.tickets.lastOrNull { it.activityId == offer.text("activityId") && it.state != "REJECTED" }
                 Button(enabled = !state.writing, onClick = {
                     if (existing != null) vm.retrySeckill(existing)
                     else confirm("确认预约 ${offer.text("name")} × 1？活动报价为 ${money(offer.number("unitPriceMinor"), offer.text("currency"))}，最终付款请核对生成的订单。") { vm.reserve(offer) }

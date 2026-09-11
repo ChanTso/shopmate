@@ -22,6 +22,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: ShopMate
+        NSLocalNetworkUsageDescription: 连接同一局域网内的商店开发服务，完成购物与助手体验。
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

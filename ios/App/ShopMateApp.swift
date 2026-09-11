@@ -47,6 +47,7 @@ struct LoginView: View {
     @State private var user = ""
     @State private var password = ""
     @State private var endpoint = ""
+    @State private var commerceEndpoint = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -59,14 +60,15 @@ struct LoginView: View {
                 TextField("账号", text: $user).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("login-user")
                 SecureField("密码", text: $password).accessibilityIdentifier("login-password")
                 Button(model.loading ? "登录中…" : "登录，开始探索") {
-                    model.login(endpoint: endpoint, user: user, password: password); password = ""
+                    model.login(endpoint: endpoint, user: user, password: password, commerceEndpoint: commerceEndpoint); password = ""
                 }.buttonStyle(.borderedProminent).disabled(model.loading || user.isEmpty || password.isEmpty).accessibilityIdentifier("login-submit")
                 DisclosureGroup("连接设置") {
                     TextField("服务地址", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Text("本机模拟器使用 localhost，远程服务使用 HTTPS。").font(.footnote).foregroundStyle(.secondary)
+                    TextField("交易服务地址", text: $commerceEndpoint).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Text("模拟器使用 localhost；本地真机开发可使用 Mac 的 .local 主机名，远程服务使用 HTTPS。").font(.footnote).foregroundStyle(.secondary)
                 }
             }.textFieldStyle(.roundedBorder).padding(28)
-        }.background(paper).onAppear { endpoint = model.api.root }
+        }.background(paper).onAppear { endpoint = model.api.root; commerceEndpoint = model.api.commerceRoot }
     }
 }
 
@@ -89,6 +91,7 @@ struct CatalogView: View {
                     Text("说出预算和场景，\n助手陪你选好整套").font(.system(size: 27, weight: .semibold, design: .serif))
                     Button("开始规划 →") { model.tab = 1 }.buttonStyle(.borderedProminent)
                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.white).background(ink, in: RoundedRectangle(cornerRadius: 24))
+                NavigationLink { SeckillView(model: model) } label: { Label("限量发售", systemImage: "bolt.fill").font(.headline) }
                 Text("探索生活好物").font(.title2.bold())
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 14) {
                     ForEach(model.products.indices, id: \.self) { index in
@@ -102,8 +105,13 @@ struct CatalogView: View {
                         }.buttonStyle(.plain)
                     }
                 }
+                if model.searching { ProgressView() }
+                else if model.hasMoreProducts { Button("查看更多") { model.search(append: true) } }
+                if !model.searching && model.products.isEmpty { ContentUnavailableView.search(text: model.searchQuery) }
             }.padding(18)
-        }.background(paper).navigationTitle("ShopMate").toolbar { Button("刷新") { model.reload() } }
+        }.searchable(text: $model.searchQuery, prompt: "搜索商品")
+            .onSubmit(of: .search) { model.search() }
+            .background(paper).navigationTitle("ShopMate").toolbar { Button("刷新") { model.reload() } }
     }
 }
 
@@ -125,25 +133,42 @@ struct ProductView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                ProductImage(model: model, product: product).frame(height: 220)
-                Text(text(product, "title")).font(.title2.bold())
+                ProductImage(model: model, product: product).frame(height: 240)
+                Text(text(product, "title")).font(.system(size: 28, weight: .semibold, design: .serif))
                 Text(majorMoney(product["price"])).font(.title2).foregroundStyle(accent)
                 Text(text(product, "long_description"))
+                let options = object(product, "options")
+                ForEach(options.keys.sorted(), id: \.self) { key in
+                    Text(key + "：" + String(describing: options[key] ?? ""))
+                }
+                let values = object(product, "option_values")
+                ForEach(values.keys.sorted(), id: \.self) { key in
+                    Text(key + "：" + String(describing: values[key] ?? ""))
+                }
                 if !rows(product, "variants").isEmpty {
                     Text("选择具体规格").font(.headline)
                     ForEach(rows(product, "variants").indices, id: \.self) { i in
                         let variant = rows(product, "variants")[i]
-                        Button(text(variant, "title")) { model.openProduct(text(variant, "product_id")) }
+                        Button {
+                            model.openProduct(text(variant, "product_id"))
+                        } label: {
+                            HStack {
+                                Text(text(variant, "title")); Spacer()
+                                Text(variant["in_stock"] as? Bool == false ? "暂时缺货" : "查看")
+                            }.padding().background(.white, in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain)
                     }
                 } else {
                     Button("确认加入购物车") {
                         approveAdd = true
                     }.buttonStyle(.borderedProminent).disabled(model.writing || product["in_stock"] as? Bool == false)
                 }
+                Button { model.askProduct(product) } label: { Label("就这件商品问助手", systemImage: "sparkles") }.buttonStyle(.bordered)
             }.padding(20)
         }.background(paper).navigationTitle("商品详情").toolbar { Button("关闭") { model.selected = nil } }
             .alert("确认加入购物车", isPresented: $approveAdd) {
-                Button("确认提交") { model.add(product) }; Button("再看一下", role: .cancel) {}
+                Button("确认提交") { model.add(product) }
+                Button("再看一下", role: .cancel) { }
             } message: { Text("加入 \(text(product, "title")) × 1，结账时再次核对当前报价。") }
     }
 }
@@ -159,10 +184,19 @@ struct CartView: View {
                     Panel {
                         Text(text(item, "name")).font(.headline)
                         Text("数量 \((item["quantity"] as? NSNumber)?.intValue ?? 0) · \(money(item["lineTotalMinor"]))")
+                        HStack {
+                            let quantity = (item["quantity"] as? NSNumber)?.intValue ?? 1
+                            Button("减一") { model.setQuantity(item, quantity: max(0, quantity - 1)) }
+                            Button("加一") { model.setQuantity(item, quantity: quantity + 1) }
+                            Spacer()
+                            Button("移除", role: .destructive) { model.setQuantity(item, quantity: 0) }
+                        }.buttonStyle(.bordered).disabled(model.writing)
                         if item["orderable"] as? Bool != true { Text("当前不可结账，请核对库存与规格").foregroundStyle(accent) }
                     }
                 }
                 Panel {
+                    Button("查看配送估算") { Task { await model.fetchDelivery() } }.disabled(model.writing)
+                    DeliveryView(value: model.delivery)
                     Text("合计 \(money(model.quote["subtotalMinor"]))").font(.title2.bold())
                     Text("按当前商品、价格与购物车版本创建订单。付款还需要单独确认。").font(.footnote).foregroundStyle(.secondary)
                     Button("核对并创建订单") {
@@ -179,7 +213,10 @@ struct CheckoutView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                if model.checkouts.isEmpty { Text("暂无结账记录") }
+                ForEach(model.actions.indices, id: \.self) { RefundActionView(model: model, row: model.actions[$0]) }
+                ForEach(model.orders.indices, id: \.self) { OrderDetailPanel(model: model, order: model.orders[$0]) }
+                if model.orders.isEmpty && model.checkouts.isEmpty { Text("暂无订单记录") }
+                Text("结账记录").font(.headline)
                 ForEach(model.checkouts.indices, id: \.self) { i in
                     let checkout = model.checkouts[i]
                     Panel {
@@ -207,6 +244,21 @@ struct RecoveryView: View {
     @ObservedObject var model: BuyerModel
     var body: some View {
         List {
+            Section {
+                Text(text(model.profile, "display_name").isEmpty ? "我的商店" : text(model.profile, "display_name")).font(.title2)
+                Text(text(model.profile, "default_location"))
+                NavigationLink("助手记忆与购物政策") { MemoryView(model: model) }
+            }
+            Section("服务端待核对操作") {
+                ForEach(model.commands.indices, id: \.self) { i in
+                    let command = model.commands[i]
+                    if text(command, "state") == "unknown" {
+                        Button("恢复原操作 · " + text(command, "request_key").suffix(8)) {
+                            model.confirm("查询原操作的结果，必要时沿用原标识重试。") { model.recoverCommand(command) }
+                        }.disabled(model.writing)
+                    }
+                }
+            }
             Section("待核对操作") {
                 if model.pending.isEmpty { Text("没有待核对操作") }
                 ForEach(model.pending, id: \.key) { pending in
@@ -221,6 +273,6 @@ struct RecoveryView: View {
                 Text("停止生成不撤销已受理操作；未知结果沿用原请求恢复。交易结果以商店记录为准。").font(.footnote)
                 Button("退出登录", role: .destructive) { model.logout() }
             }
-        }.navigationTitle("我的")
+        }.navigationTitle("我的").task { await model.fetchProfile() }
     }
 }
