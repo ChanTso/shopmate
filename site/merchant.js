@@ -15,11 +15,17 @@ function initMerchantDemo(root) {
   function render() {
     const t = elapsed;
     if (scene === 0) {
-      const progress = reduced.matches ? 1 : Math.min(t / 1350, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const progress = reduced.matches ? 1 : Math.min(t / 2900, 1);
+      const eased = progress * progress * (3 - 2 * progress);
       root.querySelectorAll('[data-md-counter]').forEach(node => {
         const value = Math.round(Number(node.dataset.mdCounter) * eased).toLocaleString('en-US');
         node.textContent = (node.hasAttribute('data-md-money') ? '¥' : '') + value;
+      });
+      root.querySelectorAll('.md-bars i').forEach((bar,i) => {
+        const p = reduced.matches ? 1 : Math.max(.03, Math.min((t-i*55)/2900,1));
+        const value = Math.max(.03,p*p*(3-2*p));
+        bar.style.transform = `scaleY(${value})`;
+        bar.style.setProperty('--label-scale',1/value);
       });
     } else if (scene === 1) {
       const phase = reduced.matches ? 4 : t < 1800 ? 0 : t < 2400 ? 1 : t < 3500 ? 2 : t < 7800 ? 3 : 4;
@@ -28,7 +34,7 @@ function initMerchantDemo(root) {
       bubble.textContent = question;
       response.textContent = reduced.matches ? answer : answer.slice(0, Math.max(0, Math.floor((t - 3500) / 35)));
     } else {
-      setPhase(reduced.matches ? 4 : t < 1400 ? 0 : t < 3100 ? 1 : t < 4100 ? 2 : t < 4600 ? 3 : 4);
+      setPhase(reduced.matches ? 4 : t < 500 ? 0 : t < 1600 ? 2 : t < 2100 ? 3 : 4);
     }
   }
   function setMerchantScene(index) {
@@ -52,7 +58,7 @@ function initMerchantDemo(root) {
     const now = performance.now();
     if (!paused() && visible && !document.hidden) {
       elapsed += Math.min(now - last, 200);
-      const duration = scene === 0 ? 10000 : scene === 1 ? 12000 : 9200;
+      const duration = scene === 0 ? 10000 : scene === 1 ? 12000 : 7200;
       if (elapsed > duration) {
         elapsed = 0;
         // Loop within the scene; the page owns navigation between scenes.
