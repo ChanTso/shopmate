@@ -22,8 +22,8 @@ struct BuyerApproval: Identifiable {
 
 @MainActor
 final class BuyerModel: ObservableObject {
-    let api = BuyerAPI()
-    let storage = BuyerStorage()
+    let api: BuyerAPI
+    let storage: BuyerStorage
     let chat = ConversationState()
     @Published var signedIn = false
     @Published var loading = false
@@ -59,7 +59,11 @@ final class BuyerModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var writeTask: Task<Void, Never>?
 
-    init() {
+    convenience init() { self.init(api: BuyerAPI(), storage: BuyerStorage()) }
+
+    init(api: BuyerAPI, storage: BuyerStorage) {
+        self.api = api
+        self.storage = storage
         do {
             try api.setRoot(storage.endpoint)
             try api.setCommerceRoot(storage.commerceEndpoint)
@@ -198,9 +202,11 @@ final class BuyerModel: ObservableObject {
     }
     private func restoreConversation() async throws {
         guard let id = storage.conversation else { return }
+        let generation = chatGeneration
         let saved = try await api.call("/conversations/" + id)
         try Task.checkCancellation()
-        guard !chat.running, storage.conversation == id else { return }
+        // A completed newer turn must not be replaced by an older in-flight history response.
+        guard !chat.running, storage.conversation == id, chatGeneration == generation else { return }
         try chat.timeline.restore(payload: jsonText(saved)); chat.messages = chat.timeline.messages; chat.revision += 1
     }
     func send(_ raw: String) {

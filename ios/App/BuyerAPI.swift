@@ -33,12 +33,18 @@ final class BuyerAPI {
     var root = "http://localhost:8101"
     var commerceRoot = "http://localhost:9082"
     var token: String?
-    private let session: URLSession = {
+    private let session: URLSession
+
+    init(session: URLSession? = nil) {
+        self.session = session ?? Self.makeSession()
+    }
+
+    private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 600
         return URLSession(configuration: configuration)
-    }()
+    }
 
     static func serviceRoot(_ value: String) throws -> String {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))

@@ -103,4 +103,101 @@ final class BuyerAppTests: XCTestCase {
         XCTAssertThrowsError(try api.setRoot("https://example.com/path"))
     }
 
+    @MainActor
+    func testLateHistoryCannotReplaceCompletedNewTurn() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "history-race"
+        model.products = [["product_id": "test"]]
+        let historyStarted = expectation(description: "old history request")
+        var delayed: BuyerTestProtocol?
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.hasSuffix("/history-race") {
+                DispatchQueue.main.async { delayed = request; historyStarted.fulfill() }
+            } else if request.request.url!.path.hasSuffix("/chat") {
+                request.reply("event: text_delta\ndata: {\"text\":\"本轮的新回答\"}\n\nevent: turn_complete\ndata: {}\n\n", type: "text/event-stream")
+            } else { request.reply("{}") }
+        }
+        model.reload()
+        await fulfillment(of: [historyStarted], timeout: 3)
+        model.send("继续推荐")
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
+        delayed?.reply("{\"items\":[{\"kind\":\"user\",\"text\":\"旧历史\"}]}")
+        // Await the native network callback, not just the response being enqueued.
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
+        model.logout()
+    }
+
+    @MainActor
+    func testStopThenNewConversationRejectsLateStream() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "cancel-test"
+        let started = expectation(description: "stream started")
+        let cancelled = expectation(description: "native transport cancelled")
+        BuyerTestProtocol.handle = { request in
+            request.onStop = { cancelled.fulfill() }
+            request.startStream("event: text_delta\ndata: {\"text\":\"未完成的回答\"}\n\n")
+            started.fulfill()
+        }
+        model.send("先查询")
+        await fulfillment(of: [started], timeout: 3)
+        try await settle { !model.chat.messages.last!.segments.isEmpty }
+        model.stop()
+        try await settle { !model.chat.running }
+        await fulfillment(of: [cancelled], timeout: 3)
+        model.newConversation()
+        XCTAssertTrue(model.chat.messages.isEmpty)
+        XCTAssertNil(model.storage.conversation)
+        XCTAssertNil(model.error)
+        model.logout()
+    }
+
+    @MainActor
+    private func isolatedModel() throws -> (BuyerModel, URLSession, UserDefaults, String) {
+        let suite = "native-lifecycle-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let storage = BuyerStorage(defaults: defaults)
+        storage.endpoint = "https://" + suite + ".test"
+        storage.owner = "test-buyer"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BuyerTestProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let model = BuyerModel(api: BuyerAPI(session: session), storage: storage)
+        return (model, session, defaults, suite)
+    }
+
+    @MainActor
+    private func settle(_ condition: () -> Bool) async throws {
+        for _ in 0..<300 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Native operation did not settle")
+        throw URLError(.timedOut)
+    }
+
+}
+
+
+private final class BuyerTestProtocol: URLProtocol {
+    static var handle: ((BuyerTestProtocol) -> Void)?
+    var onStop: (() -> Void)?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.handle!(self) }
+    override func stopLoading() { onStop?() }
+    func startStream(_ body: String) {
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+            headerFields: ["Content-Type": "text/event-stream"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+    }
+    func reply(_ body: String, type: String = "application/json") {
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+            headerFields: ["Content-Type": type])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
 }
