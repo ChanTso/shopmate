@@ -18,10 +18,10 @@ const clamp = n => Math.max(0, Math.min(1, n));
 const smooth = n => { n = clamp(n); return n * n * (3 - 2 * n); };
 const lerp = (a,b,t) => a + (b-a)*t;
 // Distances are viewport heights: generous reading spans, short scroll-driven handovers.
-const stops = [1.10,3.75,6.40,9.80];
-const buyerSpans = [[.95,3.6],[3.6,6.25],[6.25,9.65],[9.65,11.5]];
-const merchantStops = [.1,2.75,5.35];
-const merchantSpans = [[0,2.6],[2.6,5.2],[5.2,7.5]];
+const stops = [1.40,3.70,6.00,9.10];
+const buyerSpans = [[1.25,3.55],[3.55,5.85],[5.85,8.95],[8.95,10.5]];
+const merchantStops = [.1,2.45,4.75];
+const merchantSpans = [[0,2.3],[2.3,4.6],[4.6,6.5]];
 const buyerNavigation = document.querySelector('.buyer-navigation');
 function chapterProgress(nav, position, travel, spans) {
   if(reduced.matches) position=Math.round(position);
@@ -74,20 +74,20 @@ function render() {
   const box=experience.getBoundingClientRect();
   const H=stage.clientHeight,W=stage.clientWidth,mobile=innerWidth<=800;
   const travel=Math.max(0,-box.top/innerHeight);
-  const position=ramp(travel,3.1,3.6)+ramp(travel,5.75,6.25)+ramp(travel,8.75,9.65);
-  const transfer=reduced.matches ? Number(travel>=.525) : ramp(travel,.1,.95);
-  const expand=reduced.matches ? Number(travel>=9.2) : ramp(travel,8.75,9.65);
-  const compact=innerWidth<1100;
+  const position=ramp(travel,2.95,3.55)+ramp(travel,5.25,5.85)+ramp(travel,7.85,8.95);
+  const transfer=reduced.matches ? Number(travel>=.675) : ramp(travel,.1,1.25);
+  const expand=reduced.matches ? Number(travel>=8.4) : ramp(travel,7.85,8.95);
   buyerNavigation.style.setProperty('--wide-nav',expand);
   buyerNavigation.style.opacity=smooth((transfer-.45)/.55);
   buyerNavigation.inert=transfer<.7;
   buyerNavigation.style.pointerEvents=transfer>.7?'auto':'none';
-  const navW=lerp(W*(mobile?1:.46),W*(compact?1:.5),expand);
+  const navW=lerp(W*(mobile?1:.46),Math.min(W,mobile?700:760),expand);
   buyerNavigation.style.width=navW+'px';
-  buyerNavigation.style.left=lerp(mobile?0:W*.54,0,expand)+'px';
+  buyerNavigation.style.left=lerp(mobile?0:W*.54,(W-navW)/2,expand)+'px';
   buyerNavigation.style.top=lerp(H*(mobile?.035:.12),18,expand)+'px';
-  const wideHeaderBottom=Math.max(18+buyerNavigation.offsetHeight,wideCopy.offsetTop+wideCopy.offsetHeight);
-  const mediaTop=wideHeaderBottom+20;
+  wideCopy.style.top=(18+buyerNavigation.offsetHeight+(mobile?18:22))+'px';
+  const wideHeaderBottom=wideCopy.offsetTop+wideCopy.offsetHeight;
+  const mediaTop=wideHeaderBottom+(mobile?18:22);
   const heroH=Math.min(H*(mobile?.49:.75),mobile?440:730);
   const storyH=Math.min(H*(mobile?.55:.86),mobile?520:820);
   const wideW=Math.min(W,1240,(H-mediaTop-28)*4/3);
@@ -134,7 +134,7 @@ function scrollToChapter(target,complete=()=>{}) {
   if(reduced.matches || Math.abs(distance)<1) {
     scrollTo({top:start+distance,behavior:'instant'});complete();return;
   }
-  const duration=1250+450*clamp(Math.abs(distance)/(innerHeight*4));
+  const duration=2200+400*clamp(Math.abs(distance)/(innerHeight*4));
   const started=performance.now();
   function step(now) {
     const progress=clamp((now-started)/duration);
@@ -190,7 +190,7 @@ function updateMerchant(){
   demo.style.width=baseWidth+'px';demo.style.height=baseHeight+'px';demo.style.transform=`scale(${scale})`;
   const rect=section.getBoundingClientRect();
   const travel=Math.max(0,-rect.top/innerHeight);
-  const position=ramp(travel,2.1,2.6)+ramp(travel,4.7,5.2);
+  const position=ramp(travel,1.7,2.3)+ramp(travel,4.0,4.6);
   chapterProgress(document.querySelector('.merchant-chapters'),position,travel,merchantSpans);
   const index=Math.round(position);
   if(index!==merchantCurrent){
