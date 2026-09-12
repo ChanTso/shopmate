@@ -1,47 +1,47 @@
-# 零售开发任务 v1
+# Retail development tasks v1
 
-`development.json` 定义 D01–D12，共12个开发任务，默认各执行一次。它们迁移自七商品任务的业务意图，但商品、目录范围、日期窗口和实际接口已变化；结果必须使用新 protocol_id 单独记录。旧完整78/90、定向21/24等成绩与本协议无关。完整零售正式场景及其重复运行另行定义，不能把这12题当成全零售功能的覆盖证明。
+`development.json` defines 12 development tasks, D01–D12, run once each by default. They retain the business intent of the seven-product tasks, but products, catalog scope, date windows, and actual APIs have changed. Record results under a new `protocol_id`. Historical scores such as 78/90 and the targeted 21/24 belong to other protocols. Full retail acceptance scenarios and their repetitions are registered separately; these 12 tasks do not establish coverage of all retail functionality.
 
-## 数据与参考口径
+## Data and reference definitions
 
-默认夹具 `shopmate-retail-v1`：87个展示根、104个真实交易SKU、90个完整上海自然日；家族聚合不可直接交易。新增商品使用合成CNY价格，不称汇率换算。固定报表截止 `2026-09-05T00:00:00+08:00`，SQL使用等价UTC瞬间 `2026-09-04 16:00:00` 的左闭右开窗口。实际运营时间单独取真实时钟。
+The default `shopmate-retail-v1` fixture contains 87 display roots, 104 tradable SKUs, and 90 complete Shanghai calendar days. Product families are aggregates, not directly tradable items. New products use synthetic CNY prices, not currency conversions. The fixed report cutoff is `2026-09-05T00:00:00+08:00`; SQL uses the equivalent UTC instant `2026-09-04 16:00:00` in half-open intervals. Current operations use the actual clock separately.
 
-成交来自实际订单与成功付款记录，匹配订单类型、ID、主体、金额和币种，排除沙箱和未成功付款；使用订单历史金额，统计退款前成交额，订单数指SKU子单数。普通订单保存历史商品版本；秒杀订单没有该列，参考SQL明确输出NULL。D04使用最近30日，覆盖不止一个历史价格阶段。D08的零成交SKU为AR-1806；系统有营销观察数据，不能以“没有任何广告数据”为因果拒答理由。
+Sales come from actual orders joined to successful payments by order type, ID, subject, amount, and currency, excluding sandbox orders and unsuccessful payments. Revenue uses historical order amounts before refunds; order counts mean SKU suborders. Standard orders retain historical product versions; flash-sale orders lack that column, so reference SQL explicitly returns NULL. D04 covers the last 30 days and multiple historical price phases. The zero-sales SKU in D08 is AR-1806. Marketing observations exist, so a refusal to infer causality cannot claim that no advertising data exists.
 
-参考SQL不是模型工具权限；只读账号由运行环境提供。SQL原文和全部原始结果保存，模型仅看到 `common_context` 与chat步骤，不能得到 `evaluator`、参考SQL或版本预期。已覆盖期间内不存在成功付款可以统计为零；缺少流量、预算、成本等观察不能填成零。
+Reference SQL does not define model tool permissions; the runtime supplies the read-only account. SQL text and all raw results are retained. The model sees only `common_context` and chat steps, never `evaluator`, reference SQL, or expected versions. An absence of successful payments within the observed period can count as zero; missing traffic, budget, or cost observations cannot.
 
-`baseline.json` 仅记录夹具定义及“待权威SQL采集”，不预填成交额、排名、版本或通过率。每题重置后先执行 `sql/products.sql` 等公共SQL；runner从该次原始产品行读取旧价和版本，写入该题 `expectations.json`。批准后版本按这次实际基线加1，取消后不变。SQL输出和人工审阅才判业务结果，`executed`只表示驱动步骤完成。
+`baseline.json` records only the fixture definition and “待权威SQL采集” (verbatim fixture label: authoritative SQL collection pending); it contains no preset revenue, rankings, versions, or pass rates. After each reset, shared queries such as `sql/products.sql` run first. The runner reads old prices and versions from those actual product rows into the task's `expectations.json`. Approval increments versions from this baseline by 1; cancellation leaves them unchanged. SQL output and manual review determine business outcomes; `executed` means only that driver steps completed.
 
 ## retail-R0
 
-1. 先停止手工启动的8101 API，保留独立ShopMate数据与Java服务，保持无并发聊天或商品写入。驱动只启动自己管理的正式 `shopmate.app:create_app` 子进程；外部地址和已占用端口拒绝执行，不按端口杀进程。每题先检查会话执行状态，逐个恢复本人旧会话已发送但结果不明的prepare并保存原始HTTP，再停自有API；未知写状态或停止失败保留现场并停止，不能先reset覆盖。
-2. 执行现有 `scripts/reset_fixture.py`，按受控零售命名空间重置完整商品、历史订单与付款、流量、营销、履约和FAQ夹具，并完成实际发布步骤。保留身份和非夹具数据，不清整库或Broker队列。脚本失败立即停止。成功后驱动重新启动API并实际登录，再创建本题会话。
-3. 商品Outbox与指定商品消费队列排空后记录SQL基线和实际host目录。商品消费排空不等于旧FAQ搜索索引排空；新policy工具读取已发布FAQ源，不以旧知识索引为验收前置。
-4. 每次重复创建新会话，密码和Bearer只进内存，不进入记录；前后保存产品、元数据、历史付款、同会话变更和商品事件原始输出。generation记录本次G0，不固定常量。完整目录跨分页，不能只检查第一页就声称覆盖104SKU。
-5. 普通 `local_runtime.py up` 不清会话、购物车或记忆；它不能代替开发任务的显式R0。显式reset会先私有备份SQLite，再清理受控synthetic owner会话和意图；因此恢复与原始记录必须先完成，旧会话不能拿来执行下一题。批次结束驱动仅停止自己持有的子进程，停止结果不明返回失败，不继续重置。
+1. Stop any manually started API on port 8101 while retaining the isolated ShopMate data and Java services. Keep other chats and product writes idle. The driver starts only its own formal `shopmate.app:create_app` subprocess; it rejects external addresses and occupied ports and never kills a process by port. Before each task, inspect conversation execution state, resolve previously sent prepares with unknown outcomes in the same owner's old conversations, and retain raw HTTP responses before stopping the owned API. Unknown write outcomes or failed shutdowns preserve the scene and stop execution; reset must not overwrite them.
+2. Run the existing `scripts/reset_fixture.py` to reset the complete product, historical order/payment, traffic, marketing, fulfillment, and FAQ fixtures within the controlled retail namespace, including actual publication. Preserve identities and non-fixture data; do not clear the whole database or broker queues. Stop immediately on script failure. After success, restart the API, log in, and create the task conversation.
+3. After the product Outbox and designated product consumer queues drain, save the SQL baseline and actual host catalog. Draining product consumers does not mean the old FAQ search index has drained. The new policy tool reads published FAQ sources and does not require the old knowledge index for acceptance.
+4. Create a new conversation for every repetition. Passwords and bearer tokens stay in memory, outside records. Save raw before/after output for products, metadata, historical payments, same-conversation changes, and product events. Record the actual starting generation G0, not a constant. Read every catalog page; checking only page one cannot establish coverage of 104 SKUs.
+5. Ordinary `local_runtime.py up` does not clear conversations, carts, or memory and cannot replace explicit development-task R0. Explicit reset first backs up SQLite privately, then clears conversations and intents for controlled synthetic owners. Recovery and raw-record capture must therefore finish first, and old conversations cannot execute the next task. At batch end, stop only owned subprocesses; an uncertain shutdown returns failure and blocks further reset.
 
-## 审批与结果
+## Approval and outcomes
 
-D09：AR-1001到8000分；D10：同一整批AR-1001/1004/1401到8000/9000/3500分；D11：取消8100分旧意图，再批准8200分新意图；D12：取消AR-1004到8800分草案。上述金额是题目要求，不是实测结果。
+D09 requests AR-1001 at 8000 minor units; D10 requests one batch for AR-1001/1004/1401 at 8000/9000/3500; D11 cancels the old 8100 intent and approves the new 8200 intent; D12 cancels the AR-1004 draft at 8800. These amounts are task inputs, not measured results.
 
-驱动从当前会话的实际卡片查询权威 `changeId` 回执，仅批准类型、币种、PREPARED和完整商品／目标价格集合均匹配的唯一PRICE_UPDATE。这些价格任务不授权别的变更类型、半批、多商品、拆分批次、多份匹配、重复商品或非整数分。直接操作员调用实际apply/discard，写响应不明不重试、不重置。
+The driver queries the authoritative `changeId` receipt from the current conversation's actual card. It approves only a unique PRICE_UPDATE whose type, currency, PREPARED status, and complete product/target-price set match. These price tasks authorize no other change type, partial batch, extra products, split batches, multiple matches, duplicate products, or non-integer minor-unit amounts. Direct operator calls use the real apply/discard endpoints. An unknown write response is neither retried nor reset.
 
-批准前商品不得提前改变；批准后每个目标只改变目标价格、版本和正常更新时间，有真实对应发布事件，N个商品令generation增加N。取消不产生价格事件。其余商品、库存、内容、可用性、元数据与历史付款保持本次SQL基线。重复批准、跨身份越权、冲突、预算等独立边界测试不加入12题分母。
+Products must remain unchanged before approval. After approval, each target changes only its requested price, version, and normal update timestamp, with a corresponding published event; N products increase generation by N. Cancellation creates no price event. Other products, stock, content, availability, metadata, and historical payments remain at the SQL baseline. Separate tests for repeated approval, cross-identity access, conflicts, and budgets do not enter the 12-task denominator.
 
-运行需源码已提交且干净，记录完整CityBuddy与ShopMate SHA、ShopMate夹具源码SHA、protocol_id、suite路径、as-of、模型／协议／预算、任务和实际重复数。执行记录、人工业务判定及调用成本分别报告；未执行保留not_run。不要从后续成功补旧失败。
+Run from committed, clean source. Record full CityBuddy and ShopMate SHAs, the ShopMate fixture source SHA, `protocol_id`, suite path, as-of instant, model/protocol/budget, tasks, and actual repetitions. Report execution, manual business judgment, and call cost separately; retain unexecuted attempts as `not_run`. Later success must not replace earlier failure.
 
-每轮聊天另存客户端 monotonic 等待采样：POST 开始到首个非空文本、首个完整 UI 事件、终态和 HTTP 流关闭；未观察到的值为 null。完整 UI 记录组件类型，不把进度或 ui_partial 当成完整结果。该时间含接收、原始 SSE 写盘及解析开销，不是浏览器首绘或纯服务时延；异常断流也会有关闭时间，必须结合真实终态与业务判定使用。
+Each chat turn also saves client monotonic waiting times from POST start to first nonempty text, first complete UI event, terminal event, and HTTP stream close. Unobserved values are null. Complete UI events retain their component type; progress and `ui_partial` are not complete results. Timing includes receiving, writing raw SSE, and parsing, so it is neither browser first paint nor pure service latency. An abnormal stream termination also has a close time; interpret it alongside the actual terminal event and business judgment.
 
-## 双端开发接线任务
+## Merchant and buyer integration tasks
 
-`full-development.json` 增加 R01–R07，各执行一次；它们与 D01–D12 使用不同 protocol_id，不能合并成既有正式成绩。覆盖两规格比较与授权加车、多子单结账付款、本人小额退款及重复确认、两个买家各自的政策与履约查询，以及内容、库存、营销活动、促销审批和真实 SQL 到 Python 分析。R06 在一次重置内完成商家促销、买家成交和商家读回订单。
+`full-development.json` adds R01–R07, once each, with a different `protocol_id` from D01–D12. They cannot be merged into an existing formal score. They cover two-variant comparison and authorized cart addition, multi-suborder checkout/payment, an owned small refund and repeated confirmation, policy and fulfillment queries for two separate buyers, and content, stock, campaign, promotion approvals, and real SQL-to-Python analysis. R06 completes merchant promotion, buyer purchase, and merchant order readback within one reset.
 
-每题的商家和两名买家各使用独立登录客户端，原会话状态与未决命令全部检查后才允许 R0。停止 API 后再核对本地会话及意图记录，任何将被重置但未检查的会话都阻止执行。显式写请求发送前保存请求与未决标记；响应丢失、无法确认的错误、执行中断或停止失败都会保留现场，下一次运行须先核对结果，不能自动覆盖标记。
+Each task uses independently authenticated clients for the merchant and two buyers. R0 is allowed only after inspecting all existing conversation states and pending commands. Recheck local conversations and intents after stopping the API; any unchecked conversation that would be reset blocks execution. Save each explicit write request and its pending marker before sending it. Lost responses, unconfirmed errors, interruption, and failed shutdown preserve the scene. The next run must resolve the outcome before overwriting any marker.
 
-买家结账只接受当前真实购物车报价与题目完整 SKU、数量、币种及价格集合相符的结果；版本来自报价。付款使用实际结账 ID，退款确认使用模型本轮最终卡片及原身份、原会话；从实际 HTTP 响应绑定后续题目的 ID，不从隐藏 SQL 帮模型选订单。商家非价格审批使用完整请求载荷精确匹配；省略字段与显式 null 不等价。SQL 按实际角色、身份和会话查询权威表，`executed` 仍只表示驱动完成，不代表业务通过。
+Buyer checkout accepts only a current actual cart quote matching the task's complete SKU, quantity, currency, and price set; versions come from that quote. Payment uses the actual checkout ID. Refund confirmation uses the model's final card from that turn, with the original identity and conversation. Bind later task IDs from actual HTTP responses; hidden SQL must not help the model select an order. Non-price merchant approvals require an exact full payload match; omitted fields and explicit null are not equivalent. SQL queries authoritative tables under the actual role, identity, and conversation. `executed` still means driver completion, not a business pass.
 
-报表沿用固定历史截止，促销日期则在任务开始时取上海当天及七天后，作为字面值绑定到提示和审批预期，并记录在 `bindings.json`。真实外部搜索、长期记忆、并发、中断与页面交互另行验收；本开发任务表不宣称已覆盖它们。
+Reports retain the fixed historical cutoff. Promotion dates use the actual Shanghai date at task start and seven days later, bound as literals into prompts and approval expectations and saved in `bindings.json`. Real external search, long-term memory, concurrency, interruption, and page interaction are assessed separately, outside this task suite's coverage.
 
-`search-development.json` 的 S01/S02 单独验证买家与商家的真实外部搜索及引用，不把外部资料当成本站业务事实。`buyer-planning-development.json` 的 B01/B02 补充自然预算规划与授权后的购物车改量、移除。两表都复用现有聊天步骤和前后 SQL；实际完成与业务判定分别记录。
+S01/S02 in `search-development.json` separately test real external search and citations for buyers and merchants without treating external material as store business facts. B01/B02 in `buyer-planning-development.json` add natural budget planning and authorized cart quantity changes/removal. Both reuse existing chat steps and before/after SQL, recording execution and business judgment separately.
 
-最终重复验收使用[零售业务重复验收 v1](acceptance-v1.md)登记的任务、分母和停止条件；开发阶段的各版本回归保留为独立记录。
+The final repeated acceptance run uses the tasks, denominators, and stop conditions registered in [Retail business acceptance v1](acceptance-v1.md). Development regressions remain separate records for their respective versions.

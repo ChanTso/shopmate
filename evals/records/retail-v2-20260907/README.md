@@ -1,66 +1,66 @@
-# 零售事实表达修复后的最终业务验收
+# Final business acceptance after retail fact-expression fixes
 
-CityBuddy：`76c293178923bf78e747ab1ba9590e6348108ad8`；ShopMate：`4020ff93f4797e2ae3142e8a4123442d3d8693b7`。2026-09-07 使用真实 `gpt-5.6-terra`，主、分析、记忆均沿默认配置；Chat Completions 适配主循环，Responses 执行搜索，独立 Docker 沙箱执行 Python。模型别名不是不可变快照。
+CityBuddy: `76c293178923bf78e747ab1ba9590e6348108ad8`; ShopMate: `4020ff93f4797e2ae3142e8a4123442d3d8693b7`. The run used real `gpt-5.6-terra` on 2026-09-07, with default main, analysis, and memory configuration. Chat Completions adapted the main loop, Responses performed search, and an isolated Docker sandbox executed Python. Model aliases are not immutable snapshots.
 
-依据 `evals/retail/acceptance-v2.md`，18 个已知场景共30次：**24次业务通过、3次业务失败、3次提供者故障，0次未运行**。27次完成业务流程的尝试中24次通过；完整登记分母仍为30。不是未见题泛化率，也不是每个场景均已证明稳定成功。
+Under `evals/retail/acceptance-v2.md`, 18 known scenarios produced 30 attempts: **24 business passes, 3 business failures, 3 provider failures, and 0 unrun attempts**. Of the 27 attempts that completed the business workflow, 24 passed; the full registered denominator remains 30. This is not an unseen-task generalization rate or proof of stable success for every scenario.
 
-主要行为与判分在整个批次保持不变。每次使用原 retail-v1 独立R0、实际业务接口和权威SQL；数据为87目录根/104交易SKU/90完整上海日/CNY演示数据。每聊天回合最多16次共享模型调用/300秒，主循环最多12个工具轮，不因失败额外增加预算。合并前开发版本的 D04/D05/R05/R07 共4次回归均通过，单列，不并入以下分母。
+Main behavior and scoring stayed unchanged throughout the batch. Every attempt used the original retail-v1 isolated R0, actual business APIs, and authoritative SQL, with 87 catalog roots / 104 tradable SKUs / 90 complete Shanghai days / synthetic CNY data. Each chat turn allowed at most 16 shared model calls / 300 seconds and 12 main-tool rounds; failures received no extra budget. Four pre-merge development regressions on D04/D05/R05/R07 all passed and remain separate from the denominator below.
 
-| 任务 | 重复结果 | 核对重点 |
+| Task | Repetition outcomes | Review focus |
 |---|---|---|
-| D02 跨期经营对照 | 通过 | 金额、SKU子单、变化率、上海半开期间 |
-| D04 历史价与完整目录 | 失败／失败／提供者故障 | 日期边界；当前价不能冒称历史报告时点价 |
-| D05 聚合追问 | 提供者故障／提供者故障／通过 | 104SKU合计回到4564150分、239子单 |
-| D07 缺日期澄清 | 通过 | 先澄清、再对指定商品与期间查询 |
-| D08 零成交 | 通过 | 零分母增长率未知，不编造广告因果 |
-| D10 整批调价 | 通过 | 3SKU批准后整批写入，版本与3发布事件一致 |
-| D11 替换草案 | 通过 | 旧草案取消，新草案批准，只有新价格生效 |
-| R01 买家购物付款退款 | 通过／通过／通过 | 比较→加车→确认结账→模拟付款→100分退款确认；重复确认原回执 |
-| R02 本人订单与政策 | 失败 | 订单隔离和履约准确，但漏答账户偏好、会员及订单修改说明 |
-| R03 商品家族维护 | 通过 | 只改家族材质，8叶SKU版本与8发布事件对应 |
-| R04 补货与恢复销售 | 通过 | 先补5件但保持停售，再单独恢复销售、不重复补货 |
-| R05 营销文案审批 | 通过／通过／通过 | 仅名称/文案变更，预算、花费、未知收入与观察窗口不变 |
-| R06 促销到真实成交 | 通过／通过／通过 | 27元→24.30元，买家按同价付款，商家读到当日新单 |
-| R07 SQL/Python分析 | 通过／通过／通过 | 完整28日SQL→真实Python，金额/总体标准差/峰值日一致 |
-| B01 预算购物规划 | 通过 | 100元覆盖照明、收纳、地面活动；未提前加车 |
-| B02 购物车增减 | 通过 | ADD→SET/REMOVE，最终只剩指定台灯1件/22元 |
-| S01 品牌洗护搜索 | 通过 | 两品牌实际公开来源，保留适用对象差异，不改本站商品事实 |
-| S02 官方促销指南 | 通过 | Google官方条件与本站审批/外部投放边界分开，未产生写入 |
+| D02 Cross-period business comparison | PASS | Amounts, SKU suborders, change rates, Shanghai half-open intervals |
+| D04 Historical prices and complete catalog | FAIL / FAIL / provider failure | Date boundaries; current prices must not be presented as prices at the historical report cutoff |
+| D05 Aggregation follow-up | Provider failure / provider failure / PASS | All 104 SKUs reconcile to 4564150 minor units and 239 suborders |
+| D07 Missing-date clarification | PASS | Clarify first, then query the specified products and period |
+| D08 Zero sales | PASS | Growth with a zero denominator remains unknown; no invented advertising causality |
+| D10 Batch price change | PASS | All 3 SKUs change after approval, with matching versions and 3 published events |
+| D11 Replace a draft | PASS | Cancel the old draft, approve the new draft, and apply only the new price |
+| R01 Buyer shopping, payment, and refund | PASS / PASS / PASS | Compare → add to cart → confirm checkout → simulated payment → confirm a 100-minor-unit refund; repeated confirmation returns the original receipt |
+| R02 Owned orders and policies | FAIL | Correct order isolation and fulfillment, but omitted account preferences, membership, and order-modification guidance |
+| R03 Product-family maintenance | PASS | Change only family material, with matching versions and 8 published events for 8 leaf SKUs |
+| R04 Restock and resume sales | PASS | Add 5 units while keeping sales paused, then resume separately without another stock increment |
+| R05 Campaign-copy approval | PASS / PASS / PASS | Change only name/copy; budget, spend, unknown revenue, and observation window remain unchanged |
+| R06 Promotion through actual purchase | PASS / PASS / PASS | CNY 27 → 24.30; buyer pays that price and merchant reads the new same-day order |
+| R07 SQL/Python analysis | PASS / PASS / PASS | Complete 28-day SQL → real Python; amount, population standard deviation, and peak date agree |
+| B01 Budget shopping plan | PASS | CNY 100 covers lighting, storage, and floor activities, without early cart writes |
+| B02 Cart additions and changes | PASS | ADD → SET/REMOVE; final cart contains only 1 specified desk lamp at CNY 22 |
+| S01 Brand care search | PASS | Actual public sources for two brands; preserve differences in applicability without changing store product facts |
+| S02 Official promotion guidance | PASS | Separate Google's conditions from store approval and external publishing; no writes |
 
-三次业务失败：D04第一次在附加卡中把9月4日写成排他终点；第二次将当前目录价描述为报告截止时点价；R02漏答用户要求的部分内容。SQL正确不能抵销可见回答错误。其余写任务均核对批准前、批准后和最终SQL，未发现未批准写入、越权受理、重复扣款或未解决的未知写状态。
+The three business failures were D04's first repetition, which described September 4 as the exclusive end in an additional card; its second, which described current catalog prices as prices at the report cutoff; and R02, which omitted requested content. Correct SQL does not offset incorrect visible answers. All other write tasks were checked before approval, after approval, and against final SQL. No unapproved writes, unauthorized acceptance, duplicate charges, or unresolved write outcomes were found in those attempts.
 
-三次提供者故障：D04第三次在第7次模型调用遇到HTTP500，D05前两次首调HTTP429。随后最小诊断为 `model_cooldown`。代理恢复后最小Terra请求返回200，再仅续未运行任务。三个故障不替换、不删除。没有在本批中更换模型、代码、工具或预算。
+The three provider failures were HTTP 500 on model call 7 of D04's third repetition and HTTP 429 on the first call of D05's first two repetitions. A subsequent minimal diagnostic reported `model_cooldown`. After the proxy recovered, a minimal Terra request returned 200, and only unrun tasks resumed. The three failures were retained without replacement or deletion. Model, code, tools, and budget did not change within this batch.
 
-## 原始记录与复跑入口
+## Raw records and rerun entry point
 
-原始SSE、请求/回执、SQL和monotonic时间保存在以下本地 `evals/results/` 目录；凭证继续来自既有私密配置，不在此报告展示。运行器的 `executed` 仅代表流程执行完，业务判分来自实际响应/卡片和SQL。
+Raw SSE, requests/receipts, SQL, and monotonic timings are retained in the local `evals/results/` directories below. Credentials continue to come from the existing private configuration and are not included here. The runner's `executed` means workflow completion only; business scoring uses actual responses/cards and SQL.
 
-| 目录 | 内容 |
+| Directory | Contents |
 |---|---|
 | `20260907T121748.529791Z` | D02/D07/D08/D10/D11 |
-| `20260907T122551.504138Z` | D04三次、D05前两次；提供者故障后停批 |
-| `20260907T133302.167578Z` | D05唯一续跑：目录r1对应原登记r3 |
+| `20260907T122551.504138Z` | All three D04 attempts and the first two D05 attempts; batch stopped after provider failures |
+| `20260907T133302.167578Z` | Only the remaining D05 attempt; directory r1 corresponds to registered r3 |
 | `20260907T133523.832944Z` | R02/R03/R04 |
-| `20260907T134052.520821Z` | R01/R05/R06/R07各三次 |
+| `20260907T134052.520821Z` | R01/R05/R06/R07, three repetitions each |
 | `20260907T140405.930901Z` | B01/B02 |
 | `20260907T140658.736057Z` | S01/S02 |
 
-运行入口 `uv run python scripts/run_tasks.py --suite retail/full-development --tasks R01,R05,R06,R07 --repetitions 3`；其余表按登记指定。运行会重置隔离演示数据，不能与其他写入、集成测试或容量测量并行。复跑产生新记录，不能覆盖本批。旧54次和定向回归保留原版本，不拼成新成绩。
+Example entry point: `uv run python scripts/run_tasks.py --suite retail/full-development --tasks R01,R05,R06,R07 --repetitions 3`; use the registration for the other suites. Runs reset isolated demo data and must not overlap other writes, integration tests, or capacity measurements. Reruns create new records without overwriting this batch. The old 54-attempt and targeted runs retain their original versions and are not combined into a new score.
 
-## 用户等待与调用量
+## User waiting time and model usage
 
-30次任务包含61个聊天回合：58个 `turn_complete`、3个 `error`。依据原始monotonic时间，回合结束等待p50 **30.54秒**、p95 **87.08秒**、最大 **159.65秒**；包含失败。59回合出现文字或完整UI事件，首次此类事件p50 **16.00秒**、p95 **68.77秒**；其余2次首调故障没有该事件，不填0。p95用最近秩，未将少量样本外推为p99或并发容量。
+The 30 task attempts contain 61 chat turns: 58 `turn_complete` and 3 `error`. Raw monotonic timing gives terminal-event waiting time of **30.54 seconds p50**, **87.08 seconds p95**, and **159.65 seconds maximum**, including failures. Text or a complete UI event appeared in 59 turns; time to the first such event was **16.00 seconds p50** and **68.77 seconds p95**. The other 2 first-call failures had no such event and are not filled with zero. p95 uses nearest rank; these small samples were not extrapolated to p99 or concurrent capacity.
 
-这些是请求发出到实际事件/终态的聊天等待，不包含人工思考与点击耗时；首UI可能是建议卡，不一概称“首个有效业务结果”。多回合、审批和付款组成的完整任务不等于一次聊天。
+These timings measure chat waiting from request dispatch to actual events/terminal state, excluding human thinking and clicks. The first UI may be a suggestion card and is not always the first useful business result. A complete task with multiple turns, approvals, and payment is not a single chat.
 
-累计352次模型调用，其中348次返回用量；4个回合的用量不完整。已报告输入2,724,351 token（包含缓存读取）、输出66,878 token，缓存读取2,042,240 token。缓存数是输入token组成，不是请求命中率；缺失用量与缓存创建量不补0，不据此推导账单费用或节省比例。
+There were 352 model calls, 348 with returned usage; usage was incomplete for 4 turns. Reported input was 2,724,351 tokens, including 2,042,240 cache-read tokens; output was 66,878 tokens. Cache reads are part of input tokens, not a request hit rate. Missing usage and unreported cache creation are not filled with zero, and these counts do not establish billed cost or savings.
 
-R07前两次Python各首次失败后在原预算内成功，第三次Python首次成功；三次均有SQL修正，不能宣传首次全对。S01执行2次Responses搜索、每次服务报告1次search；S02执行1次Responses搜索、服务报告2次search。搜索与分析/记忆调用均纳入上述用量。
+In R07, the first two repetitions each recovered from an initial Python failure within the original budget; Python succeeded on the first attempt in the third repetition. All three required SQL corrections, so this is not first-attempt perfection. S01 made 2 Responses search requests, each reporting 1 search; S02 made 1 Responses search request reporting 2 searches. Search, analysis, and memory calls are included in the usage above.
 
-## 搜索来源核对
+## Search-source review
 
-S01关键结论分别核对 [LILYSILK通用清洁页](https://blog.lilysilk.com/how-to-clean-silk/amp/)、[其床笠洗护页](https://blog.lilysilk.com/how-to-care-for-your-silk-fitted-sheet-for-longer-usage/amp/) 和 [Slip洗护页](https://www.slip.com/pages/care)。模型区分了不同产品的机洗和温度条件，没有给本站AR-1606补写制造商洗护承诺。
+S01's key claims were checked against [LILYSILK's general cleaning page](https://blog.lilysilk.com/how-to-clean-silk/amp/), [its fitted-sheet care page](https://blog.lilysilk.com/how-to-care-for-your-silk-fitted-sheet-for-longer-usage/amp/), and [Slip's care page](https://www.slip.com/pages/care). The model distinguished machine-washing and temperature conditions for different products and did not invent a manufacturer care promise for store product AR-1606.
 
-S02核对 [促销政策](https://support.google.com/merchants/answer/2877565?hl=en)、[展示说明](https://support.google.com/merchants/answer/13507894?hl=en)、[数据规范](https://support.google.com/merchants/answer/2906014?hl=en) 与 [显示日期](https://support.google.com/merchants/answer/13861050?hl=en)。回答保留资格、市场、审核和数据映射条件，没有把本站审批当成Google投放成功。核对日为2026-09-07，网页可能后续变化。
+S02 was checked against Google's [promotion policies](https://support.google.com/merchants/answer/2877565?hl=en), [display guidance](https://support.google.com/merchants/answer/13507894?hl=en), [data specification](https://support.google.com/merchants/answer/2906014?hl=en), and [display dates](https://support.google.com/merchants/answer/13861050?hl=en). The answer retained eligibility, market, review, and data-mapping conditions without equating store approval with successful publication on Google. Sources were checked on 2026-09-07 and may change later.
 
-既有记忆、会话并发、停止/付款恢复、沙箱和权限边界证据按各自版本继续保留，不重新计入本批。新买家归属消融的关闭/开启均0/3、且未触达敏感写的结论不变；不能使用旧客服55/300→0/300代表ShopMate的新链路成绩。
+Existing evidence for memory, conversation concurrency, stop/payment recovery, sandboxing, and authorization boundaries retains its own source versions and is not counted again here. The new buyer-ownership ablation remains 0/3 with the guard disabled and 0/3 enabled, with neither arm reaching a sensitive write. The historical customer-service result of 55/300 → 0/300 does not represent ShopMate's new workflow.

@@ -1,22 +1,22 @@
-# 冻结版本业务验收：78/90
+# Frozen-version business acceptance: 78/90
 
-CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`  
-ShopMate：`9173037d6eb43d295f6ccb5876fa6284e882dfdb`  
-结果目录：`evals/results/20260905T210851.446894Z`。  
-数据截止：`2026-09-05T00:00:00Z`，UTC；fixture来源为上述CityBuddy提交。  
-主模型与分析模型均为`gpt-5.6-terra`，经CLIPROXY Chat Completions适配调用。每个chat turn主/分析调用共用16次模型调用、300秒截止时间；主循环另有8个工具轮次限制，未调整预算。
+CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`<br>
+ShopMate: `9173037d6eb43d295f6ccb5876fa6284e882dfdb`<br>
+Result directory: `evals/results/20260905T210851.446894Z`.<br>
+Data cutoff: `2026-09-05T00:00:00Z`, UTC; fixture source is the CityBuddy commit above.<br>
+Both main and analysis models used `gpt-5.6-terra` through the CLIPROXY Chat Completions adapter. Main/analysis calls shared 16 model calls and a 300-second deadline per chat turn. The main loop also had an 8-tool-round limit; budgets were unchanged.
 
-固定30个业务场景各执行3次；每次从R0和新会话开始，同一场景内部保留多轮对话和真实操作员步骤。按冻结题面、实际用户可见回答和卡片、参考SQL、审批回执及写入终态判定。内部错误若在原预算内自行纠正并完成目标，可判通过；`executed`不是业务通过标记。失败保留原分母，不用隐藏工具结果补用户答案，不拼接旧批或定向回归的成功。
+Each of 30 fixed business scenarios ran 3 times. Every attempt started from R0 and a new conversation, retaining multi-turn dialogue and real operator steps within the scenario. Judgment used frozen task statements, actual user-visible answers/cards, reference SQL, approval receipts, and final write states. An internal error could pass if corrected within the original budget and the goal was completed. `executed` is not a business-pass marker. Failures retain their original denominator; hidden tool results do not fill gaps in the user answer, and successes from old batches or targeted regressions are not combined here.
 
-**90次全部完成判读：78 PASS、12 FAIL，业务完成率78/90（86.67%）。** 执行状态另计88 executed、2 failed（S20-r3、S30-r1）；两次均因没有可批准的匹配草案而停止后续步骤，未尝试操作员写入，未被归为provider故障。业务失败包括正常executed但未完成题目要求的样本，全部保留在90次分母。
+**All 90 attempts were assessed: 78 PASS, 12 FAIL, for business completion of 78/90 (86.67%).** Execution status separately recorded 88 executed and 2 failed (S20-r3, S30-r1). Both stopped subsequent steps because no matching approvable draft existed, without attempting operator writes; neither was classified as a provider failure. Business failures also include normally executed attempts that did not meet the task, all retained in the denominator of 90.
 
-本批结束时间为`2026-09-05T23:02:57.800425+00:00`，运行正常收尾。以下配置和结果属于本批冻结版本，主工具轮次上限为8；不将后续版本的限制调整倒写进本批证据。
+The batch ended at `2026-09-05T23:02:57.800425+00:00` and shut down normally. The configuration and results below belong to this frozen version with 8 main-tool rounds. Later limit changes are not retroactively applied to this evidence.
 
-原始SSE、模型/工具记录、操作员回执与各阶段SQL保留在本目录。任务定义与参考SQL在同一提交的`evals/formal.json`和`evals/sql/`。下文原件路径均相对本结果目录。
+Raw SSE, model/tool records, operator receipts, and SQL from each stage are retained in this directory. Task definitions and reference SQL are in `evals/formal.json` and `evals/sql/` at the same commit. Raw paths below are relative to this result directory.
 
-## 逐场景结果
+## Per-scenario results
 
-| 场景 | r1 | r2 | r3 | 完成数 |
+| Scenario | r1 | r2 | r3 | Completed |
 |---|---|---|---|---|
 | S01 | PASS | PASS | PASS | 3/3 |
 | S02 | PASS | PASS | FAIL | 2/3 |
@@ -49,47 +49,48 @@ ShopMate：`9173037d6eb43d295f6ccb5876fa6284e882dfdb`
 | S29 | PASS | PASS | PASS | 3/3 |
 | S30 | FAIL | FAIL | PASS | 1/3 |
 
-## 十二次业务失败
 
-| 次数 | 业务原因 | 原件路径 |
+## Twelve business failures
+
+| Attempt | Business reason | Raw paths |
 |---|---|---|
-| S02-r3 | load_skill加7次串行目录查询耗尽8个主工具轮，第9次调用被强制仅输出文字；尚未查询成交额，未交付前三名、金额及份额。共享16次调用/300秒未耗尽，不是已证实的provider或数据库故障。 | `S02-r3/step-01.sse`、`S02-r3/step-01-terminal.json`、`S02-r3/sql/after/S02.jsonl` |
-| S06-r1 | 将实际14日半开窗口写成15日，进一步向用户展示4/15=26.67%的成交日覆盖率；正确应4/14≈28.57%。四个日期及金额正确，不抵消错误分母和派生值。 | `S06-r1/saved-session.json`、`S06-r1/step-01-terminal.json`、`S06-r1/sql/after/S06.jsonl` |
-| S07-r1 | 两项裸sales引用均解析为CNY快照2304/+17.79%；其中一项说明却标USD280/+11.11%，形成用户可见金额、币种、增幅矛盾。正确正文没有撤销错误卡片。 | `S07-r1/step-01.sse`、`S07-r1/saved-session.json`、`S07-r1/sql/after/S07.jsonl` |
-| S07-r3 | 正文把CNY前期金额写为2058元，实际为1956元；同文的本期2304、差额348及17.79%也与2058不相容。 | `S07-r3/saved-session.json`、`S07-r3/step-01-terminal.json`、`S07-r3/sql/after/S07.jsonl` |
-| S12-r3 | period长度验证连续失败后用尽本轮分析机会，实际分析查询0条，最终未给两期金额、件数与商品贡献。 | `S12-r3/step-01.sse`、`S12-r3/step-01-terminal.json`、`S12-r3/saved-session.json` |
-| S13-r3 | 只完成6款商品（含USD），限量款未继续查询，最终明确本题所需的该CNY商品仍未核对，整体范围没有完成。 | `S13-r3/step-01-terminal.json`、`S13-r3/saved-session.json`、`S13-r3/sql/after/S13.jsonl` |
-| S14-r3 | 实際只查5款CNY，最终明确限量款未纳入人民币合计；已查商品及杯的日期贡献正确，但所需整体范围仍未完成。 | `S14-r3/step-01-terminal.json`、`S14-r3/saved-session.json`、`S14-r3/sql/after/S14.jsonl` |
-| S17-r1 | 追问要求在上一轮有成交商品中筛库存≥50，实际加入零成交的Canvas tote并显示保留3款；正确仅coffee和tea两款。 | `S17-r1/step-02.sse`、`S17-r1/step-02-terminal.json`、`S17-r1/sql/after/S17.jsonl` |
-| S17-r3 | 与r1相同，第二轮将候选换成coffee/tea/tote，实际SQL和可见卡均加入原成交集合之外的帆布袋，错误没有纠正。 | `S17-r3/step-02.sse`、`S17-r3/step-02-terminal.json`、`S17-r3/sql/after/S17.jsonl` |
-| S20-r3 | load_skill加7次串行目录读取耗尽8个主工具轮，尚未分析或建草案便被强制文字收尾。SQL确认草案0、事件0、价格仍2400；无匹配草案是未创建的结果，非金额或币种匹配错误；未尝试操作员写入。 | `S20-r3/step-01.sse`、`S20-r3/execution.json`、`S20-r3/sql/step-02-before/drafts.jsonl`、`S20-r3/sql/after/products.jsonl` |
-| S30-r1 | load_skill、两款商品各自的search/get/context、pending共8个串行工具轮后，主循环强制文字收尾，两张草案均未创建。SQL确认草案0、事件0，咖啡/茶价格未变；后续审批无法执行，未尝试操作员写入。 | `S30-r1/step-01.sse`、`S30-r1/execution.json`、`S30-r1/sql/step-02-before/drafts.jsonl`、`S30-r1/sql/after/products.jsonl` |
-| S30-r2 | 两张独立草案及咖啡批准正确，但用户明确要求取消茶后，模型仅读商品与pending，没有调用discard_change。最终茶仍PREPARED、result/resolved_at为空；诚实说明未取消不等于完成任务。 | `S30-r2/step-03.sse`、`S30-r2/step-02-operator.json`、`S30-r2/sql/after/drafts.jsonl`、`S30-r2/sql/after/events.jsonl` |
+| S02-r3 | load_skill plus 7 serial catalog queries exhausted the 8 main-tool rounds. The ninth call was forced to return text only, before querying revenue or delivering the top three products, amounts, and shares. The shared 16-call / 300-second budget was not exhausted; this was not a confirmed provider or database failure. | `S02-r3/step-01.sse`, `S02-r3/step-01-terminal.json`, `S02-r3/sql/after/S02.jsonl` |
+| S06-r1 | Described the actual 14-day half-open interval as 15 days and showed a sales-day coverage of 4/15 = 26.67%, instead of 4/14 ≈ 28.57%. Correct dates and amounts for the four days do not offset the wrong denominator and derived value. | `S06-r1/saved-session.json`, `S06-r1/step-01-terminal.json`, `S06-r1/sql/after/S06.jsonl` |
+| S07-r1 | Two bare sales references both resolved to the CNY snapshot 2304 / +17.79%, while one description labeled it USD 280 / +11.11%, creating a visible amount/currency/growth contradiction. Correct prose did not retract the incorrect card. | `S07-r1/step-01.sse`, `S07-r1/saved-session.json`, `S07-r1/sql/after/S07.jsonl` |
+| S07-r3 | Prose gave the prior CNY amount as 2058 instead of 1956. Its current amount 2304, difference 348, and 17.79% were also incompatible with 2058. | `S07-r3/saved-session.json`, `S07-r3/step-01-terminal.json`, `S07-r3/sql/after/S07.jsonl` |
+| S12-r3 | Repeated period-length validation failures exhausted the turn's analysis opportunities. No analysis queries ran, and the final answer omitted both periods' amounts, quantities, and product contributions. | `S12-r3/step-01.sse`, `S12-r3/step-01-terminal.json`, `S12-r3/saved-session.json` |
+| S13-r3 | Covered only 6 products, including USD, without querying the limited edition. The final answer explicitly left that required CNY product unchecked, so the full scope was incomplete. | `S13-r3/step-01-terminal.json`, `S13-r3/saved-session.json`, `S13-r3/sql/after/S13.jsonl` |
+| S14-r3 | Queried only 5 CNY products and explicitly excluded the limited edition from the CNY total. Queried products and the mug's date contributions were correct, but the required full scope was incomplete. | `S14-r3/step-01-terminal.json`, `S14-r3/saved-session.json`, `S14-r3/sql/after/S14.jsonl` |
+| S17-r1 | The follow-up requested stock ≥ 50 within the preceding turn's products with sales. It added the zero-sales Canvas tote and showed 3 retained products; only coffee and tea qualified. | `S17-r1/step-02.sse`, `S17-r1/step-02-terminal.json`, `S17-r1/sql/after/S17.jsonl` |
+| S17-r3 | As in r1, the second turn replaced the candidates with coffee/tea/tote. Both actual SQL and the visible card added the tote from outside the original sales set, without correction. | `S17-r3/step-02.sse`, `S17-r3/step-02-terminal.json`, `S17-r3/sql/after/S17.jsonl` |
+| S20-r3 | load_skill plus 7 serial catalog reads exhausted the 8 main-tool rounds, forcing a text-only ending before analysis or draft creation. SQL confirmed 0 drafts, 0 events, and price still 2400. The missing match resulted from no draft being created, not an amount/currency mismatch; no operator write was attempted. | `S20-r3/step-01.sse`, `S20-r3/execution.json`, `S20-r3/sql/step-02-before/drafts.jsonl`, `S20-r3/sql/after/products.jsonl` |
+| S30-r1 | load_skill, separate search/get/context calls for two products, and pending used 8 serial tool rounds, after which the main loop was forced to end in text. Neither draft was created. SQL confirmed 0 drafts, 0 events, and unchanged coffee/tea prices. Subsequent approvals could not run; no operator writes were attempted. | `S30-r1/step-01.sse`, `S30-r1/execution.json`, `S30-r1/sql/step-02-before/drafts.jsonl`, `S30-r1/sql/after/products.jsonl` |
+| S30-r2 | Two independent drafts and coffee approval were correct. After an explicit request to cancel tea, the model only read products and pending changes without calling discard_change. Tea remained PREPARED, with result/resolved_at empty. Honestly stating that cancellation had not happened did not complete the task. | `S30-r2/step-03.sse`, `S30-r2/step-02-operator.json`, `S30-r2/sql/after/drafts.jsonl`, `S30-r2/sql/after/events.jsonl` |
 
-S13/S14遗漏的商品在夹具中恰为零，也不能由评估者代补其未完成的查询和结论。S02/S20/S30的主工具轮数上限与模型调用总额度不同；没有把模型“无法读取”的文字当成实际数据源故障。
+The products omitted in S13/S14 happened to have zero sales in the fixture, but the evaluator cannot supply missing queries or conclusions. S02/S20/S30's main-tool-round limit is distinct from the total model-call allowance. A model's “无法读取” (verbatim model text: cannot read) claim was not treated as an actual data-source failure.
 
-## 已核对的业务终态与过程观察
+## Checked business terminal states and process observations
 
-S01–S18的只读任务未改变商品、草案、事件或付款历史。S19、S20及S21–S30中实际发起的审批均匹配指定草案，待审阶段保持原价，批准后商品价格、版本、generation与对应事件符合回执；未观察到未批准调价、额外商品变动或付款历史污染。
+Read-only S01–S18 tasks did not change products, drafts, events, or payment history. Every approval actually attempted in S19, S20, and S21–S30 matched the specified draft. Prices remained unchanged while pending; after approval, product prices, versions, generation, and corresponding events matched receipts. No unapproved price changes, extra product changes, or payment-history contamination were observed.
 
-S21–S29的单品、同批多品、USD价格、只待审、撤销重提及分析后取消均符合各自终态。S30-r1零草案、零写入；S30-r2只完成咖啡审批，茶仍待审，故仍判失败；S30-r3完成咖啡批准、茶取消并分别读回。上述观察不额外增加通过次数，不用“没有错写”替代“完成任务”，也不代替独立权限或并发事务验证。
+S21–S29 reached their specified terminal states for single-product, same-batch multi-product, USD-price, pending-only, cancel/resubmit, and cancel-after-analysis cases. S30-r1 had zero drafts/writes. S30-r2 completed only coffee approval, leaving tea pending, so it failed. S30-r3 approved coffee, canceled tea, and read both back. These observations add no extra passes, do not substitute no incorrect writes for task completion, and do not replace independent authorization or concurrent-transaction tests.
 
-- S11三次均实际出现MySQL1690，并在原预算内改为SIGNED相减后完成正确排名；没有把中间错误单独判失败。
-- S16-r3的一条SQL虽执行成功，却因重复JOIN放大总计；模型在可见交付前重新聚合为正确96件/2304元，按原目标通过。
-- S02-r1用变化百分比样式展示份额，但相邻说明与展开卡明确份额含义；S20-r1的额外重复指标卡误将6款加一个聚合指标题为“7款商品”，完整分析卡、选品依据及批准终态仍正确。保留呈现质量问题，不把PASS描述成完美表达。
-- 多次present_metrics引用或brief验证失败后通过实际重查、分析卡或最终正文完成目标；通过不等于没有工具错误，失败也不能只由工具is_error判断。
+- All three S11 attempts actually encountered MySQL 1690 and completed correct rankings after switching to SIGNED subtraction within the original budget. Intermediate errors were not separate task failures.
+- One SQL query in S16-r3 executed successfully but inflated totals through repeated JOINs. Before visible delivery, the model reaggregated to the correct 96 units / CNY 2304 and passed the original goal.
+- S02-r1 used a change-percentage style to display share, but adjacent explanations and the expanded card made the share meaning clear. An extra duplicate metric card in S20-r1 labeled 6 products plus an aggregate metric as “7款商品” (verbatim model text: 7 products), while the full analysis card, selection rationale, and approval outcome remained correct. These presentation-quality issues are retained; PASS does not mean perfect expression.
+- Several attempts recovered from present_metrics references or brief-validation failures through actual queries, analysis cards, or final prose. Passing does not mean no tool errors, and a tool's is_error flag alone does not determine task failure.
 
-## 实际调用与耗时
+## Actual calls and elapsed time
 
-145个chat turn共记录928次模型调用：主循环743次、分析子循环185次。928次均明确报告输入/输出和缓存读取字段。按每次调用累计一次，输入合计 **5,954,918 token**，输出 **191,877 token**；总输入已经包含缓存读取，不再叠加运行时汇总或缓存值。
+Across 145 chat turns, 928 model calls were recorded: 743 main-loop and 185 analysis-loop calls. All 928 explicitly reported input/output and cache-read fields. Counting each call once, total input was **5,954,918 tokens** and output **191,877 tokens**. Input already includes cache reads; runtime aggregates and cached tokens are not added again.
 
-明确报告的缓存读取为 **4,727,296 token**，占总输入 **79.38%**（4,727,296／5,954,918）。这是本次已报告输入token中来自缓存读取的比例，**不是请求缓存命中率，也不是已证明的时延或费用收益**。缓存创建未测量；没有代理费率或账单，不把token换算成实际成本。
+Explicitly reported cache reads totaled **4,727,296 tokens**, or **79.38%** of input (4,727,296 / 5,954,918). This is the share of reported input tokens read from cache, **not a request cache hit rate or demonstrated latency/cost benefit**. Cache creation was not measured. Without proxy rates or invoices, token counts are not converted to actual cost.
 
-| 统计对象 | 样本数 | 中位数 | p95 | 范围 |
+| Measurement | Samples | Median | p95 | Range |
 |---|---|---|---|---|
-| 场景执行器墙钟 | 90次 | 69.002554秒 | 135.225086秒 | 36.669278–206.127213秒 |
-| 单chat turn服务端耗时 | 145轮 | 31.942秒 | 98.746秒 | 7.440–201.106秒 |
+| Scenario executor wall time | 90 attempts | 69.002554 seconds | 135.225086 seconds | 36.669278–206.127213 seconds |
+| Per-chat server duration | 145 turns | 31.942 seconds | 98.746 seconds | 7.440–201.106 seconds |
 
-场景墙钟包含重置、SQL采集和脚本操作员审批等步骤；单chat turn涵盖本轮主/分析模型与工具，不加入真实人工审批等待。两者都不是首token或首个有效结果时延；本批没有相应首结果时间记录。分位数使用排序后线性插值，保留通过和失败任务，仅描述本次本地执行，不作为容量或线上SLO。
+Scenario wall time includes reset, SQL collection, and scripted operator approvals. Per-chat duration includes main/analysis models and tools, excluding actual human approval waiting. Neither measures first-token or first-useful-result latency; this batch retained no corresponding first-result timestamps. Percentiles use linear interpolation after sorting, include passes and failures, and describe this local run without capacity or online-SLO claims.
 
-统计明细见同目录`statistics.json`，原始逐调用、SSE、回执及SQL继续保留。本结果是同一冻结版本、固定30个业务场景各3次的业务验收与回归；不称90种场景、未见过的公开基准或线上泛化能力估计。后续版本与针对性回归独立保存，不覆盖本批、不拼接成功样本。
+See `statistics.json` in this directory for detailed statistics. Raw per-call records, SSE, receipts, and SQL remain available. This is business acceptance/regression of 30 fixed scenarios repeated 3 times on one frozen version, not 90 distinct scenarios, an unseen public benchmark, or an estimate of online generalization. Later versions and targeted regressions are saved independently without overwriting this batch or combining successful samples.

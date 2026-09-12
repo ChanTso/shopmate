@@ -1,13 +1,13 @@
-# 三项针对性回归：1/3
+# Three targeted regressions: 1/3
 
-CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`  
-ShopMate：`91347b986fcfc65d08c4012dcaa14e47dd7f0ada`  
-沿用首次正式任务定义、固定数据、主/分析模型 `gpt-5.6-terra` 及每 turn 16 次调用/300 秒预算。S03、S08、S11 各运行一次；三次均执行结束，业务完成 1/3。这是调试回归，不并入原 84/90。
+CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`<br>
+ShopMate: `91347b986fcfc65d08c4012dcaa14e47dd7f0ada`<br>
+The run retained the first formal task definitions, fixed data, main/analysis model `gpt-5.6-terra`, and per-turn budget of 16 calls / 300 seconds. S03, S08, and S11 ran once each. All three executed to completion; business completion was 1/3. This diagnostic regression is separate from the original 84/90.
 
-| 场景 | 判定 | 实际结果 |
+| Scenario | Verdict | Actual outcome |
 |---|---|---|
-| S03-r1 | PASS | 历史均价23元、当前售价24元、70件/1610元正确；可见回答明确不能由价差断定优惠或组合销售。两次指标呈现工具失败，正文仍完整交付。 |
-| S08-r1 | FAIL | 库存80、42天没有成交正确，但两期比较仍扩大为全店七款商品，未交付帆布袋0→0及增长率不适用。Skill实际加载，范围错误已在首个委派参数中出现；新验证拒绝超长说明和过多segments后，第三次委派触及既有次数上限，没有分析子调用。主循环之后取得帆布袋空序列，最终仍给全店汇总。 |
-| S11-r1 | FAIL | 三条SQL均执行成功，却以猜测的 Ceramic mug（陶瓷杯）等名称做精确关联，漏掉实际 Ceramic mug，最终把杯判为0并说两榜相同。参考SQL应为杯12件/456元，与茶交换件数/金额的第二三名。1690反馈未触发，不能声称这次验证了模型利用该反馈恢复。 |
+| S03-r1 | PASS | Historical average CNY 23, current price CNY 24, and 70 units / CNY 1610 were correct. The visible answer explicitly rejected inferring discounts or bundles from the price difference. Two metric-presentation calls failed, but the prose fully delivered the answer. |
+| S08-r1 | FAIL | Stock 80 and no sales for 42 days were correct, but the two-period comparison again expanded to all seven products, omitting the tote's 0 → 0 and inapplicable growth rate. The Skill was actually loaded; the scope error was already in the first delegation parameters. After new validation rejected an overlong brief and too many segments, the third delegation hit the existing attempt limit, with no analysis-model calls. The main loop later obtained the tote's empty series but still delivered store totals. |
+| S11-r1 | FAIL | All three SQL queries executed, but exact joins used guessed names such as `Ceramic mug（陶瓷杯）` (verbatim query value), missing the actual `Ceramic mug`. The final answer assigned the mug zero sales and claimed both rankings were identical. Reference SQL gives the mug 12 units / CNY 456; mug and tea exchange second/third place between quantity and revenue rankings. Error 1690 did not occur, so this attempt did not verify recovery using that feedback. |
 
-三个场景前后商品、历史交易、generation、草案和商品事件均保持只读。原题与原始记录未改写。后续针对主循环范围路由及分析SQL的商品身份来源处理通用原因，再独立回归；不通过改题面或移除失败任务补成绩。
+Before/after products, historical transactions, generation, drafts, and product events remained unchanged in all three scenarios. Original tasks and raw records were not rewritten. Follow-up work addressed the general causes in main-loop scope routing and product-identity sources for analysis SQL, with independent regressions, without changing task statements or removing failed tasks to improve the score.

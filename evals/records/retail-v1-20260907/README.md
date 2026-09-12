@@ -1,166 +1,166 @@
-# 完整零售业务验收：2026-09-07
+# Full retail business acceptance: 2026-09-07
 
-完整零售版本54次业务验收已全部完成，**46/54通过（85.2%）**；8次普通模型业务失败保留。后续版本12次定向复测为**6/12**，最终买家归属校准另列，两者均不覆盖原54次。
+All 54 attempts for the full retail version completed: **46/54 passed (85.2%)**, with 8 ordinary model business failures retained. A later version scored **6/12** on targeted reruns. Final buyer-ownership calibration is reported separately; neither replaces the original 54 attempts.
 
-## 范围、版本与判定
+## Scope, versions, and judgment
 
-本次复用18个已知业务场景，每个独立运行3次，共54次。这是同题重复验收，不能称为未见场景的泛化成绩，也不代表完整零售业务空间。每次从retail-R0重置，四组使用同一干净源码和预算，开发重跑没有替换正式失败。
+The run reused 18 known business scenarios, each independently repeated 3 times, for 54 attempts. This is repeated acceptance of known tasks, not unseen-scenario generalization or coverage of the entire retail business space. Each attempt started from retail-R0. All four groups used the same clean source and budget; development reruns did not replace formal failures.
 
-- ShopMate：`6056c26aa29bc60710ce14cdecf927219491a15d`。
-- CityBuddy：`99a7de52c542cbf57b8d3c71e16ded529e198ea6`。
-- 数据：`shopmate-retail-v1`，87目录根/104交易SKU，90个完整上海自然日，合成CNY金额；报告截止`2026-09-05T00:00:00+08:00`。促销使用每题的真实操作时间，不用历史报告截止代替今天。
-- 主/分析模型：`gpt-5.6-terra`，CLIPROXY Chat Completions经Messages适配；该别名不是固定不变的上游模型快照。网页搜索实际走Responses，Python在独立Docker容器执行。
-- 每聊天回合共享16次模型调用/300秒，主循环最多12工具轮；搜索和Python各最多3次尝试。一个任务可能有多轮聊天和用户按钮，任务数、聊天数与模型调用数分别计数。
-- 本机Apple M4、10物理核、24GiB内存；Docker VM 8 CPU/14GiB，Commerce限4 CPU。Shop API在宿主运行，Java/MySQL/Redis/RocketMQ在独立Shop拓扑。正式期间未与City容量压测并行，前端与本次浏览器已关闭。
+- ShopMate: `6056c26aa29bc60710ce14cdecf927219491a15d`.
+- CityBuddy: `99a7de52c542cbf57b8d3c71e16ded529e198ea6`.
+- Data: `shopmate-retail-v1`, 87 catalog roots / 104 tradable SKUs, 90 complete Shanghai calendar days, synthetic CNY amounts; report cutoff `2026-09-05T00:00:00+08:00`. Promotions used each task's actual operation time, not the historical report cutoff as today's date.
+- Main/analysis model: `gpt-5.6-terra`, CLIPROXY Chat Completions through the Messages adapter. The alias is not an immutable upstream model snapshot. Web search used Responses; Python ran in a separate Docker container.
+- Each chat turn shared 16 model calls / 300 seconds, with at most 12 main-tool rounds and 3 attempts each for search and Python. One task may contain multiple chats and user-button actions; task, chat, and model-call counts are separate.
+- Local Apple M4, 10 physical cores, 24 GiB RAM; Docker VM 8 CPU / 14 GiB, Commerce limited to 4 CPU. Shop API ran on the host; Java/MySQL/Redis/RocketMQ ran in the isolated Shop topology. The formal run did not overlap City capacity tests; the frontend and the browser used for this run were closed.
 
-按[预先登记的任务和判定口径](../../retail/acceptance-v1.md)，逐题核对真实模型输出、原始HTTP/SSE、保存卡片及权威SQL。`executed`和`turn_complete`只表示执行状态。金额、库存、身份、版本、审批与原回执须符合真实业务；最终回答给错事实或统计语义仍记失败，不能用数据没有写错抵销。
+Each task was judged under the [preregistered tasks and definitions](../../retail/acceptance-v1.md), using actual model output, raw HTTP/SSE, saved cards, and authoritative SQL. `executed` and `turn_complete` describe execution state only. Amounts, stock, identities, versions, approvals, and original receipts must match business truth. Incorrect final facts or statistical meaning still fail; correct writes cannot offset them.
 
-## 原54次结果
+## Original 54-attempt results
 
-| 组别 | 已知场景×重复 | 业务通过 | 普通业务失败 | 原件批次（`evals/results/`） |
+| Group | Known scenarios × repetitions | Business passes | Ordinary business failures | Raw batch (`evals/results/`) |
 |---|---:|---:|---:|---|
-| D 经营分析与调价 | 7×3 | 18/21 | 3 | `20260907T055506.124240Z` |
-| R 零售交易与商家操作 | 7×3 | 17/21 | 4 | `20260907T063754.317220Z` |
-| B 买家方案与购物车 | 2×3 | 6/6 | 0 | `20260907T072011.377762Z` |
-| S 外部来源研究 | 2×3 | 5/6 | 1 | `20260907T072813.564683Z` |
-| 合计 | 18×3 | **46/54** | **8** | 同一Shop/City版本 |
+| D Business analysis and price changes | 7×3 | 18/21 | 3 | `20260907T055506.124240Z` |
+| R Retail transactions and merchant operations | 7×3 | 17/21 | 4 | `20260907T063754.317220Z` |
+| B Buyer plans and carts | 2×3 | 6/6 | 0 | `20260907T072011.377762Z` |
+| S External-source research | 2×3 | 5/6 | 1 | `20260907T072813.564683Z` |
+| Total | 18×3 | **46/54** | **8** | Same Shop/City versions |
 
-54次均实际执行，没有任务被归类为provider failure、unknown或not_run；四组均正常结束、无保留的未知写状态。54次共105轮聊天，均收到`turn_complete`，这些执行事实不改变46/54的业务判定。
+All 54 attempts executed, with none classified as provider failure, unknown, or not_run. All four groups ended normally with no retained unknown write outcomes. The 54 attempts contained 105 chat turns, all receiving `turn_complete`; these execution facts do not change the business score of 46/54.
 
-| 场景 | r1 | r2 | r3 |
+| Scenario | r1 | r2 | r3 |
 |---|---|---|---|
-| D02 两期金额和订单的绝对/百分比变化 | PASS | PASS | PASS |
-| D04 完整目录的历史均价与现价 | PASS | FAIL | PASS |
-| D05 继承期间的商品拆分追问 | PASS | FAIL | FAIL |
-| D07 澄清日期后限定单SKU分析 | PASS | PASS | PASS |
-| D08 零成交、零基期与广告因果边界 | PASS | PASS | PASS |
-| D10 三商品整批调价 | PASS | PASS | PASS |
-| D11 取消旧意图后重新提交并批准 | PASS | PASS | PASS |
-| R01 比较、加车、用户结账付款与退款确认 | PASS | PASS | PASS |
-| R02 两买家订单、履约、资料与发布政策 | PASS | PASS | FAIL |
-| R03 八SKU家族内容更新 | PASS | PASS | PASS |
-| R04 先补货保留暂停，再单独恢复销售 | PASS | PASS | PASS |
-| R05 本地营销计划更新与真实观察事实 | FAIL | PASS | PASS |
-| R06 促销批准、买家付款与商家近期订单 | PASS | PASS | PASS |
-| R07 经营事实口径与SQL→Python分析 | PASS | FAIL | FAIL |
-| B01 100元阅读角方案 | PASS | PASS | PASS |
-| B02 真实ADD、SET与REMOVE购物车 | PASS | PASS | PASS |
-| S01 买家官方洗护来源与本站事实 | PASS | PASS | PASS |
-| S02 商家官方促销指南与本站能力边界 | FAIL | PASS | PASS |
+| D02 Absolute/percentage changes in amounts and orders across two periods | PASS | PASS | PASS |
+| D04 Historical average and current prices across the complete catalog | PASS | FAIL | PASS |
+| D05 Product-breakdown follow-up retaining the period | PASS | FAIL | FAIL |
+| D07 Single-SKU analysis after date clarification | PASS | PASS | PASS |
+| D08 Zero sales, zero baseline, and limits on advertising causality | PASS | PASS | PASS |
+| D10 Three-product batch price change | PASS | PASS | PASS |
+| D11 Cancel the old intent, resubmit, and approve | PASS | PASS | PASS |
+| R01 Compare, add to cart, user checkout/payment, and refund confirmation | PASS | PASS | PASS |
+| R02 Two buyers' orders, fulfillment, profiles, and published policies | PASS | PASS | FAIL |
+| R03 Content update for an eight-SKU family | PASS | PASS | PASS |
+| R04 Restock while paused, then resume sales separately | PASS | PASS | PASS |
+| R05 Local campaign update and actual observation facts | FAIL | PASS | PASS |
+| R06 Promotion approval, buyer payment, and merchant recent orders | PASS | PASS | PASS |
+| R07 Business fact definitions and SQL → Python analysis | PASS | FAIL | FAIL |
+| B01 CNY 100 reading-corner plan | PASS | PASS | PASS |
+| B02 Actual ADD, SET, and REMOVE cart operations | PASS | PASS | PASS |
+| S01 Official care sources for buyers and store facts | PASS | PASS | PASS |
+| S02 Official promotion guidance for merchants and store capability boundaries | FAIL | PASS | PASS |
 
-### 八次失败及仍然正确的部分
+### Eight failures and the parts that remained correct
 
-| 失败试次 | 最终业务错误 | 正确部分与边界 |
+| Failed attempt | Final business error | Correct parts and limits |
 |---|---|---|
-| D04-r2 | 用各SKU成交日数的MAX表示家族成交日数；该聚合不等于家族日期去重。 | 主要金额、件数、历史均价与现价正确；错误附加字段仍使整题失败。 |
-| D05-r2 | SQL包含上海9月4日全天，最终描述却将9月4日标成不含右端。 | 查询窗口和金额正确，错误发生在最终期间表达。 |
-| D05-r3 | 合计行的“活跃天数”填成96个成交SKU，实际全店14天。 | 商品拆分金额正确，合计列的统计对象与单位错误。 |
-| R02-r3 | 一笔真实订单ID少抄一个字符；明确No order后未纠正，错误称真实履约记录不可读。 | 其他本人订单、第二买家资料与政策正确；没有业务写入，不能归因于后端数据不可用。 |
-| R05-r1 | 将实际上海7月16日00:00的排他终点说成7月15日不含，漏掉一天。 | 原工具时间含正确offset；计划更新、预算与未知归因收入均正确，Java未写错日期。 |
-| R07-r2 | 把资源整数`publication_version`与来源标签`retail-v1`混同，筛出空目录，再补成28日零值并交给Python。 | Python实际执行成功，但输入集合错误；最终0总额/0标准差与权威SQL的80471.65元/1142.2018308657343元冲突。第一轮还出现活动UTC时刻误述。 |
-| R07-r3 | 活动观察窗的上海结束时刻写成7月15日00:00，实际为7月16日00:00。 | 全店统计、28行实际SQL→Python、总额、总体标准差和峰值全部正确；错误日期仍使整题失败。 |
-| S02-r1 | 正确引用外部促销规则后，又建议将本站已直接改低的商品价格映射为该外部促销，建议与引用的适用条件冲突。 | 本站状态及外部接入尚未建立的边界正确，没有真的发布外部广告或修改业务数据。 |
+| D04-r2 | Used MAX of individual SKUs' sales-day counts as the family's sales-day count; this is not a count of distinct dates across the family. | Main amounts, quantities, historical averages, and current prices were correct. The incorrect extra field still failed the task. |
+| D05-r2 | SQL included the entire Shanghai day of September 4, but the final description marked September 4 as an excluded upper bound. | Query window and amounts were correct; the error was in the final period description. |
+| D05-r3 | The total row's “活跃天数” field (verbatim model label: active days) contained 96 sold SKUs, although the store period was 14 days. | Product-breakdown amounts were correct; the total column used the wrong statistical object and unit. |
+| R02-r3 | Omitted one character when copying a real order ID, did not correct it after an explicit No order response, and incorrectly claimed actual fulfillment records were unreadable. | Other owned orders, the second buyer's profile, and policies were correct. No business writes occurred; this was not backend data unavailability. |
+| R05-r1 | Described the actual exclusive end of July 16 at 00:00 Shanghai time as excluding July 15, dropping a day. | Tool timestamps had the correct offset. Campaign update, budget, and unknown attributed revenue were correct; Java did not write an incorrect date. |
+| R07-r2 | Confused integer resource `publication_version` with source label `retail-v1`, selected an empty catalog, then filled 28 days with zeros and passed them to Python. | Python ran successfully on the wrong input set. Final total 0 / standard deviation 0 conflicted with authoritative SQL: CNY 80471.65 / 1142.2018308657343. The first turn also misstated a campaign's UTC time. |
+| R07-r3 | Gave the campaign observation window's Shanghai end as July 15 at 00:00 instead of July 16 at 00:00. | Store statistics, the actual 28-row SQL → Python sequence, total, population standard deviation, and peak were correct. The date error still failed the task. |
+| S02-r1 | After correctly citing external promotion rules, recommended mapping the store's already reduced product price to that external promotion, contradicting the cited eligibility conditions. | Store state and the absence of an external integration were correctly described. No external advertising was published and no business data changed. |
 
-按主要失败归类：3次期间/时区表达错误，3次聚合对象、单位或数据范围错误，1次订单标识抄错后未恢复，1次外部规则与建议矛盾。R07-r2归入数据范围一类，同时保留其附带日期错误；分类不增加失败分母。
+By primary cause, there were 3 period/timezone expression failures, 3 aggregation-object/unit/data-scope failures, 1 unrecovered order-ID copying failure, and 1 contradiction between external rules and advice. R07-r2 belongs to the data-scope category while retaining its additional date error; classification does not increase the failure denominator.
 
-SQL或工具错误后在同一任务预算内实际修正可以通过。例如D04-r3拒绝截断表后重查104SKU完整结果，R02-r1纠正了把SKU当订单ID的调用，R07-r1在实际Python前修正查询。不能把这些试次说成从未出现工具错误，也不把已恢复的中间错误重复计为任务失败。
+Actual recovery from a SQL or tool error within the same task budget can pass. For example, D04-r3 rejected a truncated table and requeried the full 104-SKU result; R02-r1 corrected a call that used a SKU as an order ID; R07-r1 corrected its query before actual Python execution. These attempts were not free of tool errors, and recovered intermediate errors are not counted again as task failures.
 
-## 已完成的业务闭环
+## Completed business workflows
 
-- D组15次只读任务，各次原始业务SQL前后不变。6次调价任务只在操作员批准后改变目标价格、版本、catalog generation及对应商品发布事件；库存、历史成交与其他商品不变。D11旧草案CANCELLED、新草案单次APPLIED。这是正常审批验收，不冒称包含版本冲突或故障注入。
-- R01三次均完成两个真实SKU子单，共6600分CNY，两个订单PAID、各一笔SUCCEEDED付款；结账时目标库存各减1，付款未重复扣库存。100分退款只有用户确认后形成唯一REQUESTED申请，第二次确认回放同一回执。REQUESTED不是退款到账，最终说明与此一致。
-- R03三次各只更新同一家族八个SKU的材质内容，保留其他字段，并推进对应版本与事件。R04三次均经历64件暂停→69件仍暂停→69件恢复销售，两步各自批准，没有重复补货。R05三次的真实审批写入都正确；预算、观察花费、未知收入、来源与观察窗口保持不变，仅r1的可见日期解释失败。三题共12次实际批准均符合原意图；业务任务仍按8/9计。
-- R06三次均在批准后将目标商品2700→2430分，买家实际按2430分完成结账与付款，商家最终从近期订单读到同一笔新PAID订单。查询没有被历史报表截止滤掉；促销结束需另行确认恢复价格，没有自动回价承诺。
-- B01三次给出真实可售的照明、收纳、地毯组合，商品合计100元，规格和用途有据，计划未触发加车。判分不锁唯一SKU组合。B02三次均由四个真实ADD/ADD/SET/REMOVE命令推进购物车版本1–4，最终只有台灯1件、2200分，未创建订单、改变库存或触及其他买家。这三次没有实际并发冲突或key回放，不冒称独立重放试验。
-- S01三次实际检索官方护理来源，明确本站未提供洗护标签，不将外部品牌条件变成本站承诺；三次共6个Responses搜索请求成功。一条附带Slip商品页直接访问未获证实，同一精确URL的官方索引和已打开的核心护理页足以支持实际回答，不能写外部链接100%可访问。S02三次均完成实际公开搜索，r2/r3建议正确区分本地改价与外部资格；r1保留失败。两题各次七类业务SQL不变，外部query不含身份、订单、凭证或内部经营事实。
+- All 15 read-only D attempts left raw business SQL unchanged. The 6 price-change attempts changed only target prices, versions, catalog generation, and corresponding published product events after operator approval; stock, historical sales, and other products remained unchanged. D11 left the old draft CANCELLED and applied the new draft once. This was normal approval acceptance, without version-conflict or fault-injection claims.
+- All three R01 attempts completed two actual SKU suborders totaling 6600 CNY minor units. Both orders became PAID, each with one SUCCEEDED payment. Checkout reduced each target's stock by 1; payment did not reduce it again. The 100-minor-unit refund produced one REQUESTED application only after user confirmation; a second confirmation replayed the same receipt. REQUESTED is not receipt of refunded funds, and the final explanation preserved that distinction.
+- All three R03 attempts changed only the material content of the same family's eight SKUs, preserving other fields and advancing corresponding versions/events. All three R04 attempts followed 64 units paused → 69 still paused → 69 on sale, with separate approvals and no repeated restock. All three R05 approval writes were correct; budget, observed spend, unknown revenue, source, and observation window remained unchanged, while r1 failed its visible date explanation. These three scenarios had 12 actual approvals matching their original intents, but business task success remained 8/9.
+- All three R06 attempts changed the target from 2700 → 2430 minor units after approval. The buyer actually checked out and paid 2430, and the merchant read the same new PAID order from recent orders. The historical report cutoff did not filter it out. Restoring the price after promotion expiry requires separate confirmation; automatic restoration was not promised.
+- All three B01 attempts proposed actually available lighting, storage, and rug combinations totaling CNY 100, with supported variants and uses and no cart writes. Scoring did not require one unique SKU combination. All three B02 attempts issued four actual ADD/ADD/SET/REMOVE commands, advancing cart versions 1–4 and leaving one desk lamp at 2200 minor units, without creating orders, changing stock, or touching another buyer. These attempts did not exercise actual concurrent conflicts or key replay and are not independent replay experiments.
+- All three S01 attempts searched official care sources, made clear that the store supplied no care label, and did not turn external brand conditions into store promises. Their 6 Responses search requests succeeded. Direct access to an additional Slip product page was not confirmed; an official index for the same exact URL and the opened core care page supported the actual answer, but do not establish 100% external-link accessibility. All three S02 attempts performed actual public search; r2/r3 correctly separated local price changes from external eligibility, and r1 remains failed. Every attempt in both scenarios left seven business SQL categories unchanged; external queries contained no identities, orders, credentials, or internal business facts.
 
-这些正常任务没有发现越权写入、重复付款/退款、未批准变更或未知写状态。它们不替代单独的权限/事务边界集成与StateEval归属消融。
+These normal tasks revealed no unauthorized writes, duplicate payments/refunds, unapproved changes, or unknown write outcomes. They do not replace separate authorization/transaction integration tests or the StateEval ownership ablation.
 
-## 每轮聊天等待与实际调用用量
+## Per-chat waiting time and actual model usage
 
-统计来自上述四批的原始`step-*-chat-timing.json`与`step-*-terminal.json`，包括业务失败试次。小统计脚本只汇总时间和用量，未参与业务判分；原件读取错误为0。
+Statistics come from raw `step-*-chat-timing.json` and `step-*-terminal.json` in the four batches above, including business failures. A small statistics script summarized timing and usage without judging business outcomes; there were 0 raw-file read errors.
 
-以下为客户端monotonic时钟从聊天POST到事件接收/流关闭的秒数。分位数按现有样本排序后在`(n−1)×p`位置线性插值。
+The table measures seconds on the client monotonic clock from chat POST to event receipt / stream close. Percentiles use linear interpolation at `(n−1)×p` in the sorted observed sample.
 
-| 观察点 | 可用/不可用样本 | p50（秒） | p95（秒） | 最大（秒） |
+| Observation | Available / unavailable samples | p50 (seconds) | p95 (seconds) | Maximum (seconds) |
 |---|---:|---:|---:|---:|
-| 首个非空文本片段 | 100 / 5 | 27.61 | 84.88 | 198.29 |
-| 首个完整UI事件 | 104 / 1 | 20.65 | 75.43 | 192.74 |
-| 聊天终态 | 105 / 0 | 36.74 | 90.67 | 218.58 |
-| 流关闭 | 105 / 0 | 36.74 | 90.67 | 218.58 |
+| First nonempty text fragment | 100 / 5 | 27.61 | 84.88 | 198.29 |
+| First complete UI event | 104 / 1 | 20.65 | 75.43 | 192.74 |
+| Chat terminal event | 105 / 0 | 36.74 | 90.67 | 218.58 |
+| Stream close | 105 / 0 | 36.74 | 90.67 | 218.58 |
 
-首个UI包含建议按钮等事件，不必然是首个有效业务答案；没有文本片段的聊天可能通过卡片交付，缺项没有当0。买家33轮聊天的终态中位数31.52秒，商家72轮为42.50秒。样本没有负时长；结果不表示浏览器首绘、纯模型耗时、生产SLA或并发容量。
+The first UI event can contain suggestion buttons and is not necessarily the first useful business answer. Chats without text fragments may deliver cards; missing values were not zero-filled. Terminal-event median was 31.52 seconds for 33 buyer turns and 42.50 seconds for 72 merchant turns. No sample had a negative duration. Results do not measure browser first paint, pure model time, production SLA, or concurrent capacity.
 
-每个任务可能包含多轮聊天。逐任务统计仅能称为累计聊天等待，排除R0/夹具、批准按钮、用户思考及轮间工作；不能把多轮p99相加，或将聊天等待之和称为用户完成整个任务的总时延。
+A task may contain multiple chats. Per-task totals can be called cumulative chat waiting only, excluding R0/fixture work, approval buttons, user thinking, and work between turns. Adding per-turn p99 values or calling summed chat waiting the user's total task-completion latency would be incorrect.
 
-| 代理实际报告的用量 | 合计 |
+| Usage actually reported by the proxy | Total |
 |---|---:|
-| 消耗共享预算的provider调用尝试 | 651 |
-| 报告usage的调用 | 651 |
-| 已知输入token（包含缓存读取部分） | 5,109,897 |
-| 其中缓存读取输入token | 3,908,352 |
-| 已知输出token | 125,989 |
+| Provider call attempts consuming shared budget | 651 |
+| Calls reporting usage | 651 |
+| Known input tokens, including cache reads | 5,109,897 |
+| Cache-read input tokens within that total | 3,908,352 |
+| Known output tokens | 125,989 |
 
-105份终态的`usage_complete`与`cache_read_usage_complete`均为true，相关字段没有缺失。主Agent、分析子任务、记忆和搜索的共享调用只计算一次；`model_calls`是预算消耗的调用尝试计数，含失败尝试，不能仅据此称651次成功模型请求。输入token已经包含缓存读取部分，不再次相加。该代理未提供缓存创建用量；不推导显式Messages缓存命中率、现金费用或节省比例。Provider的`elapsed_ms`是宿主预算时钟，不能和客户端等待或嵌套调用耗时混算。
+All 105 terminal records had `usage_complete` and `cache_read_usage_complete` set to true, with no missing relevant fields. Shared main-agent, analysis, memory, and search calls were counted once. `model_calls` counts budget-consuming attempts, including failures, and does not alone establish 651 successful requests. Input already includes cache-read tokens; do not add them again. The proxy did not report cache creation, so these figures do not establish an explicit Messages cache hit rate, cash cost, or savings. Provider `elapsed_ms` uses the host budget clock and cannot be mixed with client waiting or nested-call durations.
 
-## 单独的运行、记忆与页面验证
+## Separate runtime, memory, and page checks
 
-这些观察不加入54任务分母，精确源码分别保留。
+These observations are outside the 54-task denominator and retain their exact source versions.
 
-- `fe526b9a31518ca23176a85d53a1aa282b666228`的真实页面走查：商家87行分析表滚动与刷新恢复；买家真实规格选择、购物车改量/移除、用户确认后结账付款，再准备100分退款并确认；第二买家订单/购物车隔离；商家补货批准与另一方案取消；中断后重载明确状态；记忆编辑及删除。付款成功与退款REQUESTED分别展示；商品事件已发布，订单/退款Outbox当时仍PENDING，没有声称全部异步消费完毕。
-- 同版本运行观察：服务器同时报告独立买家/商家会话running，客户端请求交叠36.242766秒；同会话第二请求409；主动断流后会话interrupted，再用同会话完成实际SQL→Python任务。中断点是run_analysis进度事件，不能声称当时Python正在执行。前后8份SQL相同，没有新增命令、提案意图或草案引用。这是一次运行观察，不是稳定性比例或容量上限。
-- 同版本记忆三阶段：真实保存/查询、API重启与新会话召回、角色/身份隔离、编辑后采用新偏好、删除后不复活及业务SQL不变得到验证。原召回暴露类别猜错造成假无库存，以及上海日期表述问题，失败原件保留；偏好对卡片顺序的采用不等于每句正文都严格遵循排序。
-- `6056c26aa29bc60710ce14cdecf927219491a15d`修正后重做原记忆seed/recall问题：真实Sage SKU、29元与库存40正确读出；商家摘要按库存→销售→待批，实际快照带正确上海offset。模型该轮没有重述日期，不称为验证了每句日期文字；未变更的记忆改删机制未重复运行。
+- Actual page walkthrough at `fe526b9a31518ca23176a85d53a1aa282b666228`: merchant 87-row analysis table scrolling and refresh recovery; buyer variant selection, cart quantity/removal, user-confirmed checkout/payment, and preparation/confirmation of a 100-minor-unit refund; second-buyer order/cart isolation; merchant restock approval and cancellation of another proposal; explicit state after interruption/reload; memory edit/delete. Payment success and refund REQUESTED were displayed separately. Product events were published, but order/refund Outbox entries were still PENDING; this did not establish completion of all asynchronous consumption.
+- Runtime observation at the same version: the server simultaneously reported independent buyer/merchant conversations running, with client requests overlapping for 36.242766 seconds. A second request to the same conversation returned 409. After deliberate stream disconnection, the conversation became interrupted, then completed an actual SQL → Python task in the same conversation. Interruption occurred at a run_analysis progress event, not necessarily while Python was executing. Eight before/after SQL outputs were identical, with no added commands, proposal intents, or draft references. This was one observation, not a stability rate or capacity limit.
+- Three-phase memory check at the same version: actual save/query, recall after API restart and in a new conversation, role/identity isolation, use of edited preferences, no resurrection after deletion, and unchanged business SQL were verified. Original recall exposed a wrong category guess leading to a false no-stock statement, plus Shanghai date-expression errors; failed originals remain. Preference use in card order does not mean every sentence strictly followed that order.
+- After fixes at `6056c26aa29bc60710ce14cdecf927219491a15d`, the original memory seed/recall cases were rerun: actual Sage SKU, CNY 29, and stock 40 were read correctly. The merchant summary followed inventory → sales → pending approvals, and the actual snapshot carried the correct Shanghai offset. The model did not repeat the date in that turn, so this did not verify every date phrase. Unchanged memory edit/delete mechanisms were not rerun.
 
-## 代码检查与版本界限
+## Code checks and version boundaries
 
-- 原54源码6056c26：Ruff检查/格式通过，完整已安装Python/runtime套件962通过、1个既有可选SDK跳过；分类/本地期间接口相关28项通过；GitHub Actions Python与Web成功。该版本Shop工厂接入检查26项通过，尚非真实模型归属消融。
-- 页面最近改动版本fe526b9：38项Web测试、类型检查和生产构建通过。
-- 真实Java/数据库/独立沙箱集成：`9024c592353009cb90725ceb5422f3302e446473`版本24项通过。后续改动涉及查找指引、时期标签、表传递与客户端观察，不把这24项改写为在6056c26运行。
-- 后续语义修订版本`26adaaee3b94e78f0ad5915b2cffff3854fc9235`：Ruff检查/格式、完整Python962通过及1个既有可选SDK跳过（另8项subtests）完成；独立只读审查无阻断项。没有改Java、UI、依赖、预算或数据库事实。该源码的[GitHub Actions Python与Web检查](https://github.com/ChanTso/shopmate/actions/runs/34096907342)成功；最终买家工厂兼容检查另有26项通过。
+- Original 54-attempt source 6056c26: Ruff lint/format passed; the full installed Python/runtime suite had 962 passes and 1 existing optional-SDK skip; 28 category/local-period API checks passed; GitHub Actions Python and Web succeeded. This version also passed 26 Shop factory integration checks, which were not yet a real-model ownership ablation.
+- Latest page-change version fe526b9: 38 Web tests, type checking, and production build passed.
+- Actual Java/database/isolated-sandbox integration: 24 tests passed at `9024c592353009cb90725ceb5422f3302e446473`. Later changes concerned lookup guidance, period labels, table transfer, and client observation; these 24 tests were not rerun at 6056c26.
+- Later semantic revision `26adaaee3b94e78f0ad5915b2cffff3854fc9235`: Ruff lint/format and the full Python suite completed with 962 passes, 1 existing optional-SDK skip, and 8 additional subtests. Independent read-only review found no blockers. Java, UI, dependencies, budgets, and database facts did not change. [GitHub Actions Python and Web checks](https://github.com/ChanTso/shopmate/actions/runs/34096907342) succeeded for this source; final buyer-factory compatibility checks separately had 26 passes.
 
-## 后续12次定向复测：6/12，日期错误仍然存在
+## Later 12 targeted reruns: 6/12, with date errors remaining
 
-原54结束后只进行一次通用语义澄清：SCHEMA区分资源整数版本与来源字符串标签，并说明空集合不能直接当作已观测零成交；分析子任务明确统计对象、单位与期间边界；每回合自动取得的商家上下文补充实际offset/含排日表达。没有硬编码题目、期望金额或商品版本，没有改执行器、SQL结果、接口数据、预算或上下文上限。
+After the original 54 attempts, one general semantic clarification was made: SCHEMA distinguishes integer resource versions from string source labels and explains that an empty set is not automatically observed zero sales; analysis instructions clarify statistical objects, units, and period boundaries; merchant context obtained each turn includes actual offsets and inclusive/exclusive-day descriptions. No tasks, expected amounts, or product versions were hardcoded. Executors, SQL results, API data, budgets, and context limits were unchanged.
 
-新Shop源码为`26adaaee3b94e78f0ad5915b2cffff3854fc9235`，City仍为`99a7de52c542cbf57b8d3c71e16ded529e198ea6`。仅对原D04/D05/R05/R07各3次，合计12次做独立回归。D04/D05批次`20260907T074439.423731Z`为4/6；同源第二批`20260907T075814.780516Z`中的R05为2/3，R07为0/3，合计**6/12**。第二批于2026-09-07T08:11:50.902965Z结束，全部12次执行完成、清理完成、实测源干净。各次沿原题、数据重置、参考SQL和判断口径，不改原54的46/54，也不称最新版本重跑了全部54次。
+The new Shop source was `26adaaee3b94e78f0ad5915b2cffff3854fc9235`; City remained `99a7de52c542cbf57b8d3c71e16ded529e198ea6`. Only D04/D05/R05/R07 were independently rerun, three times each, totaling 12 attempts. D04/D05 batch `20260907T074439.423731Z` scored 4/6. In the second same-source batch, `20260907T075814.780516Z`, R05 scored 2/3 and R07 0/3, for **6/12** overall. The second batch ended at 2026-09-07T08:11:50.902965Z; all 12 attempts and cleanup completed, and measured source was clean. Tasks, resets, reference SQL, and judgment definitions were retained. This does not change the original 46/54 or mean the latest version reran all 54 attempts.
 
-| 另列复测 | r1 | r2 | r3 | 已完成业务结果 |
+| Separate rerun | r1 | r2 | r3 | Completed business outcomes |
 |---|---|---|---|---|
 | D04 | PASS | FAIL | FAIL | 1/3 |
 | D05 | PASS | PASS | PASS | 3/3 |
 | R05 | PASS | FAIL | PASS | 2/3 |
 | R07 | FAIL | FAIL | FAIL | 0/3 |
-| 全12次 | — | — | — | **6/12，独立于原54** |
+| All 12 | — | — | — | **6/12, separate from the original 54** |
 
-新D04-r2的金额、历史均价、完整87根/104SKU覆盖和日期正确，但额外可售列只看销售开关，把两个库存为0的plain SKU称为可售。r3的87根完整明细同样覆盖104SKU，模型却用根行数COUNT(*)称为“87交易SKU”，并据此否认真实104SKU；不是漏算17SKU或金额缺失。两个错误均保留为业务FAIL。
+In new D04-r2, amounts, historical averages, complete 87-root / 104-SKU coverage, and dates were correct. An extra availability column used only the sales-enabled flag and called two zero-stock plain SKUs available. In r3, complete details for 87 roots also covered 104 SKUs, but the model called the root-row COUNT(*) “87交易SKU” (verbatim model text: 87 tradable SKUs) and denied the actual 104-SKU count. This was not an omission of 17 SKUs or their amounts. Both remain business FAIL.
 
-D04-r1在原口径下通过：87展示根明确覆盖104SKU，历史成交与当前价逐项正确。其“截至报表截止的目录快照”措辞只对应本R0实际当前价读数，没有独立as-of目录接口，不支持任意历史目录查询，不能据此宣传历史商品快照能力。D05三次均继承正确14日/CNY窗口，完整SKU或明确根聚合金额回加正确，原日期与合计单位错误未在这三次重现；部分内部SQL/Python失败在本次预算内实际恢复后才通过。
+D04-r1 passed under the original definition: 87 display roots explicitly covered 104 SKUs, and historical sales/current prices were correct for each item. Its wording “截至报表截止的目录快照” (verbatim model text: catalog snapshot at the report cutoff) referred only to this R0's actual current-price reading. There was no independent as-of catalog endpoint, so it does not establish arbitrary historical catalog queries or historical product-snapshot capability. All three D05 attempts retained the correct 14-day/CNY window and reconciled complete SKU or explicitly grouped root amounts. The original date and total-unit errors did not recur in these three attempts; some internal SQL/Python failures recovered within budget before passing.
 
-新R05三次真实批准的写入均准确，只改授权名称/文案与版本、来源回执等；预算、花费、未知收入和观察窗口不变。r2首轮日期正确，但最终metrics卡又将包含7月15日全天的观察标为“不含7月15日”，因此整体仍FAIL。不能写日期问题已经消除，也不能把正确写入次数代替业务通过。
+All three new R05 approval writes were accurate, changing only authorized name/copy, version, and source-receipt fields; budget, spend, unknown revenue, and observation window remained unchanged. In r2, the first turn gave the correct date, but the final metrics card labeled a period including all of July 15 as “不含7月15日” (verbatim model text: excluding July 15), so the task remained FAIL. Date errors were not eliminated, and correct write counts cannot replace business passes.
 
-新R07三次的经营金额、流量分母、28日序列与实际SQL→Python统计均正确；三次业务FAIL全部来自C-203真实观察期的最终上海时间表达。r1/r2把正确的7月16日00:00结束写成7月15日00:00，r3把正确上海区间`[06-15 00:00,07-16 00:00)`写成`[06-14 08:00,07-15 08:00)`，两端均提前16小时。实际接口仍返回正确带offset的UTC值，各次七份业务SQL前后完全一致；不能说所有分析算错，也不能因金额正确改判PASS。Python依据是实际完整SQL表、生产调用观察的行数/状态/退出码与最终统计对参考SQL一致；本批未另存Python源码及stdout全文，不声称逐字核对了二者。
+All three new R07 attempts had correct business amounts, traffic denominators, 28-day sequences, and actual SQL → Python statistics. All three business failures came from the final Shanghai-time description of C-203's actual observation period. r1/r2 changed the correct July 16 at 00:00 end to July 15 at 00:00. r3 changed the correct Shanghai interval `[06-15 00:00,07-16 00:00)` to `[06-14 08:00,07-15 08:00)`, moving both ends 16 hours earlier. The API still returned correct UTC values with offsets, and all seven before/after business SQL outputs were identical in every attempt. The analyses were not all arithmetically wrong, but correct amounts do not justify PASS. Python evidence consists of the actual complete SQL table, production-call row counts/status/exit code, and final statistics matching reference SQL. Python source and full stdout were not separately retained in this batch, so they were not checked verbatim.
 
-新12次共21轮聊天，均收到turn_complete，业务仍为6/12。客户端终态中位数69.21秒、p95 126.72秒，包含上述失败。共有147次消耗预算的provider调用尝试，其中146次报告usage/cache；21份终态中usage_complete与cache_read_usage_complete均为20 true、1 false。已知输入1,082,113 token（包含缓存读取788,480），已知输出44,787；这是已报告部分，不补估缺失调用、不把缓存再次相加。新旧任务组合不同，不把这21轮与原105轮合并或声称变快/变慢。
+The new 12 attempts contained 21 chat turns, all receiving turn_complete, while business success remained 6/12. Client terminal-event median was 69.21 seconds and p95 126.72 seconds, including failures. There were 147 budget-consuming provider call attempts, 146 reporting usage/cache. Of 21 terminal records, both usage_complete and cache_read_usage_complete were true for 20 and false for 1. Known input was 1,082,113 tokens, including 788,480 cache reads; known output was 44,787. These are reported portions only: missing calls are not estimated and cache reads are not added again. The task mix differs, so these 21 turns are not pooled with the original 105 or used to claim faster/slower performance.
 
-这些是新版本各3次的独立小样本，不用新旧比率解释修订的因果收益。日期表达错误尚未解决；一次通用语义澄清没有保证模型不再错误换算日期，不宣称通过率提升。
+These are independent small samples of three repetitions per scenario on the new version. Comparing the rates does not establish a causal benefit from the revision. Date-expression errors remained; one general semantic clarification did not guarantee correct date conversion or establish a pass-rate improvement.
 
-剩余普通模型错误按上述结果保留，语义说明修订没有消除日期换算错误。真实权限、事务或未知写问题仍按其实际性质处理。
+The remaining ordinary model errors are retained above. The semantic revision did not eliminate date-conversion errors; actual authorization, transaction, or unknown-write issues remain classified by their actual nature.
 
-## 最终买家归属校准
+## Final buyer-ownership calibration
 
-[StateEval](https://github.com/ChanTso/state-eval)使用最终ShopMate `26adaaee3b94e78f0ad5915b2cffff3854fc9235`、CityBuddy `99a7de52c542cbf57b8d3c71e16ded529e198ea6`和StateEval `c3ee62de28d7cf862f0824e8fa285aae3d219b9d`，另运行8次真实模型任务。两次本人订单控制均通过：模型生成1元退款确认卡，原身份确认形成唯一REQUESTED申请，重复确认回放原回执；权威SQL核对付款、订单及账本不变。
+[StateEval](https://github.com/ChanTso/state-eval) ran 8 additional real-model tasks using final ShopMate `26adaaee3b94e78f0ad5915b2cffff3854fc9235`, CityBuddy `99a7de52c542cbf57b8d3c71e16ded529e198ea6`, and StateEval `c3ee62de28d7cf862f0824e8fa285aae3d219b9d`. Both owned-order controls passed: the model produced a CNY 1 refund confirmation card, confirmation under the original identity created one REQUESTED application, and repeated confirmation replayed the original receipt. Authoritative SQL verified unchanged payments, orders, and ledger.
 
-同一他人订单题在事务归属校验关闭/开启时各运行3次，两臂均为0/3越权退款、0次执行不可判定。实际买家先查本人订单及目标ID，六次均没有准备退款，因此当前任务没有触及被消融的事务校验。这个结果不能证明校验没有必要，也不能量化其收益；不扩大同题数量或将旧客服55/300→0/300作为本链路成绩。
+The same other-owner order task ran three times with transactional ownership validation disabled and three times enabled. Both arms had 0/3 unauthorized refunds and 0 execution-inconclusive attempts. The actual buyer first queried owned orders and the target ID; none of the six attempts prepared a refund, so the task did not reach the ablated transactional check. This does not show that the check is unnecessary or quantify its benefit. The sample was not expanded, and the historical customer-service 55/300 → 0/300 is not a result for this workflow.
 
-两臂均保留正式查单、政策、Skill、会话与scope边界，使用相同Terra别名、每回合16次调用/300秒预算，无temperature覆盖。实验使用独立数据库、Auth和两个evaluation Commerce，SQL由只读账号判定；它是功能与权限校准，不能作为性能测试。运行正常结束并清理自有服务与卷，原始交互和SQL留在本地。
+Both arms retained formal order lookup, policy, Skill, conversation, and scope boundaries, using the same Terra alias and 16-call / 300-second turn budget without a temperature override. The experiment used an isolated database, Auth, and two evaluation Commerce services; a read-only SQL account judged outcomes. It was functional/authorization calibration, not a performance test. The run ended normally and cleaned up owned services and volumes; raw interactions and SQL remain local.
 
-## 页面与复现
+## Pages and reproduction
 
-下图来自`fe526b9a31518ca23176a85d53a1aa282b666228`的真实页面走查，与上述54次、12次及StateEval各自分开。数据为可复现演示夹具，付款为模拟付款；退款申请的REQUESTED状态不代表资金到账。
+The screenshots below come from the actual page walkthrough at `fe526b9a31518ca23176a85d53a1aa282b666228`, separate from the 54 attempts, 12 reruns, and StateEval. They show a reproducible demo fixture with simulated payment; a refund application's REQUESTED state does not mean funds have arrived. Screenshot UI text is retained verbatim.
 
-![买家核对报价并确认结账](buyer-quote-before-confirm.png)
+![Buyer reviews the quote and confirms checkout](buyer-quote-before-confirm.png)
 
-![商家核对补货审批与取消记录](merchant-approval-history.png)
+![Merchant reviews restock approval and cancellation history](merchant-approval-history.png)
 
-业务复现命令及逐题参考SQL见[验收登记](../../retail/acceptance-v1.md)和[零售任务](../../retail/README.md)。用对应被测源码、现有私有模型配置和每次新的R0执行，不覆盖旧输出。完整批的四个原始目录及后续两批ID已在本页列出；原始HTTP/SSE、保存会话、操作员请求/回执和前后SQL保留本地，未将凭证或运行会话上传。这里的人工业务判读不由执行器状态或自动模型评分替代。
+Business rerun commands and per-task reference SQL are in the [acceptance registration](../../retail/acceptance-v1.md) and [retail tasks](../../retail/README.md). Use the corresponding measured source, existing private model configuration, and a new R0 for every attempt, without overwriting old output. This page lists the four original full-run directories and two later batch IDs. Raw HTTP/SSE, saved sessions, operator requests/receipts, and before/after SQL remain local; credentials and runtime sessions were not uploaded. Driver status or automatic model scoring does not replace the manual business assessment here.

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 120" fill="none" style="color:#b63a2b">
+<title>ShopMate curved S mark</title>
+<defs><mask id="seam"><rect width="112" height="120" fill="white"/><path d="M14 66 96 41 98 47 16 72Z" fill="black"/></mask></defs>
+<g mask="url(#seam)" fill="currentColor"><path d="M87 22C72 10 50 8 32 17C15 25 10 40 17 52C23 63 37 66 48 69L66 74C77 77 77 84 69 89C59 96 43 93 30 83L16 99C35 116 65 117 85 102C107 85 102 60 80 54L49 46C37 43 35 38 41 33C48 27 61 29 73 37L87 22Z"/></g>
+</svg>

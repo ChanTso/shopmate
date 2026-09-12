@@ -1,32 +1,32 @@
-# 业务功能演示
+# Business feature demonstration
 
-主演示于 2026-09-06 约 00:00–00:05 UTC，在独立本地环境使用固定 R0 交易夹具，以真实浏览器、模型、Java 接口和数据库完成分析、草案、人工批准与恢复。以下记录是功能演示，不计入正式 90 次评测或定向 24 次回归。
+The main demonstration ran around 00:00–00:05 UTC on 2026-09-06 in an isolated local environment with the fixed R0 transaction fixture. A real browser, model, Java APIs, and database completed analysis, drafting, manual approval, and recovery. This functional demonstration is separate from the formal 90 attempts and targeted 24-attempt regression.
 
-- CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`
-- 主演示 ShopMate：`02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`
+- CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`
+- Main demo ShopMate: `02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`
 
-原始 SQL、会话与传输分块见 [raw.tar.gz](raw.tar.gz)，解包后为 `browser-demo/`。下文以“包内”标注的路径对应解包目录。
+Original SQL, conversations, and transport chunks are in [raw.tar.gz](raw.tar.gz), which extracts to `browser-demo/`. Paths described as inside the archive below refer to that directory. Chinese prompts and UI labels are retained verbatim.
 
-## 分析与审批
+## Analysis and approval
 
-登录后，旧会话引用的草案因夹具重置返回 404；通过已有的“新建会话”入口继续。随后提问“近 14 天和前 14 天，人民币成交额分别是多少？按商品解释变化。”可见回答采用 UTC `2026-08-22, 2026-09-05)` 与 `[2026-08-08, 2026-08-22)` 两个窗口：退款前已支付成交额分别 CNY 2,304、1,956，增加 348；咖啡贡献 +994、茶 −658、杯子 +12，与订单参考 SQL 原始结果（包内 `sql/before/S12.jsonl`）一致。[分析截图](analysis.png)
+After sign-in, a draft referenced by an old conversation returned 404 because the fixture had been reset. The existing “新建会话” entry started a new conversation. The prompt “近 14 天和前 14 天，人民币成交额分别是多少？按商品解释变化。” produced a visible answer using UTC windows `2026-08-22, 2026-09-05)` and `[2026-08-08, 2026-08-22)`: pre-refund paid revenue was CNY 2,304 and 1,956, up 348. Coffee contributed +994, tea −658, and cups +12, matching original order-reference SQL inside `sql/before/S12.jsonl`. [Analysis screenshot](analysis.png)
 
-再提问“把咖啡价格调到 25.20 元，先生成草案”，生成 `PREPARED` 草案。此时实际价格仍为 2,400 分、版本 3，尚无商品变更事件。[草案截图](prepared.png) · 草案原始结果（包内 `sql/prepared/drafts.jsonl`） · 批准前商品（包内 `sql/prepared/products.jsonl`）
+The next prompt, “把咖啡价格调到 25.20 元，先生成草案”, produced a `PREPARED` draft. The actual price was still 2,400 minor units at version 3, with no product-change event. [Draft screenshot](prepared.png) · Original draft: `sql/prepared/drafts.jsonl` inside the archive · Product before approval: `sql/prepared/products.jsonl`
 
-在浏览器实际点击批准后，同一草案变为 `APPLIED`，咖啡价格变为 2,520 分、版本 4；仅产生一次商品变更及对应 Outbox 事件 `9d3347bf-8ce1-41b7-9e04-772e2394d88b`，事件已发布，库存不变。批准后商品（包内 `sql/applied/products.jsonl`） · 执行回执（包内 `sql/applied/drafts.jsonl`） · 事件原始结果（包内 `sql/applied/events.jsonl`）
+Clicking approval in the browser changed that same draft to `APPLIED` and the coffee price to 2,520 minor units at version 4. There was one product change and one corresponding Outbox event, `9d3347bf-8ce1-41b7-9e04-772e2394d88b`; the event was published and stock was unchanged. Inside the archive: product after approval, `sql/applied/products.jsonl`; receipt, `sql/applied/drafts.jsonl`; event output, `sql/applied/events.jsonl`.
 
-随后真实提问读回当前价格与草案状态，回答为 CNY 25.20、版本 4、`APPLIED`。刷新页面、重新登录并选择原会话后，审批历史仍显示同一回执和事件。[读回截图](readback.png) · [恢复截图](restored.png) · 恢复后的会话（包内 `restored-session.json`）
+A subsequent real query read back CNY 25.20, version 4, and `APPLIED`. After refreshing, signing in again, and selecting the original conversation, approval history still showed the same receipt and event. [Readback screenshot](readback.png) · [Recovery screenshot](restored.png) · Restored conversation: `restored-session.json` inside the archive.
 
-批准后与恢复后的商品、草案、事件、历史订单和范围汇总原始文件一致；所有阶段的历史订单记录均未改变。事件文件包含两个查询结果集，均指向同一个事件，不能计为两次发布。`after-analysis` 快照采集时第二轮已开始并创建草案，因此不作为分析单轮的独立写入边界。
+Product, draft, event, historical-order, and scope-summary files matched between the approved and restored stages. Historical orders remained unchanged throughout. The event file contains two result sets pointing to the same event, not two publications. The `after-analysis` snapshot was captured after the second turn had started and created a draft, so it is not an independent write boundary for the analysis turn alone.
 
-## 后续流式观察
+## Subsequent streaming observations
 
-后续使用 ShopMate `ac6b1404e17a007b8c5563449872c69c520787a0` 单独观察响应头修复：在回答终态之前，浏览器已显示分析第 2 步正在查询。[流式进度截图](streaming-progress.png)
+A separate observation at ShopMate `ac6b1404e17a007b8c5563449872c69c520787a0` checked the response-header fix: the browser displayed analysis step 2 running a query before the answer reached its terminal state. [Streaming progress screenshot](streaming-progress.png)
 
-这轮追问“这两期咖啡的成交件数分别是多少？能说是刚才这次调价导致了历史成交变化吗？”出现业务失败：模型将原来的两个窗口各向后移了一天，返回 65/31 件，没有回答原窗口的 70/28 件。其拒绝将历史变化归因于刚才调价的判断正确，但不能抵消日期范围错误。该轮完整会话与实际 SQL 轨迹（包内 `streaming-followup-session.json`）
+The follow-up “这两期咖啡的成交件数分别是多少？能说是刚才这次调价导致了历史成交变化吗？” failed the business task. The model moved both original windows one day later and returned 65/31 units instead of 70/28 for the requested windows. It correctly refused to attribute historical changes to the just-applied price change, but that did not offset the date-range error. The full conversation and actual SQL trajectory are in `streaming-followup-session.json` inside the archive.
 
-流式进度可见与业务回答正确分别记录；这轮结果不追记到主演示版本，也不改变正式评测成绩。
+Visible streaming progress and answer correctness are recorded separately. This turn is not assigned retroactively to the main demo version and does not change formal evaluation scores.
 
-最后在同一 `ac6b1404e17a007b8c5563449872c69c520787a0` 版本显式澄清原有两个 UTC 半开窗口，重新查询得到咖啡本期 70 件、前期 28 件，增加 42 件（+150%）；可见回答、实际 SQL 和原参考结果一致。[澄清后的截图](clarified.png) · 会话与查询轨迹（包内 `clarified-session.json`）
+Finally, at the same `ac6b1404e17a007b8c5563449872c69c520787a0` version, an explicit clarification restated the two original UTC half-open windows. The new query returned coffee sales of 70 units versus 28, up 42 (+150%); the visible answer, actual SQL, and reference results matched. [Clarified screenshot](clarified.png) · Conversation and query trajectory: `clarified-session.json` inside the archive.
 
-澄清后商品、草案、事件、历史订单及范围汇总与恢复时一致，未产生额外商品修改或事件。这次显式澄清恢复不撤销前一轮日期漂移失败，也不作为新增正式模型成绩。
+After clarification, products, drafts, events, historical orders, and scope summaries matched the restored state, with no additional product change or event. This recovery through explicit clarification does not erase the preceding date-drift failure or add a new formal model result.

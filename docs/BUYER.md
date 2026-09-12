@@ -1,37 +1,39 @@
-# 买家 Android App
+# Buyer Android app
 
-买家正式入口为原生 Kotlin/Jetpack Compose App；商家使用 React/Vite Web。它们是同一家官方商店的顾客和员工入口，共用 ShopMate API，交易与身份由 CityBuddy 提供。旧 `/buyer` 浏览器页面已经退役。
+The buyer entry point is a native Kotlin/Jetpack Compose app; merchants use the React/Vite Web app. These are the customer and staff interfaces for the same official store. They share the ShopMate API, with transactions and identity provided by CityBuddy. The old `/buyer` browser page has been retired.
 
-## 启动与登录
+## Start and sign in
 
-按[项目 README](../README.md#本地运行)启动服务，再按 [Android 构建说明](../android/README.md)安装 App。Android 模拟器连接 `http://10.0.2.2:8101`；登录页面可以设置 API 地址。
+Start the services using the [runtime guide](RUNTIME.md#run-locally), then install the app using the [Android build instructions](../android/README.md). The Android emulator connects to `http://10.0.2.2:8101`; the sign-in screen allows the API address to be configured.
 
-| 演示账号 | 本地密码文件 |
+| Demo account | Local password file |
 | --- | --- |
 | `shopmate-retail-buyer` | `.run/buyer_1_password` |
 | `shopmate-retail-buyer-2` | `.run/buyer_2_password` |
 
-登录后即可购物，不必创建对话。首次发送消息时才创建买家对话。手机只保存以 Keystore 加密的令牌、当前对话标识和按服务地址/主体隔离的待恢复请求；密码、模型凭证不进入手机存储。
+Shopping is available after sign-in without creating a conversation. The first message creates the buyer conversation. The phone stores only the Keystore-encrypted token, current conversation identifier, and pending recovery requests scoped by service address and subject; passwords and model credentials are not stored on the phone.
 
-## 建议体验顺序
+## Suggested walkthrough
 
-1. 浏览首页和分类，搜索商品、打开详情并选择具体规格。现有目录为 ACME 演示商品，名称主要为英文；用途、预算和搭配需求可用中文问助手。
-2. 问“帮我比较两款咖啡机”，查看流式工具进度和比较卡；也可按预算规划组合、读取政策或咨询履约。推荐与描述中的价格不作为付款报价。
-3. 把在售 SKU 加入购物车，调整数量，核对版本、库存和整数分报价，再明确确认创建订单。报价变化需要重新读取并确认。
-4. 在结账记录中确认模拟付款。订单、付款、履约分别呈现，不从付款成功推断已发货。
-5. 在本人订单或助手准备的退款卡中核对金额与有效期，再确认提交退款申请。`REQUESTED` 表示申请受理，不表示到账。
-6. 从“我的”查看资料、记忆和操作记录；记忆支持纠正、单条忘记和明确确认后全部清除。清除记忆不删除订单或购物车。
+The quoted Chinese prompt and UI labels below are retained verbatim from the demo.
 
-配送估算按实际 SKU 数量读取，独立展示币种、费用和时间。当前商品付款不收配送费，不将咨询估算描述成已购买的配送服务。
+1. Browse the home page and categories, search for products, open details, and select a specific variant. The ACME demo catalog primarily uses English names; the assistant also accepts Chinese questions about uses, budgets, and combinations.
+2. Ask “帮我比较两款咖啡机” and inspect streaming tool progress and the comparison card. You can also plan a bundle within a budget, read policies, or ask about fulfillment. Prices in recommendations and descriptions are not payment quotes.
+3. Add available SKUs to the cart, adjust quantities, review the version, stock, and quote in integer minor units, then explicitly confirm order creation. A changed quote must be read and confirmed again.
+4. Confirm simulated payment from the checkout record. Order, payment, and fulfillment states are displayed separately; successful payment does not imply shipment.
+5. Review the amount and expiry in your own order or an assistant-prepared refund card, then confirm the refund request. `REQUESTED` means the request was accepted, not that funds arrived.
+6. Open “我的” to view your profile, memory, and operation history. Memory supports corrections, forgetting individual entries, and clearing all entries after explicit confirmation. Clearing memory does not delete orders or the cart.
 
-## 中断和恢复
+Delivery estimates use actual SKU quantities and separately display currency, cost, and timing. Product payments currently do not charge delivery fees; a consultation estimate is not a purchased delivery service.
 
-界面重建时 ViewModel 保留当前任务；宽窗口可同时展示购物和助手，窄窗口使用独立助手页。停止生成会取消 HTTP 流，不撤销已经提交的购物车、订单或退款申请。进程重启从服务端读取已保存的对话，不假定后台持续生成。
+## Interruption and recovery
 
-幂等写入先在手机保存原 key 和请求体。如果未收到结果，操作记录保留“待核对”；恢复先查询原回执，用户确认继续后才重试原意图，不更换 key。付款沿原 checkout，退款确认沿原 pending action 回放。聊天切换不改变命令归属。
+The ViewModel retains the current task across view reconstruction. Wide windows can show shopping and the assistant together; narrow windows use a separate assistant page. Stopping generation cancels the HTTP stream without undoing committed cart changes, orders, or refund requests. After a process restart, saved conversations are read from the server; continued background generation is not assumed.
 
-## 数据边界
+Before an idempotent write, the phone saves the original key and request body. If the response is missing, the operation remains marked “待核对” (verbatim UI label: pending verification). Recovery first queries the original receipt; only after the user confirms continuation does it retry the original intent with the same key. Payment follows the original checkout, and refund confirmation replays the original pending action. Switching chats does not change command ownership.
 
-订单、价格、库存、付款与审批的权威来源是 Java/MySQL。ShopMate SQLite 保存单实例的对话、记忆、运行状态和恢复记录，不承担秒杀订单库职责。两个买家及商家身份的对话、命令和记忆相互隔离。
+## Data boundaries
 
-后端历史吞吐不代表手机帧率、并发 Agent 容量或生产用户规模。Android 的构建、设备测试与实际交互记录独立于历史模型质量评测。
+Java/MySQL is authoritative for orders, prices, stock, payment, and approvals. ShopMate SQLite stores single-instance conversations, memory, runtime state, and recovery records; it is not the seckill order database. Conversations, commands, and memory are isolated between both buyers and the merchant identity.
+
+Historical backend throughput does not establish phone frame rates, concurrent agent capacity, or production user scale. Android builds, device tests, and interaction records are separate from historical model-quality evaluations.

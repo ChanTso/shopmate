@@ -1,22 +1,22 @@
-# 正式验收后针对性回归：21/24
+# Targeted regression after formal acceptance: 21/24
 
-CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`  
-ShopMate：`02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`  
-结果目录：`evals/results/20260905T231113.095557Z`。  
-数据截止：`2026-09-05T00:00:00Z`，UTC；fixture来源为上述CityBuddy提交。  
-主模型与分析模型均为`gpt-5.6-terra`，经CLIPROXY Chat Completions适配调用。
+CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`<br>
+ShopMate: `02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`<br>
+Result directory: `evals/results/20260905T231113.095557Z`.<br>
+Data cutoff: `2026-09-05T00:00:00Z`, UTC; fixture source is the CityBuddy commit above.<br>
+Both main and analysis models used `gpt-5.6-terra` through the CLIPROXY Chat Completions adapter.
 
-本批选择S02、S07、S12、S13、S14、S17、S20、S30共8个已知出现失败的业务场景，各执行3次，沿用原`evals/formal.json`题面和成功标准。每次从独立R0和新会话开始，场景内部保留多轮追问、真实操作员审批和读回。按实际用户可见正文/卡片、实际工具与分析SQL、参考SQL和权威业务终态判定，允许预算内自行纠错；`executed`与业务PASS分别统计。
+The batch selected 8 business scenarios with known failures: S02, S07, S12, S13, S14, S17, S20, and S30, each repeated 3 times under the original `evals/formal.json` statements and success criteria. Every attempt started from independent R0 and a new conversation, retaining follow-ups, real operator approval, and readback within the scenario. Judgment used actual user-visible prose/cards, actual tool/analysis SQL, reference SQL, and authoritative business terminal states, allowing self-correction within budget. `executed` and business PASS were counted separately.
 
-与上一完整批ShopMate `9173037d6eb43d295f6ccb5876fa6284e882dfdb`相比，本版本调整提示/工具契约中的指标引用与集合委派说明，并将主循环工具轮次上限由8改为12；主/分析模型仍共享每chat turn最多16次调用、300秒截止时间。多个因素同时变化且模型执行有随机性，因此这是修复后选集回归，**不是单变量因果对照，也不是新的完整30×3验收**。
+Compared with the preceding full batch at ShopMate `9173037d6eb43d295f6ccb5876fa6284e882dfdb`, this version revised metric references and set-delegation guidance in prompt/tool contracts and raised the main-tool-round limit from 8 to 12. Main/analysis models still shared at most 16 calls and a 300-second deadline per chat turn. Multiple factors changed together and model execution is stochastic, so this is a post-fix subset regression, **not a single-variable causal comparison or a new full 30 × 3 acceptance run**.
 
-本批UTC `2026-09-05T23:11:13.095965+00:00` 开始，`2026-09-05T23:50:13.064537+00:00` 结束，执行器退出0、run无stop_reason。24次execution均为executed、各自完成重置；执行正常不代表24次业务全通过。
+The batch started at UTC `2026-09-05T23:11:13.095965+00:00` and ended at `2026-09-05T23:50:13.064537+00:00`. The executor exited 0 and the run had no stop_reason. All 24 execution records were executed, with each reset completed. Normal execution does not mean all 24 passed the business task.
 
-**24次全部完成独立业务判读：21 PASS、3 FAIL，选集完成率21/24（87.50%）。** S02/S07/S12/S13为11/12，S14/S17/S20/S30为10/12。失败均为正常executed但没有完整完成原题，全部保留在24次分母。
+**All 24 attempts received independent business assessment: 21 PASS, 3 FAIL, for subset completion of 21/24 (87.50%).** S02/S07/S12/S13 scored 11/12; S14/S17/S20/S30 scored 10/12. All failures were normally executed attempts that did not fully complete the original task, retained in the denominator of 24.
 
-## 逐场景结果
+## Per-scenario results
 
-| 场景 | 本批r1 | 本批r2 | 本批r3 | 本批完成数 | 原917同场景完成数 |
+| Scenario | This r1 | This r2 | This r3 | This batch completed | Original 917 completed |
 |---|---|---|---|---|---|
 | S02 | PASS | PASS | PASS | 3/3 | 2/3 |
 | S07 | PASS | PASS | PASS | 3/3 | 1/3 |
@@ -27,43 +27,44 @@ ShopMate：`02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`
 | S20 | PASS | PASS | PASS | 3/3 | 2/3 |
 | S30 | PASS | PASS | FAIL | 2/3 | 1/3 |
 
-旧917完整90次中，这8个场景同选集实际为13/24，本次同选集为21/24；旧完整批仍是78/90。选择依据来自已知失败，不能将本选集结果当作未知任务泛化估计，也不能把本批通过替换旧失败来改写78/90。下文原件路径均相对本结果目录。
 
-## 三次业务失败
+In the original 917 full 90-attempt run, the same eight-scenario subset scored 13/24, compared with 21/24 here. The original full batch remains 78/90. Selection came from known failures, so this subset is not an estimate of unseen-task generalization. Its passes cannot replace old failures to rewrite 78/90. Raw paths below are relative to this result directory.
 
-| 次数 | 业务原因 | 原件路径 |
+## Three business failures
+
+| Attempt | Business reason | Raw paths |
 |---|---|---|
-| S13-r2 | 两次run_analysis的question均超过300字符；第三次虽继续压缩，却被每turn两次analysis调用限制拒绝。没有实际分析SQL或金额/件数卡片，最终只请用户重新发起。主工具12轮、共享16次模型调用/300秒均未耗尽，未观察到provider或数据库不可用。 | `S13-r2/step-01.sse`、`S13-r2/step-01-terminal.json`、`S13-r2/saved-session.json`、`S13-r2/sql/after/S13.jsonl` |
-| S17-r2 | 追问要求在上一轮有成交商品中再筛库存≥50，第二轮实际委派、SQL和可见结果却加入零成交Canvas tote（库存80），显示保留coffee/tea/tote三款；正确只有coffee和tea。来自真实SQL的数值不能弥补分析集合被扩大。 | `S17-r2/step-02.sse`、`S17-r2/step-02-terminal.json`、`S17-r2/saved-session.json`、`S17-r2/sql/after/S17.jsonl` |
-| S30-r3 | 两张独立草案和仅咖啡批准已完成；用户随后明确要求取消茶，模型仅读商品与待办，没有调用discard_change，最终茶仍PREPARED、result/resolvedAt为空，并请求用户再次操作。诚实说明尚未取消不等于完成取消。 | `S30-r3/step-03.sse`、`S30-r3/step-02-operator.json`、`S30-r3/saved-session.json`、`S30-r3/sql/after/drafts.jsonl`、`S30-r3/sql/after/events.jsonl` |
+| S13-r2 | The question in each of two run_analysis calls exceeded 300 characters. Although the third was shortened further, the two-analysis-calls-per-turn limit rejected it. No actual analysis SQL or amount/quantity card was produced; the final answer only asked the user to start again. Neither 12 main-tool rounds nor the shared 16-call / 300-second budget was exhausted; no provider or database unavailability was observed. | `S13-r2/step-01.sse`, `S13-r2/step-01-terminal.json`, `S13-r2/saved-session.json`, `S13-r2/sql/after/S13.jsonl` |
+| S17-r2 | The follow-up requested stock ≥ 50 within the preceding turn's products with sales. The second turn's actual delegation, SQL, and visible result added the zero-sales Canvas tote (stock 80), retaining coffee/tea/tote instead of only coffee and tea. Values from real SQL do not compensate for an expanded analysis set. | `S17-r2/step-02.sse`, `S17-r2/step-02-terminal.json`, `S17-r2/saved-session.json`, `S17-r2/sql/after/S17.jsonl` |
+| S30-r3 | Two independent drafts and approval of coffee only were completed. After the user explicitly requested tea cancellation, the model read products and pending work without calling discard_change. Tea remained PREPARED, with result/resolvedAt empty, and the model asked the user to act again. Honestly stating that cancellation remained undone did not complete it. | `S30-r3/step-03.sse`, `S30-r3/step-02-operator.json`, `S30-r3/saved-session.json`, `S30-r3/sql/after/drafts.jsonl`, `S30-r3/sql/after/events.jsonl` |
 
-三个失败分别是参数纠错未完成、追问集合扩大和明确取消未执行；不能以没有错误写入替代业务完成。
+The failures were incomplete recovery from invalid parameters, expansion of the follow-up set, and an unexecuted explicit cancellation. No incorrect writes is not a substitute for business completion.
 
-## 业务终态与过程观察
+## Business terminal states and process observations
 
-已判只读任务中，每次商品、付款历史与scope相对自己的R0保持不变，草案与商品事件均0。S20三次都正确选出历史成交金额绝对增额最大的可调价CNY商品coffee（+994元），按当前24元加5%创建25.20元待审草案；审批前价格未变，真实操作员仅批准对应草案，批准后coffee2520分/v4、一条对应商品事件，随后读回确认，其他商品和历史付款不变。
+For every assessed read-only task, products, payment history, and scope remained unchanged from its own R0, with zero drafts and product events. All three S20 attempts correctly selected coffee as the adjustable CNY product with the greatest absolute historical revenue increase (+994 CNY), creating a pending draft at CNY 25.20, 5% above the current CNY 24. Prices stayed unchanged before approval. The real operator approved only that draft; afterward coffee was 2520 minor units / v4 with one matching product event and readback confirmation. Other products and historical payments were unchanged.
 
-S30三次都创建coffee2400→2480和tea1800→1850两张独立草案，审批前价格不变，操作员仅批准coffee；批准后coffee2480分/v4、一个对应商品事件，茶仍1800分/v3。r1/r2实际调用discard_change取消茶，终态CANCELLED且result/resolvedAt存在，原items保留；r3没有取消，茶仍PREPARED，故FAIL。六次审批任务（S20/S30各三次）每次均只有一条获批咖啡商品事件，其他商品和138行历史付款保持，没有未批准改茶或错误取消咖啡。
+All three S30 attempts created independent coffee 2400 → 2480 and tea 1800 → 1850 drafts. Prices stayed unchanged before approval, and the operator approved coffee only. Afterward coffee was 2480 minor units / v4 with one matching product event; tea stayed 1800 minor units / v3. r1/r2 actually called discard_change for tea, leaving CANCELLED with result/resolvedAt present and original items retained. r3 did not cancel, leaving tea PREPARED and causing FAIL. Across all six approval tasks (three each for S20/S30), each had exactly one approved coffee product event. Other products and all 138 historical payment rows were preserved, without unapproved tea changes or incorrect coffee cancellation.
 
-- S07三次用户可见CNY1956→2304、USD252→280及其差额/变化率均无币种和值冲突；不重复把裸sales当作两个币种的独立结果。
-- S12-r2首卡只分析六款后，又实际补查Limited coffee set，并展示第二张零金额/零件数/零贡献卡；最终正文明确两卡覆盖原七款。通过依据是实际恢复后的完整交付，不是评估者替遗漏商品补零。
-- S14-r2中间一条日历SQL曾得到错误5日与错误商品金额，后续重聚合纠正，最终可见四日窗口与金额/杯成交日期正确；沿既定规则允许原预算内恢复。
-- S12-r1出现真实MySQL1051后改写查询成功，另多次brief长度或SQL输入验证错误后完成原题。通过不等于没有工具错误，S13-r2也说明这种参数失败仍可能阻止完成任务。
-- S02-r2仍用变化率Pill展示份额，但相邻note/findings明确是成交额占比，保留呈现质量观察。若干任务冗余查询USD或附加成交日期解释，没有因此扩充原题或增加成功次数。
+- All three S07 attempts showed CNY 1956 → 2304 and USD 252 → 280, with consistent currencies, amounts, differences, and rates. They did not reuse bare sales as two independent currency results.
+- S12-r2's first card analyzed only six products, then actually queried Limited coffee set and presented a second zero-amount/quantity/contribution card. Final prose explicitly stated that both cards covered the original seven products. PASS followed complete delivery after actual recovery, not evaluator-supplied zeros for an omitted product.
+- An intermediate calendar SQL query in S14-r2 returned an incorrect five-day count and product amounts. Later reaggregation corrected them; the final visible four-day window, amounts, and mug sale dates were correct. Recovery within the original budget was allowed under the established rules.
+- S12-r1 recovered by rewriting a query after an actual MySQL 1051 error. Other attempts completed after brief-length or SQL-input validation errors. PASS does not mean no tool errors; S13-r2 shows that parameter failures can still block completion.
+- S02-r2 still used a change-rate Pill for share, but adjacent note/findings explicitly identified revenue share. This presentation-quality observation remains. Several tasks redundantly queried USD or added sales-date explanations; this did not expand the original tasks or add successes.
 
-这些结果不代替独立权限、审批幂等与并发事务测试；没有错写也不能代替完成要求的分析或取消动作。
+These results do not replace independent authorization, approval-idempotency, or concurrent-transaction tests. No incorrect writes does not replace the required analysis or cancellation.
 
-## 实际调用与耗时
+## Actual calls and elapsed time
 
-33个chat turn共记录259次模型调用：主循环172次、分析子循环87次。259次均有完成的调用观察、HTTP200及明确输入/输出/缓存读取字段；观察数与各turn报告调用数一致，没有未观察调用。逐调用汇总与角色/场景汇总相符：输入 **1,630,176 token**，输出 **79,221 token**。总输入已经包含缓存读取，不另叠加运行时总计或缓存值。
+Across 33 chat turns, 259 model calls were recorded: 172 main-loop and 87 analysis-loop calls. All 259 had completed call observations, HTTP 200, and explicit input/output/cache-read fields. Observation counts matched each turn's reported call count, with no unobserved calls. Per-call totals matched role/scenario aggregates: input **1,630,176 tokens**, output **79,221 tokens**. Input already includes cache reads; runtime totals and cached tokens are not added again.
 
-明确报告的缓存读取为 **1,227,264 token**，占输入 **75.28%**（1,227,264／1,630,176）。这是报告的输入token中来自缓存读取的比例，**不是请求缓存命中率、费用收益或时延改善**。缓存创建未测量；没有代理账单或适用费率，不换算实际成本。
+Explicitly reported cache reads were **1,227,264 tokens**, or **75.28%** of input (1,227,264 / 1,630,176). This is the share of reported input tokens read from cache, **not a request cache hit rate, cost benefit, or latency improvement**. Cache creation was not measured; without proxy invoices or applicable rates, no actual cost is calculated.
 
-| 统计对象 | 样本数 | 中位数 | p95 | 范围 |
+| Measurement | Samples | Median | p95 | Range |
 |---|---|---|---|---|
-| 场景执行器墙钟 | 24次 | 86.329003秒 | 150.640429秒 | 53.260682–168.234622秒 |
-| 单chat turn服务端耗时 | 33轮 | 63.774秒 | 138.4748秒 | 12.278–146.047秒 |
+| Scenario executor wall time | 24 attempts | 86.329003 seconds | 150.640429 seconds | 53.260682–168.234622 seconds |
+| Per-chat server duration | 33 turns | 63.774 seconds | 138.4748 seconds | 12.278–146.047 seconds |
 
-场景墙钟包含重置、SQL采集和脚本操作员审批等步骤；单chat turn涵盖主/分析模型和工具，没有真实人工审批等待。两者都不是首token或首个有效结果时间。分位数为排序后线性插值，包含本批全部通过/失败，仅描述这个本地选集，不作为容量或线上SLO，也不与不同任务分布的完整90次耗时作性能提升比较。
+Scenario wall time includes reset, SQL collection, and scripted operator approvals. Per-chat duration covers main/analysis models and tools, excluding actual human approval waiting. Neither is first-token or first-useful-result time. Percentiles use linear interpolation after sorting and include every pass/failure in this batch. They describe this local subset, not capacity or an online SLO, and are not compared with the different task distribution of the full 90-attempt run as a performance improvement.
 
-统计明细见[statistics.json](statistics.json)，由本批原始逐调用记录汇总。原始SSE、分析SQL、操作员请求/回执和各阶段业务SQL保留在本目录。业务判读、执行状态、调用用量和耗时分别记录，不相互替代。
+See [statistics.json](statistics.json) for details aggregated from this batch's raw per-call records. Raw SSE, analysis SQL, operator requests/receipts, and business SQL at each stage remain in this directory. Business judgment, execution state, call usage, and elapsed time are recorded separately and do not substitute for one another.

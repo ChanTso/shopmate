@@ -1,14 +1,24 @@
-[![ShopMate · 选购有灵感，经营有把握](docs/assets/cover.png)](https://chantso.github.io/shopmate/)
+<p align="center">
+  <a href="https://chantso.github.io/shopmate/">
+    <img src="docs/assets/logo.svg" alt="ShopMate" width="128" height="138">
+  </a>
+</p>
 
-# ShopMate
+<h1 align="center">ShopMate</h1>
+
+<p align="center">
+  <a href="https://chantso.github.io/shopmate/"><strong>Explore the product ↗</strong></a>
+</p>
+
+<p align="center">原生购物客户端与经营 Agent，让选择、确认与执行成为连续的体验。</p>
+
+<p align="center">
+  <a href="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml"><img src="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+</p>
 
 [English](README.md) · **简体中文**
 
-[![CI](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml)
-
-**原生购物客户端 × 经营 Agent，让选择、确认与执行成为连续的体验。**
-
-**[浏览产品官网 ↗](https://chantso.github.io/shopmate/)** · [Android](android/README.md) · [iOS](ios/README.md) · [本地运行](docs/RUNTIME.md#本地运行) · [业务验收](evals/records/retail-v2-20260907/README.md) · [贡献指南](CONTRIBUTING.md)
+[Android](android/README.md) · [iOS](ios/README.md) · [本地运行](docs/RUNTIME.md#run-locally) · [业务验收](evals/records/retail-v2-20260907/README.md) · [贡献指南](CONTRIBUTING.md)
 
 面向同一零售品牌的 Android / iOS 买家 App 与 React 商家工作台。买家说出需求、比较商品、确认交易；运营人员从经营数据出发，准备方案、核对变更并批准执行。[CityBuddy](https://github.com/ChanTso/citybuddy) 提供实际交易与身份后端。
 
@@ -33,19 +43,28 @@
 ## 系统边界
 
 ```mermaid
-flowchart LR
-    App[Android / iOS] --> Host[ShopMate API]
+flowchart TB
+    App[Android / iOS] --> Host[ShopMate API 与 Agent]
     Web[React 商家工作台] --> Host
-    Host --> Agents[买家 / 经营 Agent]
-    Agents --> Analysis[只读 SQL / Python 沙箱]
-    Host --> State[(SQLite · 对话与恢复)]
-    Host -->|受限工具 / 人工确认| Java[CityBuddy · Auth / Commerce]
-    App -->|秒杀| Java
-    Java --> DB[(MySQL · 业务状态)]
-    Analysis -->|只读经营视图| DB
+    App -->|秒杀预约与状态查询| Commerce[CityBuddy Commerce]
+    Host -->|登录与受限委托交换| Auth[CityBuddy Auth]
+    Host -->|受限工具与用户操作| Commerce
+    Host --> State[(SQLite: 对话与恢复)]
+    Auth --> DB[(MySQL: 身份与交易)]
+    Commerce --> DB
 ```
 
-ShopMate 当前为单实例宿主，SQLite 使用 WAL 保存对话、意图和偏好；MySQL 保存身份、商品、订单和交易回执。两者职责与运行约束见[工程指南](docs/RUNTIME.md#身份对话与持久状态)。
+经营分析有单独的数据通路：宿主以只读账号查询视图，再把完整、有界的数据表交给无网络 Python 容器。
+
+```mermaid
+flowchart LR
+    SQL[宿主 SQL 分析] -->|SELECT-only| Views[(MySQL 经营视图)]
+    SQL -->|完整数据表与代码| Python[Python 容器: 无网络]
+```
+
+Python 容器没有数据库连接或凭证；账户、对话归属与业务授权仍由各自服务校验。
+
+ShopMate 当前为单实例宿主，SQLite 使用 WAL 保存对话、意图和偏好；MySQL 保存身份、商品、订单和交易回执。两者职责与运行约束见[工程指南](docs/RUNTIME.md#identity-conversations-and-persistent-state)。
 
 ## 验证与结果
 
@@ -57,7 +76,7 @@ ShopMate 当前为单实例宿主，SQLite 使用 WAL 保存对话、意图和�
 
 ## 本地运行
 
-需要同级 CityBuddy 仓库、Java 21、Python 3.11+、Node.js 24、uv 与 Docker Compose。完成[首次后端准备](docs/RUNTIME.md#本地运行)后：
+需要同级 CityBuddy 仓库、Java 21、Python 3.11+、Node.js 24、uv 与 Docker Compose。完成[首次后端准备](docs/RUNTIME.md#run-locally)后：
 
 ```sh
 uv sync --frozen
@@ -78,6 +97,6 @@ uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | 业务边界测试与真实模型验收 |
 | [`site/`](site/) | 独立构建的 GitHub Pages 产品官网 |
 
-复用 [commerce-agents](vendor/commerce-agents/README.md) 的零售核心与 Messages 运行时，扩展原生客户端、业务工具、身份、持久状态与实际交易接入。保留上游 [Apache-2.0 许可](vendor/commerce-agents/LICENSE)及[图片来源](web/public/products/IMAGE-CREDITS.md)；封面使用[官网中相同的原生演示画面](site/README.md)。
+复用 [commerce-agents](vendor/commerce-agents/README.md) 的零售核心与 Messages 运行时，扩展原生客户端、业务工具、身份、持久状态与实际交易接入。保留上游 [Apache-2.0 许可](vendor/commerce-agents/LICENSE)及[图片来源](web/public/products/IMAGE-CREDITS.md)；[官网说明](site/README.md)记录了原生画面与交互演示的制作方式。
 
 [贡献指南](CONTRIBUTING.md) · [Apache-2.0 许可](LICENSE)
