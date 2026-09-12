@@ -1,60 +1,60 @@
-# 零售夹具与本地重置
+# Retail fixture and local reset
 
-当前夹具由 [`scripts/retail_fixture.py`](../scripts/retail_fixture.py) 定义，由 [`scripts/local_runtime.py`](../scripts/local_runtime.py) 初始化和重置。数据版本为 `shopmate-retail-v1`，仅用于独立的 `shopmate` Compose project。需要 CityBuddy PR #158 及此前的 V020–V025 零售、购物、运营和营销迁移。
+The fixture is defined by [`scripts/retail_fixture.py`](../scripts/retail_fixture.py) and initialized/reset through [`scripts/local_runtime.py`](../scripts/local_runtime.py). Its data version is `shopmate-retail-v1`, used only in the isolated `shopmate` Compose project. It requires CityBuddy PR #158 and the preceding V020–V025 retail, shopping, operations, and campaign migrations.
 
-## 数据范围与来源
+## Data scope and sources
 
-| 数据 | 当前定义 | 权威读取 |
+| Data | Definition | Authoritative reads |
 | --- | --- | --- |
-| 商品目录 | 83 个单品、4 个系列，共 87 个目录根；4 个系列含 21 个规格，总计 104 个 SKU | `product` 与 `retail_product_family/metadata` |
-| 当前运营 | 库存、低库存阈值、可售状态、成本与内容质量观察 | 商品表及 `retail_product_operations` |
-| 成交历史 | 报告截止前 90 个完整 Shanghai 日；历史价格版本及金额固定，另有未开始付款、PENDING、FAILED 样本 | `standard_order`、`mock_payment_attempt/callback`、相关账本与订单原始记录 |
-| 买家与售后事实 | 两个演示买家、偏好和会员、本人订单、带来源的履约观察及订单问题；退款申请保留 REQUESTED | `crm_profile`、`retail_order_fulfillment/issue`、`mock_refund` |
-| 流量与营销 | 90 日全店访问观察、五个原始营销计划及各自归因期间；C-203 收入未知 | `retail_store_traffic_daily`、`retail_campaign` |
-| 政策与指南 | 与当前业务能力对应的政策、购买指南及配送估算配置 | 通过实际 FAQ 发布服务写入的 `faq_source`，以及 `retail_fulfillment_config` |
+| Catalog | 83 individual products and 4 families, totaling 87 catalog roots; the 4 families contain 21 variants, for 104 SKUs overall | `product` and `retail_product_family/metadata` |
+| Current operations | Stock, low-stock thresholds, sale availability, cost, and content-quality observations | Product tables and `retail_product_operations` |
+| Sales history | 90 complete Shanghai days before the reporting cutoff; fixed historical price versions and amounts, plus payment-not-started, PENDING, and FAILED samples | `standard_order`, `mock_payment_attempt/callback`, related ledgers, and original order records |
+| Buyer and after-sales facts | Two demo buyers, preferences and membership, own orders, sourced fulfillment observations, and order issues; refund requests remain REQUESTED | `crm_profile`, `retail_order_fulfillment/issue`, `mock_refund` |
+| Traffic and campaigns | 90 days of store-wide traffic observations, five original campaigns with their own attribution periods; C-203 revenue is unknown | `retail_store_traffic_daily`, `retail_campaign` |
+| Policies and guides | Policies, buying guides, and delivery-estimate settings matching current business capabilities | `faq_source` populated through the real FAQ publication service, and `retail_fulfillment_config` |
 
-商品、紧凑规格、运营样例、买家、订单问题和营销观察来自 [`vendor/commerce-agents/examples/retail/data`](../vendor/commerce-agents/examples/retail/data)。商品图片只复用仓库内已有文件，保留[图片来源](../web/public/products/IMAGE-CREDITS.md)；没有图片的商品使用组件缺省展示，不生成失效图片地址。
+Products, compact variant definitions, operations samples, buyers, order issues, and campaign observations come from [`vendor/commerce-agents/examples/retail/data`](../vendor/commerce-agents/examples/retail/data). Product images reuse existing repository files with [credits](../web/public/products/IMAGE-CREDITS.md) preserved. Products without images use the component's default presentation rather than a broken image address.
 
-金额统一转换为 CNY 演示金额，不声称进行汇率换算。历史订单按确定性规则构造，流量使用样例序列构造对应日观察，来源和数据版本写入记录；它们不是商店真实销售或广告成绩。已提供的营销支出与归因收入保留原有数值关系及明确期间，不再导入一套 mock sales 作为第二套成交事实。
+Amounts are converted into CNY demo amounts, not presented as an exchange-rate conversion. Historical orders use deterministic construction rules, and traffic samples form matching daily observations; records include their source and data version. These are not actual store sales or advertising results. Supplied campaign spend and attributed revenue retain their original numeric relationship and explicit periods; a second mock-sales dataset is not imported as another source of sales truth.
 
-系列共同内容只存于 family；当前 21 个规格没有额外展示内容覆盖，叶 metadata 保留实际 option_values，使用父内容继承。缺货规格 `AR-1606-KING-BLUSH` 和 `AR-1902-FULL` 有明确零库存；`AR-1207` 有库存但暂停出售，不能混为缺货。库存是本次演示的当前快照，历史造数不会再次扣减该库存。
+Shared family content lives only on the family. The current 21 variants have no additional display-content overrides: leaf metadata retains actual `option_values` and inherits parent content. Out-of-stock variants `AR-1606-KING-BLUSH` and `AR-1902-FULL` explicitly have zero stock. `AR-1207` has stock but is paused for sale, which is a different condition. Stock is the current demo snapshot; generating historical orders does not deduct it again.
 
-买家订单的历史单价和版本独立于今天的商品价格。成功付款订单同时具备付款尝试、回调和支付账本；退款 REQUESTED 表示已预留申请金额，不表示资金已退回。履约使用明确阶段、时间和 `FIXTURE` 来源，不从 PAID 或预计送达时间推断已发货。原样例缺少发运时间的记录采用固定的演示交接假设，时间不得晚于观察时刻。
+Buyer orders retain historical unit prices and versions independently of today's product prices. Successfully paid orders have payment attempts, callbacks, and payment ledgers. A REQUESTED refund reserves the requested amount but does not mean funds have been returned. Fulfillment has explicit stages, times, and a `FIXTURE` source; PAID or an estimated delivery date does not imply shipment. Original samples missing dispatch times use a fixed demo handoff assumption whose time cannot exceed the observation time.
 
-商家入口为 `/`，买家入口为 `/buyer`；两端复用这套业务事实。买家购物、人工确认、恢复与记忆管理见[买家说明](BUYER.md)。新版买家真实模型验收另行记录，本夹具说明不声明已经通过。
+For the browser clients described by this fixture, the merchant entry point was `/` and the buyer entry point was `/buyer`; both reused these business facts. See the [buyer guide](BUYER.md) for shopping, confirmation, recovery, and memory management. New buyer real-model acceptance is recorded separately; this fixture description does not claim that it passed.
 
-## 时间和统计口径
+## Time and metric definitions
 
-固定报告截止为 `2026-09-05T00:00:00+08:00`，交易覆盖 `[2026-06-07, 2026-09-05)` 的 90 个完整 Shanghai 日。SQL 连接和时间戳按 UTC 使用，本地日/月边界先转换成对应 UTC 瞬间再查询。裸日期指 Shanghai 午夜，显式带 offset 的时间保留其实际瞬间。
+The fixed reporting cutoff is `2026-09-05T00:00:00+08:00`, with transactions covering 90 complete Shanghai days in `[2026-06-07, 2026-09-05)`. SQL connections and timestamps use UTC; local day/month boundaries are converted into their UTC instants before querying. A bare date means Shanghai midnight, while an explicit offset retains its actual instant.
 
-报告截止与真实操作时钟分开：`settings.as_of` 只传入 backend 的 `report_as_of`；主 Agent 每轮看到真实 Shanghai 操作时间。`last_14_days` 等相对报表以报告截止为参照，促销“今天生效”按真实操作日期处理。新增的现实时间订单不会被塞入旧固定报告窗口，覆盖外的期间也不能当成已观察到零成交。
+The reporting cutoff is separate from the operation clock: `settings.as_of` reaches the backend only as `report_as_of`; each main-agent turn sees the actual Shanghai operation time. Relative report periods such as `last_14_days` use the cutoff, while promotion wording such as effective today uses the real operation date. New orders at the real current time do not enter an old fixed reporting window. Periods outside coverage cannot be treated as observed zero sales.
 
-- 成交额采用成功付款的历史订单金额，退款前总额；不按现价重算，不把不同币种直接相加。
-- 转化率为同一完整期间的付款 **SKU 子单数 / 全店访问次数**，不是去重买家数或 checkout 头数；缺失任一天的流量观察不补零。类别和商品没有独立流量分母。
-- 退款申请订单比例不是成功退款率或实物退货率。成本和毛利来自当前运营观察，是经营估算，不是会计利润或强制价格底线。
-- 营销预算是可编辑的计划字段；支出、归因收入和观察期间独立保留。ROAS 仅在同一活动/期间/币种的收入和非零支出均存在时计算；未知收入不呈现为 0。
-- `merchant_daily_sales` 保留旧 UTC 日聚合。上海日、周和月分析应从 `merchant_paid_orders.succeeded_at` 按实际本地边界聚合，不能直接将旧日标签换成 Shanghai。
+- Revenue is the pre-refund amount of successfully paid historical orders. It is not recalculated at today's price, and different currencies are not added together.
+- Conversion is **paid SKU suborders / store-wide visits** over the same complete period, not distinct buyers or checkout headers. A missing daily traffic observation is not filled with zero. Categories and products have no separate traffic denominator.
+- The proportion of orders with refund requests is not a successful-refund or physical-return rate. Cost and gross margin come from current operations observations; they are estimates, not accounting profit or an enforced price floor.
+- Campaign budget is an editable plan field. Spend, attributed revenue, and observation periods remain separate. ROAS requires revenue and nonzero spend for the same campaign, period, and currency; unknown revenue is not shown as 0.
+- `merchant_daily_sales` retains the old UTC daily aggregation. Shanghai day, week, and month analysis should aggregate `merchant_paid_orders.succeeded_at` using actual local boundaries rather than relabeling UTC days.
 
-分析子 Agent 只获以下六个视图的 SELECT；基础表和用于核对结果的本地只读账号不暴露给模型：
+The analysis subagent has SELECT on only these six views. Base tables and the local read-only verification account are not exposed to the model:
 
-1. `merchant_products`：当前商品与可调价性。
-2. `merchant_paid_orders`：按订单类型、订单 ID、主体、金额和付款状态关联的历史成交。
-3. `merchant_daily_sales`：旧 UTC 日聚合。
-4. `merchant_listing_facts`：当前系列、分类、库存和成本/内容观察。
-5. `merchant_store_traffic_daily`：Shanghai 日访问观察及来源。
-6. `merchant_campaign_facts`：本地计划与独立归因观察。
+1. `merchant_products`: current products and price-editability.
+2. `merchant_paid_orders`: historical sales joined by order type, order ID, subject, amount, and payment state.
+3. `merchant_daily_sales`: the old UTC daily aggregation.
+4. `merchant_listing_facts`: current families, categories, stock, and cost/content observations.
+5. `merchant_store_traffic_daily`: Shanghai daily visits and their sources.
+6. `merchant_campaign_facts`: local plans and separate attribution observations.
 
-## 变更与判定
+## Changes and grading
 
-五类草案共用 CityBuddy 的变更账本和实际操作员审批入口。商品操作展开后至多 25 个 SKU；Java 在同一事务内核对完整目标、快照和版本，写入业务状态、回执及适用的商品事件。普通调价工具的 20% 幅度限制属于 host 工具约束，不声称 Java 也执行相同上限。
+All five draft types use CityBuddy's change ledger and actual operator-approval endpoint. Product operations expand to at most 25 SKUs. Within one transaction, Java checks the complete target set, snapshots, and versions, then writes business state, receipts, and applicable product events. The ordinary price tool's 20% limit is a host-tool constraint; this does not claim that Java enforces the same limit.
 
-促销折扣必须为正且不超过 50%，分金额按 HALF_UP 生成并冻结。允许批准窗口开始前仍为 PREPARED；窗口过期后首次批准会拒绝；窗口内批准立即改变实际价格。日期形式的结束值包括该 Shanghai 日期全天，显式时间形式的结束值不包含该瞬间。到期不会自动恢复售价，商品之后再次改价或换币种时读取接口同时保留原促销价格与当前价格。
+Promotion discounts must be positive and no greater than 50%; amounts in minor units are generated with HALF_UP rounding and frozen. Before the approval window, the draft stays PREPARED. First approval after expiry is rejected; approval within the window changes the actual price immediately. A date-only end includes that entire Shanghai day; an explicit timestamp excludes the ending instant. Expiry does not restore the price automatically. If a product later changes price or currency, reads retain both the original promotional price and the current price.
 
-CAMPAIGN 创建或更新本站计划、预算、受众和文案。新计划没有支出或收入观察；修改旧计划不改写其已有归因数据。没有外部广告投放动作。
+CAMPAIGN creates or updates local plans, budgets, audiences, and copy. New plans have no spend or revenue observations; editing an existing plan does not overwrite its attribution data. No external advertisement is published.
 
-## 初始化与正常启动
+## Initialize and start normally
 
-从 ShopMate 根目录执行，且 API 未运行：
+Run from the ShopMate root while the API is stopped:
 
 ```sh
 uv sync --frozen
@@ -62,49 +62,50 @@ python3 scripts/local_runtime.py up
 uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 ```
 
-完整依赖安装和前端启动见 [README](../README.md#本地运行)。`up` 先完成身份、迁移及 Java 服务配置；以当前版本的流量记录判断夹具是否已初始化。首次初始化会替换保留的旧七商品演示范围并建立统一零售数据；后续正常启动保留当前价格、库存、计划和会话，不等同于重置。
+See the [runtime guide](RUNTIME.md#run-locally) for complete dependencies and frontend setup. `up` configures identity, migrations, and Java services, then uses traffic records for the current version to detect initialization. First initialization replaces the retained old seven-product demo scope with unified retail data. Subsequent normal starts preserve current prices, stock, plans, and conversations; they are not resets.
 
-## 手工重置
+<a id="手工重置"></a>
+## Manual reset
 
-重置会删除并重建保留范围内的业务记录。先保存需要保留的 SQL、SSE、草案与执行回执；状态不明的写入先读回，不能用重置覆盖问题现场。
+Reset deletes and rebuilds business records in the reserved scope. Save any SQL, SSE, drafts, and execution receipts that must be retained first. Read back uncertain writes before resetting; do not overwrite an unresolved incident's state.
 
-1. 停止模型任务、集成测试和其他业务写入，在 API 终端按 Ctrl-C 停止 uvicorn。保持本项目 Java 和数据服务运行，以便排空商品事件；若使用非默认端口，也须自行停止对应 API。默认 8101 仍监听时脚本拒绝维护。
-2. 在 ShopMate 根目录执行：
+1. Stop model tasks, integration tests, and other writes. Press Ctrl-C in the API terminal to stop uvicorn. Keep this project's Java and data services running so product events can drain. Stop a non-default API port yourself as well; the script refuses maintenance while default port 8101 still listens.
+2. Run from the ShopMate root:
 
    ```sh
    python3 scripts/reset_fixture.py
    ```
 
-3. 脚本确认商品 Outbox 已发布、指定 RocketMQ consumer 无待消费或在途记录后，停止 Java 写入，再重建 SQL 数据、处理 SQLite 夹具会话、通过实际 FAQ 发布服务写入政策，最后重新启动 Java。排空不可读或超时即停止。
-4. 重置成功后重新启动 API，再登录并新建会话：
+3. The script confirms product Outbox publication and no pending/in-flight work for the designated RocketMQ consumer, then stops Java writes. It rebuilds SQL data, handles SQLite fixture conversations, publishes policies through the actual FAQ service, and restarts Java. Unreadable drain state or a timeout stops the procedure.
+4. After reset succeeds, restart the API, sign in, and create a new conversation:
 
    ```sh
    uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
    ```
 
-清理按固定商品 ID、明确的夹具主体和版本进行，主体比较使用精确二进制语义。商品的非夹具订单、购物车或促销引用、其他操作员的商品变更草案，以及其他操作员对夹具营销活动的更新会阻止维护。清理顺序先处理促销、checkout、动作回执、退款、付款等依赖，再处理订单、商品元数据、商品与系列；不删整库、Redis 或消息队列，也不关闭外键约束。
+Cleanup uses fixed product IDs, explicit fixture subjects, and versions, with exact binary subject comparison. Non-fixture orders, carts, or promotion references to these products, other operators' product-change drafts, and other operators' updates to fixture campaigns block maintenance. Cleanup first removes dependent promotions, checkouts, action receipts, refunds, and payments, followed by orders, metadata, products, and families. It does not clear entire databases, Redis, or message queues, or disable foreign keys.
 
-存在 `.run/sessions.sqlite3` 时，脚本用 SQLite backup API 备份到 `.run/backups/sessions-<时间>.sqlite3`，然后清除对应夹具主体的会话、草案引用和未决 prepare intent，避免旧会话继续使用已删除的业务实例。其他会话不作为此次清理目标。
+When `.run/sessions.sqlite3` exists, the script uses SQLite's backup API to write `.run/backups/sessions-<timestamp>.sqlite3`, then removes the relevant fixture subjects' conversations, draft references, and pending prepare intents so stale conversations cannot reuse deleted business instances. Other conversations are outside this cleanup scope.
 
-**自动备份仅涵盖 SQLite，不是 MySQL 业务库备份。** SQL 和 SQLite 不共享事务：SQL 重建完成后才处理会话备份/清理及政策发布。若后续步骤失败，维护失败并保持 host 未就绪；先检查忽略目录中的 `.run/runtime.log` 和实际库状态，再决定恢复或重新执行，不将局部成功当成完整重置。
+**The automatic backup covers SQLite only, not the MySQL business database.** SQL and SQLite do not share a transaction: conversation backup/cleanup and policy publication follow SQL reconstruction. If a later step fails, maintenance fails and the host remains unready. Inspect ignored `.run/runtime.log` and the actual database state before deciding how to recover or rerun; partial success is not a complete reset.
 
-`.run/` 包含本地凭证、会话与备份，保持忽略且不提交。需要保留上轮 MySQL 业务事实时，应在重置前另行保存所需数据库备份或权威 SQL 输出，而不是依赖会话副本恢复交易状态。
+`.run/` contains local credentials, conversations, and backups and remains ignored. To retain previous MySQL business facts, save the necessary database backup or authoritative SQL output before reset; a conversation copy cannot restore transaction state.
 
-## 与旧记录的关系
+## Relationship to older records
 
-旧 `evals/` 任务和[公开历史成绩](../evals/records/README.md)采用七商品、42 日 UTC 数据及不同代码版本，不能直接在此夹具下宣称复现同一分数。旧 78/90、定向 21/24 和[浏览器截图](demo-20260906/README.md)继续保留原始版本与分母；本说明不声明新版真实模型或端到端验收已通过。
+The old `evals/` tasks and [public historical results](../evals/records/README.md) use seven products, 42 UTC days, and different source versions. Running against this fixture does not reproduce the same score. The old 78/90, targeted 21/24, and [browser screenshots](demo-20260906/README.md) retain their original versions and denominators. This description does not claim that newer real-model or end-to-end acceptance has passed.
 
-新版验收应先固定这套业务数据与报告口径，再使用参考 SQL、实际用户可见结果和 Java 写入终态判定。权限、未批准写入、版本冲突、并发与重复批准以及停止恢复分别检查，不以任务执行结束代替业务成功。
+New acceptance should first fix this dataset and reporting definition, then grade reference SQL, actual visible output, and Java write outcomes. Permissions, unapproved writes, version conflicts, concurrency/repeated approval, stopping, and recovery are checked separately; execution completion is not business success.
 
-## 中文演示目录与商品图
+## Chinese demo catalog and product images
 
-中文商品文案维护在 `scripts/data/demo-catalog-zh-CN.json`，不改写上游原始目录或历史订单快照。预览与应用：
+Chinese product copy is maintained in `scripts/data/demo-catalog-zh-CN.json` without rewriting the upstream catalog or historical order snapshots. Preview and apply it with:
 
 ```sh
 uv run python scripts/localize_demo_catalog.py
 uv run python scripts/localize_demo_catalog.py --apply
 ```
 
-脚本从现有忽略目录读取操作员凭证，通过 `LISTING_UPDATE` 建草案，再走操作员批准。它更新当前商品标题和介绍，保留价格、库存、历史成交金额与原始快照；已有非初始商家标题保持不动。`--product AR-1001` 可限定单品。重置原始夹具后，可显式重新应用中文文案；不在每次服务启动时覆盖运营修改。
+The script reads operator credentials from existing ignored storage, creates `LISTING_UPDATE` drafts, then obtains operator approval. It updates current product titles and descriptions while preserving prices, stock, historical amounts, and original snapshots; existing merchant titles that differ from initialization remain unchanged. `--product AR-1001` limits the operation to one item. Chinese copy can be explicitly reapplied after resetting the original fixture; normal startup does not overwrite operations changes.
 
-买家与商家共用 `web/public/products/` 的同 SKU 素材；权威目录已指定图片时优先使用指定值，仅在未指定且对应素材实际存在时补齐展示路径。原生 iOS 的图片集是这些文件的格式转换副本，用于缩略图展示。来源与原创商品概念图说明见该目录的 `IMAGE-CREDITS.md`。
+Buyers and merchants share the same SKU assets in `web/public/products/`. An image explicitly supplied by the authoritative catalog takes precedence; a display path is added only when no image was specified and the corresponding asset exists. Native iOS image sets are format-converted copies for thumbnails. See that directory's `IMAGE-CREDITS.md` for sources and original product-concept visuals.

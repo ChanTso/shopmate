@@ -1,17 +1,17 @@
-# 首次完整业务验收：84/90
+# First full business acceptance: 84/90
 
-CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`  
-ShopMate：`0db5538c1d46bf440542c6159323e2bcd2ec755a`  
-数据截止：`2026-09-05T00:00:00Z`；fixture 来源为上述 CityBuddy 提交。  
-主模型与分析模型均为 `gpt-5.6-terra`，经 CLIPROXY Chat Completions 适配调用。每个 chat turn 共用 16 次模型调用、300 秒截止时间。
+CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`<br>
+ShopMate: `0db5538c1d46bf440542c6159323e2bcd2ec755a`<br>
+Data cutoff: `2026-09-05T00:00:00Z`; fixture source is the CityBuddy commit above.<br>
+Both main and analysis models used `gpt-5.6-terra` through the CLIPROXY Chat Completions adapter. Each chat turn shared 16 model calls and a 300-second deadline.
 
-固定 30 个业务场景各执行 3 次；每次从 R0 和新会话开始，同一场景内部保留多轮和操作员步骤。90 次均执行结束，无未执行项或执行器中断；根据冻结题面、实际可见回答、参考 SQL 和写入终态，业务完成 **84/90（93.33%）**。`executed` 不作为业务通过标记。
+Each of 30 fixed business scenarios ran 3 times. Every attempt began from R0 and a new conversation, retaining multi-turn and operator steps within the scenario. All 90 attempts finished, with no unrun attempts or executor interruptions. Under the frozen task statements, actual visible answers, reference SQL, and final write states, business completion was **84/90 (93.33%)**. `executed` is not a business-pass marker.
 
-本批从 2026-09-05 18:55 UTC 运行至 20:38 UTC。保存原始 SSE、模型/工具记录、操作员回执与各阶段 SQL；失败和工具自纠错没有删除。任务定义与参考 SQL 在同一提交的 `evals/formal.json` 和 `evals/sql/`。
+The batch ran from 18:55 to 20:38 UTC on 2026-09-05. Raw SSE, model/tool records, operator receipts, and SQL from each stage are retained, including failures and tool self-correction. Task definitions and reference SQL are in `evals/formal.json` and `evals/sql/` at the same commit.
 
-## 逐场景结果
+## Per-scenario results
 
-| 场景 | r1 | r2 | r3 | 完成数 |
+| Scenario | r1 | r2 | r3 | Completed |
 |---|---|---|---|---|
 | S01 | PASS | PASS | PASS | 3/3 |
 | S02 | PASS | PASS | PASS | 3/3 |
@@ -44,32 +44,33 @@ ShopMate：`0db5538c1d46bf440542c6159323e2bcd2ec755a`
 | S29 | PASS | PASS | PASS | 3/3 |
 | S30 | PASS | PASS | PASS | 3/3 |
 
-## 六次业务失败
 
-- **S03-r3：无依据的经营解释。** 历史成交均价与当前售价的数值正确，但可见回答断言存在历史折让、优惠或组合成交。该数据只能证明两种价格口径不同，不能证明发生过促销；后续补充“原因无法确定”没有撤销前面的具体断言。
-- **S08-r1/r2/r3：分析对象扩大。** 问题指定帆布袋，后续比较仍应只针对该商品；主 Agent 委派时却扩为全店商品，最终没有完整交付该商品两期零成交及增长率不适用的结论。r1 另外生成了超过工具约定长度的说明，运行时静默截断导致条件丢失；另外两次说明未被截断，但已经选错分析范围。
-- **S11-r1/r2：排名查询失败后未交付结果。** 查询错误被泛化为“数据库不可用或拒绝”，最终缺少要求的销量、成交额排名。单独只读重放 r1 首条失败 SQL 得到 MySQL 1690，原因为无符号数相减越界；有符号对照可返回负值。该重放不是正式执行之一。r3 在原预算内改写查询并完成，按原规则通过。
+## Six business failures
 
-只读任务未改动商品、草案或交易历史。所有实际批准、取消及只提案场景的商品、版本、草案终态、事件和历史不变量均符合原先定义；没有把这些边界通过额外计入完成数。
+- **S03-r3: unsupported business explanation.** Historical average sale price and current selling price were numerically correct, but the visible answer asserted historical discounts, promotions, or bundled sales. The data establishes different price definitions, not that a promotion occurred. A later “原因无法确定” (verbatim model text: cause uncertain) did not retract those specific assertions.
+- **S08-r1/r2/r3: expanded analysis scope.** The question specified the canvas tote, and the follow-up comparison should have stayed on that product. Main-agent delegation expanded to the whole catalog, and the final answer did not fully deliver the tote's zero sales in both periods and inapplicable growth rate. r1 also exceeded the tool's brief-length contract; silent runtime truncation dropped conditions. The other two briefs were not truncated but had already selected the wrong scope.
+- **S11-r1/r2: no ranking results after query failure.** Query errors were generalized as “数据库不可用或拒绝” (verbatim model text: database unavailable or rejected), and the requested quantity/revenue rankings were missing. A separate read-only replay of r1's first failed SQL returned MySQL 1690 from unsigned subtraction underflow; a signed comparison query returned negative values. That replay was not a formal attempt. r3 rewrote its query within the original budget and completed the task, passing under the original rules.
 
-## 保留的过程观察
+Read-only tasks did not change products, drafts, or transaction history. In all actual approval, cancellation, and proposal-only scenarios, products, versions, final draft states, events, and historical invariants matched the original definitions. These boundary checks were not counted as extra completions.
 
-- S04-r3 的中间 SQL 聚合曾重复计算，模型在可见最终交付前纠正；S13-r2 第二次分析补齐了首次遗漏的商品。均在原预算内完成。
-- S06 的日期和值正确，但“均匀/不集中”只适用于有成交的四天，不足以概括整个十四天窗口。原任务未定义集中度阈值，保留措辞问题，没有事后增加阈值改判。
-- S14-r3 正确给出日期贡献，但关于偶发波动的表述偏强，不能据此声称有统计显著性或确定因果。
-- S22-r1、S23-r2 调用呈现工具时没有可用指标，错误未形成错误卡片；后续可见回答与实际业务结果完整正确，保留工具错误但不把可恢复过程单独判为任务失败。
+## Retained process observations
 
-## 实际调用与耗时
+- Intermediate SQL in S04-r3 double-counted an aggregate before the model corrected it ahead of visible final delivery. S13-r2's second analysis added a product omitted by the first. Both completed within budget.
+- S06's dates and values were correct, but “均匀/不集中” (verbatim model text: uniform/not concentrated) applied only to the four days with sales, not the entire fourteen-day window. The original task defined no concentration threshold, so the wording concern was retained without adding a threshold retrospectively to change the verdict.
+- S14-r3 correctly reported date contributions, but described incidental fluctuation too strongly; this does not establish statistical significance or definite causality.
+- S22-r1 and S23-r2 called the presentation tool without available metrics. The errors produced no incorrect cards; subsequent visible answers and actual business outcomes were complete and correct. Tool errors remain recorded without treating recovered intermediate failures as separate task failures.
 
-147 个 chat turn 共记录 832 次模型调用（主循环 663、分析子循环 169），全部报告了输入/输出用量。合计输入 **5,027,066 token**、输出 **191,747 token**；每次调用只累计一次，总输入包含缓存读入部分，未重复叠加运行时聚合。
+## Actual calls and elapsed time
 
-- 场景执行器墙钟耗时：中位数 62.770 秒，p95 124.340 秒，范围 22.716–147.925 秒；包含登录、重置、SQL 核对和脚本操作员步骤，不是纯模型时延。
-- 单次 chat turn 服务端耗时：中位数 26.749 秒，p95 103.109 秒，范围 7.676–143.313 秒；涵盖该轮主/子调用与工具，未加入真实人工审批等待。
-- 本批没有保存缓存字段的存在性，缓存读计数为 0 时无法区分代理明确报告与兼容层默认；缓存写 0 为 SDK 占位。不据此报告缓存命中率或收益。
-- SSE 没有逐事件接收时间，不能重建首个有效结果耗时；没有代理费率或账单，不将 token 数转为实际金额成本。
+Across 147 chat turns, 832 model calls were recorded: 663 main-loop and 169 analysis-loop calls. All reported input/output usage. Total input was **5,027,066 tokens** and output **191,747 tokens**. Each call was counted once; input includes cache reads, without adding runtime aggregates again.
 
-耗时分位数使用排序后线性插值，包含通过和失败任务；仅描述这次本地运行，不是容量或线上 SLO。详细数字见 `statistics.json`，完整原件保留在本目录。
+- Scenario executor wall time: median 62.770 seconds, p95 124.340 seconds, range 22.716–147.925 seconds. This includes login, reset, SQL checks, and scripted operator steps, not pure model latency.
+- Per-chat server duration: median 26.749 seconds, p95 103.109 seconds, range 7.676–143.313 seconds. This includes the turn's main/analysis calls and tools, excluding actual human approval waiting.
+- This batch did not retain cache-field presence. A zero cache-read count cannot distinguish an explicit proxy report from an adapter default; zero cache writes were SDK placeholders. Neither a cache hit rate nor benefits can be inferred.
+- SSE lacks per-event receive timestamps, so time to the first useful result cannot be reconstructed. Without proxy rates or invoices, token counts are not converted to actual monetary cost.
 
-## 后续版本
+Percentiles use linear interpolation after sorting and include passing and failing tasks. They describe this local run, not capacity or an online SLO. See `statistics.json` for details; full originals are retained in this directory.
 
-本批揭示的问题将通过通用分析范围规则、完整说明校验、可纠错 SQL 反馈及缓存字段可用性标记修复。修复后的任务回归和完整批次独立保存，不覆盖本批、不拼接不同版本的成功样本。固定任务矩阵用于业务验收与回归，不称未见过的公开基准或泛化能力估计。
+## Subsequent versions
+
+The follow-up work identified by this batch covered general analysis-scope rules, complete-brief validation, actionable SQL error feedback, and cache-field availability flags. Regressions and full runs after those fixes are saved independently, without overwriting this batch or combining successful samples across versions. The fixed task matrix serves business acceptance and regression; it is not an unseen public benchmark or a generalization estimate.

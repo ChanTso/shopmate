@@ -11,7 +11,7 @@ uv sync --frozen
 npm --prefix web ci
 ```
 
-The [runtime guide](docs/RUNTIME.md#本地运行) covers the sibling CityBuddy checkout, Java 21, Docker Compose, and local service configuration. Native prerequisites and build commands are in the [Android](android/README.md) and [iOS](ios/README.md) guides. The [product site](site/README.md) can be previewed independently.
+The [runtime guide](docs/RUNTIME.md#run-locally) covers the sibling CityBuddy checkout, Java 21, Docker Compose, and local service configuration. Native prerequisites and build commands are in the [Android](android/README.md) and [iOS](ios/README.md) guides. The [product site](site/README.md) can be previewed independently.
 
 ## Check your changes
 
@@ -19,7 +19,7 @@ Run checks for the areas you change:
 
 | Area | Checks |
 |---|---|
-| Python host | `uv run ruff check src tests scripts integration_tests`, `uv run ruff format --check src tests scripts integration_tests`, and the application/runtime pytest suite in the [runtime guide](docs/RUNTIME.md#检查与历史记录) |
+| Python host | `uv run ruff check src tests scripts integration_tests`, `uv run ruff format --check src tests scripts integration_tests`, and the application/runtime pytest suite in the [runtime guide](docs/RUNTIME.md#checks-and-historical-records) |
 | Merchant Web | `npm --prefix web run typecheck`, `npm --prefix web test`, `npm --prefix web run build` |
 | Android / shared Kotlin | `cd android && ./gradlew --no-daemon :shared:jvmTest :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` |
 | iOS | Follow the [build and Simulator test commands](ios/README.md) for the affected behavior; the CI build-for-testing step builds test bundles but does not run them |
@@ -27,7 +27,7 @@ Run checks for the areas you change:
 
 [GitHub Actions](.github/workflows/ci.yml) runs the Python, Web, Android, and Apple build checks on pull requests. Preserve existing tests; add regression coverage when a behavior change needs it.
 
-Real Java/database integration tests and real-model evaluations are separate from the checks above. `uv run pytest integration_tests -q` changes demo business data: use the [fixture reset and serial-run instructions](docs/RUNTIME.md#检查与历史记录). Read a recorded evaluation's setup before running it; model calls use the configured provider and may incur cost.
+Real Java/database integration tests and real-model evaluations are separate from the checks above. `uv run pytest integration_tests -q` changes demo business data: use the [fixture reset and serial-run instructions](docs/RUNTIME.md#checks-and-historical-records). Read a recorded evaluation's setup before running it; model calls use the configured provider and may incur cost.
 
 ## Submit a pull request
 

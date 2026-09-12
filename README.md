@@ -1,14 +1,25 @@
-[![ShopMate · Native commerce and agents](docs/assets/cover.png)](https://chantso.github.io/shopmate/)
+<p align="center">
+  <a href="https://chantso.github.io/shopmate/">
+    <img src="docs/assets/logo.svg" alt="ShopMate" width="128" height="138">
+  </a>
+</p>
 
-# ShopMate
+<h1 align="center">ShopMate</h1>
+
+<p align="center">
+  <a href="https://chantso.github.io/shopmate/"><strong>Explore the product ↗</strong></a>
+</p>
+
+<p align="center">Native shopping apps and commerce agents. From choosing to confirming to acting.</p>
+
+<p align="center">
+  <a href="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml"><img src="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://deepwiki.com/ChanTso/shopmate"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</p>
 
 **English** · [简体中文](README.zh-CN.md)
 
-[![CI](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml)
-
-**Native shopping apps and commerce agents. A continuous path from choosing to confirming to acting.**
-
-**[Explore the product ↗](https://chantso.github.io/shopmate/)** · [Android](android/README.md) · [iOS](ios/README.md) · [Run locally](docs/RUNTIME.md#本地运行) · [Retail evaluation](evals/records/retail-v2-20260907/README.md) · [Contributing](CONTRIBUTING.md)
+[Android](android/README.md) · [iOS](ios/README.md) · [Run locally](docs/RUNTIME.md#run-locally) · [Retail evaluation](evals/records/retail-v2-20260907/README.md) · [Contributing](CONTRIBUTING.md)
 
 Android / iOS buyer apps and a React merchant workspace for one retail brand. Shoppers describe what they need, compare products, and confirm transactions. Operators turn business data into proposals, review changes, and approve execution. [CityBuddy](https://github.com/ChanTso/citybuddy) provides the transaction and identity backend.
 
@@ -33,19 +44,28 @@ The product site presents native application footage and interaction demonstrati
 ## System boundaries
 
 ```mermaid
-flowchart LR
-    App[Android / iOS] --> Host[ShopMate API]
+flowchart TB
+    App[Android / iOS] --> Host[ShopMate API and agents]
     Web[React merchant workspace] --> Host
-    Host --> Agents[Buyer / Merchant agents]
-    Agents --> Analysis[Read-only SQL / Python sandbox]
+    App -->|Flash-sale reservations and status| Commerce[CityBuddy Commerce]
+    Host -->|Login and scoped delegation| Auth[CityBuddy Auth]
+    Host -->|Scoped tools and user actions| Commerce
     Host --> State[(SQLite: conversations and recovery)]
-    Host -->|Scoped tools / user confirmation| Java[CityBuddy: Auth / Commerce]
-    App -->|Flash sales| Java
-    Java --> DB[(MySQL: business state)]
-    Analysis -->|Read-only business views| DB
+    Auth --> DB[(MySQL: identity and transactions)]
+    Commerce --> DB
 ```
 
-ShopMate currently runs as a single-instance host. SQLite with WAL stores conversations, intents, and preferences; MySQL stores identities, products, orders, and transaction receipts. See the [runtime guide](docs/RUNTIME.md#身份对话与持久状态) for ownership and deployment constraints.
+Merchant analysis uses a separate data path. The host queries reporting views with a read-only account, then passes complete, bounded tables to the network-isolated Python container.
+
+```mermaid
+flowchart LR
+    SQL[Host SQL analysis] -->|SELECT-only| Views[(MySQL reporting views)]
+    SQL -->|Complete table and code| Python[Python container: no network]
+```
+
+The Python container has no database connection or credentials. Identity, conversation ownership, and business authorization remain enforced by their owning services.
+
+ShopMate currently runs as a single-instance host. SQLite with WAL stores conversations, intents, and preferences; MySQL stores identities, products, orders, and transaction receipts. See the [runtime guide](docs/RUNTIME.md#identity-conversations-and-persistent-state) for ownership and deployment constraints.
 
 ## Validation and results
 
@@ -59,7 +79,7 @@ The [retail evaluation](evals/records/retail-v2-20260907/README.md) records **18
 
 ## Run locally
 
-Prerequisites: a sibling CityBuddy checkout, Java 21, Python 3.11+, Node.js 24, uv, and Docker Compose. Complete the [initial backend setup](docs/RUNTIME.md#本地运行), then run:
+Prerequisites: a sibling CityBuddy checkout, Java 21, Python 3.11+, Node.js 24, uv, and Docker Compose. Complete the [initial backend setup](docs/RUNTIME.md#run-locally), then run:
 
 ```sh
 uv sync --frozen
@@ -80,6 +100,6 @@ Open the merchant workspace at **http://127.0.0.1:8101/**. Build the buyer apps 
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | Business-boundary tests and real-model evaluations |
 | [`site/`](site/) | Independently built GitHub Pages product site |
 
-ShopMate reuses the retail cores and Messages runtime from [commerce-agents](vendor/commerce-agents/README.md), adding native clients, business tools, identity, persistent state, and transaction integration. Upstream [Apache-2.0 licensing](vendor/commerce-agents/LICENSE) and [image credits](web/public/products/IMAGE-CREDITS.md) are preserved. The cover uses the [same native demo footage as the product site](site/README.md).
+ShopMate reuses the retail cores and Messages runtime from [commerce-agents](vendor/commerce-agents/README.md), adding native clients, business tools, identity, persistent state, and transaction integration. Upstream [Apache-2.0 licensing](vendor/commerce-agents/LICENSE) and [image credits](web/public/products/IMAGE-CREDITS.md) are preserved. The [product site notes](site/README.md) describe how its native footage and interaction demonstrations were made.
 
 [Contributing](CONTRIBUTING.md) · [Apache-2.0 license](LICENSE)

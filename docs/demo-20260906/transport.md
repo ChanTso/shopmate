@@ -1,20 +1,20 @@
-# SSE 经前端代理的传输验证
+# SSE transport verification through the frontend proxy
 
-CityBuddy：`69be167a3df030bf45795c49f444d6e7c24d0423`。  
-修复前 ShopMate：`02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`。  
-修复后 ShopMate：`ac6b1404e17a007b8c5563449872c69c520787a0`。  
-验证日期：2026-09-06 UTC；同一台本机、Next production 前端 3100 → Python API 8101，真实 `gpt-5.6-terra`。
+CityBuddy: `69be167a3df030bf45795c49f444d6e7c24d0423`.<br>
+ShopMate before: `02d1bf0d0d1e4f5d71925f7db92ed3c4d9726b28`.<br>
+ShopMate after: `ac6b1404e17a007b8c5563449872c69c520787a0`.<br>
+Verified on 2026-09-06 UTC, on the same local host, through the Next production frontend at 3100 → Python API at 8101, using real `gpt-5.6-terra`.
 
-真实浏览器演示中，流式回合完成前没有及时显示工具进度。沿前端代理定位到 Next 默认压缩：它会压缩 `text/event-stream`，而上游响应只有 `Cache-Control: no-cache`。以现有本地操作员登录，经实际 Next 入口新建独立会话，发送同一句只读问题「用一句话说明你能做什么，不需要查询业务数据。」，请求接受 gzip，保存响应白名单头和解码后的原始数据分块。
+During the real browser demo, tool progress did not appear promptly before the streaming turn completed. Investigation traced the frontend proxy path to Next's default compression: it compressed `text/event-stream`, while the upstream response supplied only `Cache-Control: no-cache`. Using the existing local operator account through the actual Next entry point, each run created a separate conversation and sent the same read-only prompt, retained verbatim: “用一句话说明你能做什么，不需要查询业务数据。” The request accepted gzip; allowlisted response headers and decoded raw data chunks were saved.
 
-| 检查项 | 修复前 | 修复后 |
+| Check | Before | After |
 | --- | --- | --- |
-| `Content-Encoding` | `gzip` | 无 |
+| `Content-Encoding` | `gzip` | Absent |
 | `Cache-Control` | `no-cache` | `no-cache, no-transform` |
-| 客户端收到的解码数据块 | 1，包含整轮与终态 | 40，终态前已有 39 块 |
+| Decoded chunks received by the client | 1, containing the whole turn and terminal event | 40, with 39 before the terminal event |
 
-仅给 SSE 响应加 `no-transform`，使代理不再将事件缓存在压缩流中；其他页面压缩、模型协议、提示词和调用预算保持。已有完成流测试增加响应头断言；完整 Python 检查 517 通过、1 个既有可选 SDK 模块跳过。随后真实页面在回合尚未结束时已显示 `analysis: step 2 — running a query`，见 `streaming-progress.png`。
+Only `no-transform` was added to SSE responses, preventing the proxy from buffering events in a compressed stream. Other page compression, model protocol, prompts, and call budget were unchanged. The existing completed-stream test gained a response-header assertion; the full Python checks passed 517 tests with 1 existing optional-SDK module skipped. The real page subsequently showed `analysis: step 2 — running a query` before the turn ended; see `streaming-progress.png`.
 
-这证明了该压缩缓冲路径已被解除。数据块数量随模型文本和网络分包变化，不是吞吐量或模型提速指标；两次输出与模型耗时不要求相同，也没有据此计算延迟收益。最早页面观察中的全部等待时间不能都归因于压缩。该记录独立于 90 次完整业务验收和 24 次定向回归。
+This establishes that the identified compression-buffering path was removed. Chunk counts vary with model text and network segmentation; they are not throughput or model-speed metrics. The two outputs and model durations need not match, and no latency improvement was calculated from them. Not all waiting in the earliest page observation can be attributed to compression. This record is separate from the 90-attempt complete business acceptance and 24-attempt targeted regression.
 
-两份原始传输记录为 `sse-transport-before.jsonl` 与 `sse-transport-after.jsonl`，在本目录的原件包内；凭证和请求授权头未保存。
+The two original transport files, `sse-transport-before.jsonl` and `sse-transport-after.jsonl`, are inside this directory's archive. Credentials and request authorization headers were not saved.

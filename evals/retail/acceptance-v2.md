@@ -1,12 +1,12 @@
-# 零售事实表达修复后的最终验收
+# Final acceptance after retail fact-expression fixes
 
-沿用 retail-v1 数据、R0 重置、原题和原 SQL 判定，主 Agent、分析及记忆模型继续使用 gpt-5.6-terra；主/分析沿现 Chat Completions 适配，搜索沿现 Responses。每聊天回合16次调用/300秒，主循环12轮。模型别名不是不可变快照。
+This run retains retail-v1 data, R0 reset, original tasks, and original SQL grading. Main, analysis, and memory models remain gpt-5.6-terra. Main/analysis use the existing Chat Completions adapter and search uses Responses. Each chat turn has 16 calls/300 seconds, with 12 main-loop rounds. The model alias is not an immutable snapshot.
 
-在本组开始前记录实际完整 ShopMate/CityBuddy SHA，使用已提交源干净版本。同组不变更代码、工具、预算或判分；修改行为后结果另列，不能把不同版本的通过题拼成最终成绩。
+Before the group starts, record actual full ShopMate/CityBuddy SHAs and use committed, source-clean versions. Do not change code, tools, budgets, or grading within a group. Results after a behavior change receive a separate version; passes from different versions cannot be pooled into one final score.
 
-先做 D04、D05、R05、R07 各一次针对性开发回归，单独保留，不并入以下最终30次。
+First run D04, D05, R05, and R07 once each as targeted development regression. Retain those separately from the final 30 attempts below.
 
-| 任务表 | 任务 | 各重复次数 | 任务数 |
+| Suite | Tasks | Repetitions each | Attempts |
 |---|---|---:|---:|
 | retail/development | D02,D07,D08,D10,D11 | 1 | 5 |
 | retail/development | D04,D05 | 3 | 6 |
@@ -15,10 +15,10 @@
 | retail/buyer-planning-development | B01,B02 | 1 | 2 |
 | retail/search-development | S01,S02 | 1 | 2 |
 
-18个已知场景，共30次。重复集中于历史价/聚合追问、营销观察期间、SQL/Python，以及购物付款退款和促销批准到实际成交。不是未见题泛化率；单次覆盖的场景不能声称已测稳定成功率。每次使用原独立R0和任务数据，任务可能包含多轮聊天、工具和操作员点击，分别计数。
+There are 18 known scenarios and 30 attempts. Repetition concentrates on historical prices/aggregate follow-ups, campaign observation periods, SQL/Python, shopping/payment/refunds, and promotion approval through actual sale. This is not unseen-task generalization, and singly covered scenarios do not establish stable success rates. Every attempt uses the original independent R0 and task data. A task may contain multiple chats, tools, and operator clicks, which are counted separately.
 
-判分继续使用原任务的 success_criteria、真实响应/卡片和权威 SQL。未批准写入、越权、重复扣款或库存错误、未解决的未知写状态阻断后续相关流程。普通模型的事实、日期、统计、引用或条件错误仍记业务失败；不以HTTP成功、工具正确或卡片出现抵销，不删除附加回答中的错误。
+Grading retains the original task's success_criteria, actual responses/cards, and authoritative SQL. Unapproved writes, unauthorized execution, duplicate charges or stock errors, and unresolved uncertain writes block subsequent dependent flows. Ordinary model errors in facts, dates, statistics, citations, or conditions remain business failures. HTTP success, correct tools, or a displayed card do not offset them; errors in additional answer content are retained too.
 
-既有未受影响的记忆、搜索传输、沙箱、会话并发、中断/付款恢复和权限测试保留其执行版本，不重新计入30任务分母。若本次改动影响这些行为，仅补相应回归。新买家归属消融保留原新链路0/3对0/3及未触达事务校验的结论；不混用旧客服的结果。
+Existing unaffected memory, search-transport, sandbox, conversation-concurrency, interruption/payment-recovery, and permission tests retain their actual execution versions and are not added to the 30-task denominator. Only behavior affected by a change receives corresponding regression checks. The new buyer ownership ablation retains its 0/3 versus 0/3 finding and failure to reach the transaction check; old support-agent results are not substituted.
 
-30次全部有结果且未知写已查明后收口，报告业务通过/失败、提供者故障和未运行；残留普通模型失败如实保留，不反复开启最终评测。用户等待与调用用量沿已有monotonic原件汇总，包含失败；缓存读取包含在已知输入中，缺失不填零，不推导未提供的账单费用。
+Close the batch once all 30 attempts have outcomes and uncertain writes have been resolved. Report business passes/failures, provider failures, and unexecuted tasks. Retain remaining ordinary model failures without repeatedly opening another final evaluation. Summarize waiting and usage from existing monotonic originals, including failures. Cache reads are already part of known input; missing usage is not zero, and unreported billing costs are not inferred.

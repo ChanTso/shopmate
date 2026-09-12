@@ -1,56 +1,58 @@
-# 运行与工程指南
+# Runtime and engineering guide
 
-[返回项目首页](../README.md)。以下命令均从所注明的仓库根目录运行。
+[Back to the project overview](../README.md). Run each command from the repository root indicated below.
 
-面向单一零售品牌官方商店的应用与 Agent 工作台。CityBuddy 提供同一家店的交易与身份后端；ShopMate 负责买家与操作员的应用入口、Agent 和对话。一个商品目录、一支运营团队、多位顾客，不包含多商户入驻。商家端支持经营分析、商品与库存、订单问题和审批执行；买家端支持推荐与比较、购物车、本人订单及由用户确认的结账、模拟付款和退款申请。
+An application and agent workspace for one retail brand's official store. CityBuddy provides the store's transaction and identity backend; ShopMate provides buyer and operator interfaces, agents, and conversations. The scope is one catalog, one operations team, and multiple customers, without multi-merchant onboarding. Merchants can analyze performance, manage products and stock, investigate order issues, and approve changes. Buyers can get recommendations and comparisons, manage their cart and own orders, and explicitly confirm checkout, simulated payment, and refund requests.
 
-项目复用 [commerce-agents](../vendor/commerce-agents/README.md) 的商家与购物核心、Messages 运行时和零售页面组件；业务工具、身份、持久会话及实际写入接入 CityBuddy。原 [Apache-2.0 许可证](../vendor/commerce-agents/LICENSE)、版权声明和[图片来源](../web/public/products/IMAGE-CREDITS.md)保留。
+The project reuses [commerce-agents](../vendor/commerce-agents/README.md)' merchant and shopping cores, Messages runtime, and retail UI components. Business tools, identity, persistent conversations, and actual writes connect to CityBuddy. The original [Apache-2.0 license](../vendor/commerce-agents/LICENSE), copyright notices, and [image credits](../web/public/products/IMAGE-CREDITS.md) are preserved.
 
-## 产品展示
+## Product showcase
 
-[静态产品官网](../site/README.md)位于 `site/`，与商家 React 工作台 `web/` 分开。官网使用实际客户端画面与滚动交互，不依赖在线模型或交易服务；完整业务演示在本地运行。Android 与 SwiftUI 买家客户端共享 KMP 协议与恢复核心，构建说明分别见 `android/README.md`、`ios/README.md`。
+The [static product site](../site/README.md) lives in `site/`, separately from the merchant React workspace in `web/`. It uses real client images and scrolling interactions without requiring an online model or transaction service; the complete business demo runs locally. Android and SwiftUI buyer clients share a KMP protocol and recovery core. See `android/README.md` and `ios/README.md` for their build instructions.
 
-## 当前能力
+## Current capabilities
 
-- **经营分析**：主 Agent 组织查询与追问，复杂计算交给分析子 Agent；它通过受限 SQL 取数，也可在独立 Python 容器内计算完整查询结果。成交额来自成功付款的历史订单，流量和广告归因有独立的观察期间与来源；缺失数据不填零。
-- **经营首页与订单**：四项核心指标、可切换日趋势和三类待办使用同一报告口径；近期订单读取当前全店标准单与秒杀单，不受历史报告截止限制。按 SKU 子单展示成交时的金额，订单、付款、退款和履约状态分别保留。
-- **商品与运营**：服务端分页浏览商品系列和单品，详情展开真实 SKU、规格、当前价格、库存、内容和成本观察；库存预警及订单问题提供对应分析入口。
-- **五类草案**：支持 `LISTING_UPDATE`、`PRICE_UPDATE`、`INVENTORY_ACTION`、`PROMOTION`、`CAMPAIGN`。涉及商品的操作展开后至多 25 个 SKU；卡片分别显示金额、数量、开关和文字差异。
-- **操作员审批**：模型可读取、建案和取消未执行方案，不能批准。批准按钮使用登录操作员的直接身份；Java 核对快照、版本和业务条件，在同一事务内保存实际变更、草案回执及适用的商品 Outbox。冲突整批拒绝，重复批准返回原结果。
-- **恢复与停止**：会话和草案引用保存在 SQLite，业务终态以 Java 为准。刷新后重新登录可恢复记录；“停止生成”中断当前请求，不撤销已保存的草案或已执行的变更。审批结果独立保存在业务回执中，模型生成不阻止普通购物与操作员审批；真实版本冲突和未知写入仍需核对。
+- **Business analysis:** the main agent organizes queries and follow-ups; an analysis subagent handles complex calculations through restricted SQL and an independent Python container that receives complete query results. Revenue uses successfully paid historical orders. Traffic and advertising attribution have their own observation periods and sources; missing data is not filled with zero.
+- **Merchant overview and orders:** four core metrics, selectable daily trends, and three task categories share the same reporting definitions. Recent orders read current standard and seckill orders across the store, independently of the historical report cutoff. Amounts reflect the original sale at SKU suborder level; order, payment, refund, and fulfillment states remain separate.
+- **Products and operations:** server-side pagination covers product families and individual items. Details expose real SKUs, variants, current prices, stock, content, and cost observations; inventory alerts and order issues lead to relevant analysis.
+- **Five draft types:** `LISTING_UPDATE`, `PRICE_UPDATE`, `INVENTORY_ACTION`, `PROMOTION`, and `CAMPAIGN`. Product operations expand to at most 25 SKUs. Cards distinguish changes to amounts, quantities, switches, and text.
+- **Operator approval:** the model can read, propose, and cancel unexecuted plans, but cannot approve them. Approval uses the signed-in operator's direct identity. Java checks snapshots, versions, and business conditions, then atomically saves the change, draft receipt, and applicable product Outbox events. A conflict rejects the entire batch; repeated approval returns the original result.
+- **Recovery and stopping:** SQLite stores conversations and draft references; Java remains authoritative for business outcomes. Refreshing and signing in again restores records. “停止生成” (verbatim UI label: stop generation) interrupts the request without undoing saved drafts or applied changes. Approval results remain in business receipts. Model generation does not block ordinary shopping or operator approval; actual version conflicts and uncertain writes still require verification.
 
-促销批准会立即修改商品实际售价，**经营窗口结束后不会自动恢复价格**。开始前批准返回 `promotion_not_started` 并保留待批准状态；过期未执行方案被拒绝。营销活动创建或更新的是本站计划、受众、文案和预算，不代表向外部广告平台投放，也不改写既有支出或收入观察。
+Approving a promotion immediately changes the actual sale price; **the price does not automatically revert when the promotion window ends**. Approval before the window returns `promotion_not_started` and leaves the draft pending; an expired, unexecuted plan is rejected. Campaigns create or update local plans, audiences, copy, and budgets. They do not publish to external advertising platforms or overwrite existing spend or revenue observations.
 
 ```mermaid
 flowchart LR
-  Buyer[买家购物助手] --> Host[ShopMate API / 身份隔离的会话与记忆]
-  Merchant[商家经营工作台] --> Host
-  Host --> Shopping[购物 Agent]
-  Host --> Trading[经营 Agent]
-  Trading --> Analysis[只读 SQL 分析子 Agent]
-  Analysis --> Views[受限经营视图]
-  Analysis --> Sandbox[独立 Python 沙箱]
-  Shopping -->|买家 OBO / 工具权限| Java[CityBuddy 业务接口]
-  Trading -->|商家 OBO / 工具权限| Java
-  Host -->|用户确认 / 操作员批准| Java
-  Java --> Transaction[身份与版本校验 / 交易 / 回执 / Outbox]
+  Buyer[Buyer shopping assistant] --> Host[ShopMate API / identity-scoped conversations and memory]
+  Merchant[Merchant workspace] --> Host
+  Host --> Shopping[Shopping agent]
+  Host --> Trading[Merchant agent]
+  Trading --> Analysis[Read-only SQL analysis subagent]
+  Analysis --> Views[Restricted business views]
+  Analysis --> Sandbox[Independent Python sandbox]
+  Shopping -->|Buyer OBO / tool scopes| Java[CityBuddy business APIs]
+  Trading -->|Merchant OBO / tool scopes| Java
+  Host -->|User confirmation / operator approval| Java
+  Java --> Transaction[Identity and version checks / transactions / receipts / Outbox]
 ```
 
-商家入口为 React/Vite Web `/`，买家入口为 [Kotlin/Compose Android App](../android/README.md)；买家登录、人工确认、停止恢复与记忆管理见[买家使用说明](../docs/BUYER.md)。旧 `/buyer` Web 页面已退役；旧客服入口与重复模型循环已撤下，Java 的授权、退款确认及回执机制继续复用。两个角色都可调用有来源的网页搜索；经营分析可调用独立 Python 沙箱。[完整零售验收](../evals/records/retail-v1-20260907/README.md)记录真实业务任务、页面操作、记忆、并发与中断恢复；业务成绩和边界检查分别报告。
+The merchant entry point is React/Vite Web at `/`; the buyer entry point is the [Kotlin/Compose Android app](../android/README.md). See the [buyer guide](BUYER.md) for sign-in, explicit confirmation, stopping, recovery, and memory management. The old `/buyer` page, support-agent entry point, and duplicate model loop have been retired; Java authorization, refund confirmation, and receipt mechanisms remain in use. Both roles can use web search with sources; business analysis can use an independent Python sandbox. The [complete retail acceptance record](../evals/records/retail-v1-20260907/README.md) covers real tasks, UI interactions, memory, concurrency, and interruption recovery, reporting business outcomes separately from boundary checks.
 
-## 身份、对话与持久状态
+<a id="身份对话与持久状态"></a>
+## Identity, conversations, and persistent state
 
-普通购物和经营接口只要求对应角色的 `Authorization: Bearer`，不要求聊天 ID。服务端按主体和角色保存内部授权绑定，再按 Java 端点交换精确 scope 的 OBO；部分 UI 购物操作也走此受限代理。模型没有付款、退款确认或操作员批准工具。
+Ordinary shopping and merchant APIs require the appropriate role's `Authorization: Bearer`, without a chat ID. The server stores internal authorization bindings by subject and role, then exchanges an OBO token with the exact scope required by each Java endpoint; some shopping UI operations use this restricted proxy too. The model has no payment, refund-confirmation, or operator-approval tool.
 
-聊天通过 `POST /api/{buyer|merchant}/conversations` 创建，列表和恢复分别使用 `GET /conversations`、`GET /conversations/{id}`，流式调用为 `POST /conversations/{id}/chat`。原 `/session`、`/sessions`、`/chat` 保留为历史协议兼容接口，正式客户端不使用它们。命令与结账/退款记录按主体读取，旧操作保留原 key、请求体和授权绑定，换聊天不会变成新的业务意图。
+Create chat through `POST /api/{buyer|merchant}/conversations`, list and restore through `GET /conversations` and `GET /conversations/{id}`, and stream through `POST /conversations/{id}/chat`. The old `/session`, `/sessions`, and `/chat` routes remain for historical protocol compatibility; official clients do not use them. Commands and checkout/refund records are read by subject. Existing operations retain their original key, body, and authorization binding; changing chats does not create a new business intent.
 
-当前为单进程、单实例 Python 服务；SQLite 存储对话、意图、恢复记录和记忆，使用 WAL，必须保存在持久目录，不能随容器重建丢弃。`state_path` 可配置，夹具重置先用 SQLite backup 保存原库；Java/MySQL 是交易权威来源。不得直接以多个 Uvicorn workers 扩容。默认最多 8 个活跃聊天任务、每用户 2 个，同一对话串行；超额返回 429，普通业务请求不占模型任务名额。这些是任务上限配置，不是容量测量。
+The Python service currently runs as one process and one instance. SQLite with WAL stores conversations, intents, recovery records, and memory in a persistent directory that must survive container replacement. `state_path` is configurable; fixture reset backs up the database through SQLite backup first. Java/MySQL is authoritative for transactions. Do not scale by simply adding Uvicorn workers. Defaults allow at most 8 active chat tasks and 2 per user, with one task per conversation; excess requests receive 429. Ordinary business requests do not consume model-task slots. These are configured limits, not measured capacity.
 
-## 本地运行
+<a id="本地运行"></a>
+## Run locally
 
-需要同级 [CityBuddy](https://github.com/ChanTso/citybuddy) 仓库、Java 21、Python 3.11+、Node.js 24、uv 和 Docker Compose。CityBuddy 至少包含 [PR #159](https://github.com/ChanTso/citybuddy/pull/159)（`2eb42634f082c0ddf93639f902db38009381d337`），提供零售/营销迁移、商家操作、全店近期订单读取和 FAQ 发布 CLI。
+Prerequisites are a sibling [CityBuddy](https://github.com/ChanTso/citybuddy) checkout, Java 21, Python 3.11+, Node.js 24, uv, and Docker Compose. CityBuddy must include at least [PR #159](https://github.com/ChanTso/citybuddy/pull/159) (`2eb42634f082c0ddf93639f902db38009381d337`), which supplies retail/campaign migrations, merchant operations, store-wide recent orders, and the FAQ publication CLI.
 
-首次准备 Java 服务：
+Initial Java service setup:
 
 ```sh
 cd ../citybuddy
@@ -65,37 +67,38 @@ npm --prefix web run build
 uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 ```
 
-`up` 要求 ShopMate API 已停止；首次初始化统一零售夹具，已有该版本数据时保留当前业务变更。构建后由 Python 同源提供商家 Web，访问 `http://127.0.0.1:8101/`，不需要另起 Next/Node 服务。开发 Web 时另开终端 `npm --prefix web run dev`，3100 端口将 API 请求代理到 8101。
+`up` requires the ShopMate API to be stopped. It initializes the unified retail fixture on first use and preserves business changes when that data version already exists. After the build, Python serves the merchant Web app from `http://127.0.0.1:8101/`; no separate Next/Node service is needed. For Web development, run `npm --prefix web run dev` in another terminal; port 3100 proxies API requests to 8101.
 
-操作员账号为 `shopmate-fixture-operator`，本地生成密码保存在忽略的 `.run/operator_password`。Bearer 只保留在页面内存，刷新后重新登录。Android 构建与安装见 [android/README.md](../android/README.md)，模拟器连接 `http://10.0.2.2:8101`。
+The operator account is `shopmate-fixture-operator`; its locally generated password is in ignored `.run/operator_password`. Bearer tokens stay in page memory, so refreshing requires sign-in again. See [android/README.md](../android/README.md) for Android build and installation; the emulator connects to `http://10.0.2.2:8101`.
 
-启动脚本使用独立的 `shopmate` Compose project 和数据卷，不重置 CityBuddy 默认演示库。Auth/Commerce 使用 9081/9082，ShopMate API/Web 使用 8101。停止 API 后运行 `python3 scripts/local_runtime.py stop` 停止本项目 Java 与数据服务、保留卷。对话数据库必须保留在 `.run` 或另一个持久目录中。
+The launcher uses the separate `shopmate` Compose project and volumes without resetting CityBuddy's default demo database. Auth/Commerce use 9081/9082; the ShopMate API/Web uses 8101. After stopping the API, `python3 scripts/local_runtime.py stop` stops this project's Java and data services while preserving volumes. Keep the conversation database in `.run` or another persistent directory.
 
-## 模型、预算与时间
+## Models, budgets, and time
 
-模型代理凭证继续来自同级 `citybuddy/.env` 的 `CLIPROXY_BASE_URL` 和 `CLIPROXY_API_KEY`。默认主模型与分析模型均为 `gpt-5.6-terra`，经 Chat Completions 适配对接 Messages 循环。运行参数位于 `.run/settings.json`，也可通过 `SHOPMATE_CONFIG` 指定配置文件；凭证不传入浏览器或模型工具参数。
+Model proxy credentials come from `CLIPROXY_BASE_URL` and `CLIPROXY_API_KEY` in the sibling `citybuddy/.env`. Both main and analysis models default to `gpt-5.6-terra`, using a Chat Completions adapter for the Messages loop. Runtime settings live in `.run/settings.json`, or a file selected by `SHOPMATE_CONFIG`. Credentials do not enter the browser or model tool arguments.
 
-每回合主、分析子 Agent 共用默认 16 次模型调用和 300 秒截止；主循环最多 12 个工具轮。分析账号仅有六个经营视图的 SELECT，默认查询上限 2 秒、200 行及 16,000 字节。Python 只接收这些视图的完整、有界查询结果；截断表在执行前拒绝。缓存用量仅展示代理实际报告的字段，未知量不推断成命中率或费用收益。主、分析、记忆和搜索请求共用模型调用预算；实际 Responses 搜索用量与 Chat 用量合计一次。默认每聊天回合至多 3 次搜索和 3 次 Python 尝试，次数与回合时间限制不是硬 token 或费用上限。
+The main and analysis agents share a default 16 model calls and a 300-second deadline per turn; the main loop allows at most 12 tool rounds. The analysis account has SELECT on only six business views, with default query limits of 2 seconds, 200 rows, and 16,000 bytes. Python receives only complete, bounded results from these views; truncated tables are rejected before execution. Cache usage displays only fields actually reported by the proxy; unknown values do not become hit rates or cost savings. Main, analysis, memory, and search requests share the model-call budget; Responses search and Chat usage are counted once. Each chat turn allows at most 3 search and 3 Python attempts by default. Call and time limits are not hard token or monetary limits.
 
-网页搜索通过独立的 Responses 请求接入现有普通工具接口，返回外部摘要、实际引用和服务提供的查阅来源。来源卡将引用与查阅列表分开；没有元数据时明确提示。网页内容不作为本站商品、订单、政策或权限真相。当前代理不支持原生 Messages server tools，本部署没有启用原生 server search、code execution 或原生提前派发；搜索与 Python 能力由宿主实际执行。字段依据见 [Responses 搜索文档](https://developers.openai.com/api/docs/guides/tools-web-search)。
+Web search uses a separate Responses request behind the existing ordinary tool interface. It returns external summaries, actual citations, and provider-supplied consulted sources. Source cards distinguish citations from consulted pages and explicitly indicate missing metadata. Web content is not authoritative for this store's products, orders, policies, or permissions. The current proxy does not support native Messages server tools, so this deployment does not enable native server search, code execution, or early dispatch; the host performs search and Python execution. See the [Responses web-search documentation](https://developers.openai.com/api/docs/guides/tools-web-search) for the fields.
 
-`local_runtime.py up` 从 `infra/analysis-sandbox/` 专用目录构建 `shopmate-analysis:1`。每次 Python 调用创建独立容器：非 root、无网络、只读根目录、不挂载宿主或项目文件，固定 Python/pandas/numpy，1 CPU / 512 MiB / 64 PID / 32 MiB 临时目录。单次执行窗口至多 20 秒（含排队），结束清理另有 10 秒限时；合计输出至多 64 KiB，宿主同时运行至多两个；查询和排队也受任务截止约束。停止生成、任务超时或正常关闭会终止对应容器；若 Docker 失联导致无法核实清理，会报告错误并拒绝后续沙箱执行，不把它当成成功。宿主被强制杀死后的遗留容器不属于该保证，可按 `shopmate.analysis=true` 标签检查。容器约束说明见 [Docker 文档](https://docs.docker.com/engine/containers/run/)。
+`local_runtime.py up` builds `shopmate-analysis:1` from the dedicated `infra/analysis-sandbox/` directory. Each Python call creates a separate non-root container with no network, a read-only root filesystem, no host/project mounts, fixed Python/pandas/numpy, and limits of 1 CPU / 512 MiB / 64 PID / 32 MiB temporary storage. The execution window is at most 20 seconds including queueing, with another 10 seconds for cleanup, at most 64 KiB combined output, and at most two concurrent executions. Queries and queueing also respect the task deadline. Stopping generation, task expiry, or normal shutdown terminates the corresponding container. If Docker is unreachable and cleanup cannot be verified, the host reports an error and rejects further sandbox work. Containers left after the host is forcibly killed are outside that guarantee and can be inspected by the `shopmate.analysis=true` label. See [Docker's container documentation](https://docs.docker.com/engine/containers/run/) for these constraints.
 
-当前演示数据为 `shopmate-retail-v1`：**87 个目录根、104 个可交易 SKU、90 个完整 Shanghai 日、CNY**。这是从 vendored 零售样例和确定性造数构成的演示数据，不是实际经营记录。报告截止固定为 `2026-09-05T00:00:00+08:00`；模型的操作时钟是每轮真实 Shanghai 时间。相对报表期间使用报告截止，促销的“今天/明天”使用真实操作日期。详情见[零售夹具与重置说明](../docs/retail-fixture.md)。
+The demo fixture is `shopmate-retail-v1`: **87 catalog roots, 104 tradable SKUs, 90 complete Shanghai days, CNY**. It combines vendored retail samples with deterministic synthetic data, not real business records. The reporting cutoff is fixed at `2026-09-05T00:00:00+08:00`; each model turn receives the actual Shanghai operation time. Relative reporting periods use the cutoff; promotion dates such as today or tomorrow use the actual operation date. See the [retail fixture and reset guide](retail-fixture.md).
 
-## 使用工作台
+## Use the workspace
 
-登录后可依次体验以下流程；这是当前能力的操作说明，不代表一次新的模型验收结果：
+The following walkthrough describes capabilities, not a new model-evaluation result. The sample Chinese prompt is retained verbatim.
 
-1. 在商品页翻页、筛选状态和内容质量，打开商品系列并核对各 SKU、成本和报告期间销量。
-2. 问“当前报告期间的成交、流量和转化，相比上一期间有什么变化？请列出依据。”继续追问贡献商品或营销计划的同期 ROAS。
-3. 从库存提醒、商品详情或营销页提出方案，在草案卡片核对完整差异。仅提出方案不会立即修改商品。
-4. 点击批准或取消，再从历史和业务页面读回状态。促销先核对真实允许批准窗口及到期不自动恢复的后果。
-5. 流式运行时点击“停止生成”，随后刷新会话核对保存的状态。不要依据未完成的回复判断写入是否发生。
+1. Page through products, filter by status and content quality, and open a family to inspect SKUs, cost, and sales during the report period.
+2. Ask “当前报告期间的成交、流量和转化，相比上一期间有什么变化？请列出依据。” Follow up on contributing products or campaign ROAS over the same period.
+3. Propose a change from a stock alert, product detail, or campaign page, then review the complete differences in its draft card. Proposing alone does not modify products.
+4. Approve or cancel, then read the outcome from history and the business pages. For promotions, review the actual approval window and the lack of automatic price restoration at expiry.
+5. Stop generation during a stream, then refresh the conversation to inspect saved state. An unfinished answer does not establish whether a write occurred.
 
-## 检查与历史记录
+<a id="检查与历史记录"></a>
+## Checks and historical records
 
-以下命令运行代码检查，不调用真实模型：
+These code checks do not call a real model:
 
 ```sh
 uv run ruff check src tests scripts integration_tests
@@ -111,11 +114,11 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-真实 Java/数据库边界检查使用 `uv run pytest integration_tests -q`，会修改保留的演示业务数据，应与其他任务串行运行。每次完整运行前，先停止 API 和全部写入、保存所需记录，按[手工重置流程](../docs/retail-fixture.md#手工重置)恢复夹具后重新启动 API；正常 `up` 会保留已批准的变更，不能代替重置。直接重复写入套件可能触发无变更草案拒绝，或继续改变测试商品的价格和库存。
+Real Java/database boundary checks use `uv run pytest integration_tests -q`, modify retained demo business data, and must run serially with other work. Before a complete run, stop the API and all writes, save needed records, follow the [manual reset procedure](retail-fixture.md#manual-reset), then restart the API. Normal `up` preserves approved changes and is not a reset. Repeating write suites directly can encounter no-change draft rejection or continue changing test prices and stock.
 
-[最终零售业务验收](../evals/records/retail-v2-20260907/README.md)覆盖18个已知场景、按登记共30次：**24次通过、3次业务失败、3次提供者故障**，对应冻结版本 `4020ff93f4797e2ae3142e8a4123442d3d8693b7`。购物付款退款、商品维护、补货、促销成交、营销审批、搜索与SQL/Python分析均核对实际回复和数据库终态；日期表达和遗漏回答的失败保留。61个聊天回合的结束等待p50为30.54秒、p95为87.08秒，包含失败，不代表并发容量。[前一轮54次与边界验证](../evals/records/retail-v1-20260907/README.md)单列，不混合版本或分母；操作仍须由用户确认并经Java事务校验。
+The [final retail acceptance](../evals/records/retail-v2-20260907/README.md) covers 18 known scenarios and 30 registered attempts: **24 passes, 3 business failures, and 3 provider failures**, at frozen version `4020ff93f4797e2ae3142e8a4123442d3d8693b7`. Shopping, payment/refunds, listings, replenishment, promotion-to-sale, campaign approval, search, and SQL/Python analysis were checked against actual answers and database outcomes; date-expression and omitted-answer failures remain. Across 61 chat turns, completion wait was p50 30.54 seconds and p95 87.08 seconds, including failures; this is not concurrent capacity. The [previous 54 attempts and boundary checks](../evals/records/retail-v1-20260907/README.md) retain their own versions and denominators. Operations still require user confirmation and Java transaction checks.
 
-[评测索引](../evals/records/README.md)保留旧七商品/42 日 UTC 版本的 **78/90** 与定向 **21/24**；它们不描述当前零售数据或本次完整批。[历史浏览器演示、截图和 SQL](../docs/demo-20260906/README.md)仍对应旧版，当前双端页面、记忆与恢复记录见新版验收。
+The [evaluation index](../evals/records/README.md) preserves **78/90** and targeted **21/24** from the older seven-product, 42-day UTC fixture. They do not describe current retail data or the complete current batch. [Historical browser demos, screenshots, and SQL](demo-20260906/README.md) remain tied to that older version; current UI, memory, and recovery records are in the newer acceptance reports.
 
 ## Native buyer clients
 

@@ -1,19 +1,19 @@
-# 零售业务重复验收 v1
+# Repeated retail business acceptance v1
 
-这是当前完整零售流程的可重复性验收，不是未见任务的泛化基准。登记复用已有业务任务、原始输入、R0 和逐题 SQL 口径；不把开发阶段不同版本的通过题拼成最终成绩。
+This is a repeatability check of the complete retail workflow, not generalization to unseen tasks. It registers existing business tasks, original inputs, R0, and per-task SQL definitions. Development passes from different source versions are not pooled into a final score.
 
-## 范围与运行
+## Scope and execution
 
-业务功能稳定、开发缺陷完成修复后，将以下 18 个已知场景各运行 3 次，共 54 次业务任务。一次业务任务可包含多轮聊天与用户点击，不能把单次模型调用、工具调用或聊天轮数当作任务分母。
+After business behavior stabilizes and development defects are fixed, run each of the following 18 known scenarios 3 times, for 54 business attempts. A task may contain multiple chat turns and user clicks; model calls, tool calls, and chat turns are not the task denominator.
 
-| 原任务表 | 选定任务 | 覆盖 |
+| Original suite | Selected tasks | Coverage |
 |---|---|---|
-| retail/development | D02,D04,D05,D07,D08,D10,D11 | 跨期、历史价格、追问、澄清、零成交与因果边界、多商品批准、取消旧意图后重提 |
-| retail/full-development | R01–R07 | 购物比较到付款退款、双买家履约与政策、内容维护、补货上下架、营销计划、促销到最新成交、SQL/Python分析 |
-| retail/buyer-planning-development | B01,B02 | 自然预算规划、授权后购物车改量与移除 |
-| retail/search-development | S01,S02 | 两角色公开资料研究、来源条件与本站事实边界 |
+| retail/development | D02,D04,D05,D07,D08,D10,D11 | Period comparisons, historical prices, follow-ups, clarification, zero sales/causal limits, batch approval, and cancellation followed by a new intent |
+| retail/full-development | R01–R07 | Shopping comparison through payment/refund, both buyers' fulfillment/policies, listing maintenance, stock/sale state, campaigns, promotion-to-new-sale, and SQL/Python analysis |
+| retail/buyer-planning-development | B01,B02 | Natural budget planning and authorized cart quantity/removal changes |
+| retail/search-development | S01,S02 | Public-source research for both roles, source conditions, and store-fact boundaries |
 
-原 D01–D12 全部保留为开发任务。正式集合省去重复的流程，不移除能力：D01 成交统计由 R07 覆盖，D03 跨月由 D04/R07 覆盖，D09 单商品批准包含在更广的批准流程中。D06 改期后重新查询、D12 操作员取消是不同的行为或入口，保留单次开发与既有边界验证，本次重复集合不再加入；不把 D05 继承期间或 D11 模型取消说成已完全替代它们。
+Original D01–D12 tasks all remain available for development. The formal set omits overlapping flows without removing capabilities: R07 covers D01 sales statistics, D04/R07 cover D03 cross-month work, and broader approval flows include D09 single-product approval. D06 requerying after a period change and D12 operator cancellation are distinct behaviors/entry points; their single development runs and existing boundary checks remain separate. This repeated set does not claim D05's inherited period or D11's model cancellation fully replaces them.
 
 ```sh
 .venv/bin/python scripts/run_tasks.py --suite retail/development --tasks D02,D04,D05,D07,D08,D10,D11 --repetitions 3
@@ -22,35 +22,35 @@
 .venv/bin/python scripts/run_tasks.py --suite retail/search-development --repetitions 3
 ```
 
-各命令串行执行；每题各次均使用原 retail-R0，不沿用上一题的价格、购物车或历史会话。逐题人工复核已有 success_criteria、真实 HTTP/卡片及参考 SQL；任务驱动不自动给业务评分。网络或未知写故障先保留现场、查明结果，不越过标记继续重置。 连续 3 次提供者系统故障会停止当前任务表，未运行项保留在计划分母并单列原因。
+Run commands serially. Every repetition uses the original retail-R0 rather than the previous task's prices, cart, or conversation. Manually review existing success_criteria, actual HTTP/cards, and reference SQL; the driver does not assign business scores automatically. Network or uncertain-write failures preserve the incident state until the outcome is known; do not reset past its marker. Three consecutive provider system failures stop the current suite, with unrun items retained in the planned denominator and their reason reported separately.
 
-在第一次正式任务之前记录 CityBuddy、ShopMate 的完整干净提交、夹具版本、已登记任务表、主/分析模型别名、实际传输协议、预算和硬件。全部正式任务使用同一源码版本和运行设置。模型别名不代表不可变的供应商快照。历史报表仍为固定上海截止；促销按每题运行时计算的实际日期绑定，不把报表截止当作今天。
+Before the first formal task, record full clean CityBuddy/ShopMate commits, fixture version, registered suites, main/analysis model aliases, actual transport protocol, budgets, and hardware. All formal tasks use the same source version and runtime settings. A model alias is not an immutable provider snapshot. Reports retain the fixed Shanghai cutoff; promotion dates are bound to each task's actual run date rather than treating the report cutoff as today.
 
-## 判定与结束条件
+## Grading and stopping conditions
 
-结果分别报告：业务通过、业务未完成、提供者故障、未知执行状态和未运行。全部计划任务都有明确结果、必要 SQL 和可见输出后，才能称本批完成。任务完成比例直接使用这 54 个任务，不只统计执行成功的子集；另报各类计数和任务明细。
+Report business passes, incomplete business tasks, provider failures, unknown execution states, and unrun tasks separately. A batch is complete only when all planned tasks have explicit outcomes, required SQL, and visible output. Completion ratios use all 54 planned attempts, not just successfully executed ones; report category counts and task details too.
 
-写入不变量是交付门槛：金额、身份、整批版本、库存、原回执和重复执行必须正确；未批准不得执行，未知写必须能够查明或明确保留现场。发现这些问题立即停止依赖流程并修复。正常回答的数值、商品、引用或条件错误记为业务失败；不是因为 HTTP 成功或出现卡片就通过。
+Write invariants are release gates: amounts, identities, whole-batch versions, stock, original receipts, and repeat execution must be correct. Unapproved operations must not execute, and uncertain writes must be resolved or explicitly retained. Stop and fix dependent flows when these fail. Ordinary errors in answer numbers, products, citations, or conditions are business failures; an HTTP success or card is not a pass.
 
-开发阶段已知、可稳定复现的业务缺陷应在正式批之前解决。正式批若发现明确工程缺陷，可修复并保留原批；修改应用行为后产生的结果另记源码版本，不补写旧失败或拼成同一版本的总成绩。偶发模型错误如实进入结果和限制，不通过无限重复挑选成功；如需追加，先说明要区分的问题与新的工作负载。
+Known, consistently reproducible development defects should be resolved before the formal batch. If a clear engineering defect appears during the batch, it may be fixed while preserving the original batch. Results after application behavior changes use a separate source version; old failures are not overwritten or pooled into a single-version score. Report occasional model errors honestly instead of repeating until success; any additional experiment first states the question and new workload it distinguishes.
 
-记忆的保存/新会话/进程重启/改删与角色隔离、两会话实际并发和同会话忙碌拒绝、主动断流恢复、真实网页走查分别记录，不计入54任务分母。已有真实 Java 写后响应丢失、部分付款恢复及沙箱清理集成检查提供事务/恢复边界；StateEval 归属消融另答权限问题，不与正常业务任务混算。
+Memory save/new-conversation/process-restart/edit/delete and role isolation, actual overlap between two conversations, same-conversation busy rejection, active stream interruption, and browser walkthroughs are separate from the 54-attempt denominator. Existing real-Java lost-response, partial-payment-recovery, and sandbox-cleanup integration checks cover transaction/recovery boundaries. StateEval ownership ablation addresses a separate permission question.
 
-## 等待与调用用量
+## Waiting and usage
 
-保留每轮 POST 到首个非空文本、首个完整 UI 事件、终态和流关闭的客户端 monotonic 采样，按组件及任务类型解释；不是浏览器首绘或纯服务时延。完整业务任务的多轮耗时与用户动作分别记录，不把各轮 p99 相加。小样本报告实际分布及范围，不宣布 Agent HTTP 容量上限。
+Retain client monotonic samples from each POST to first nonempty text, first complete UI event, terminal event, and stream closure, interpreted by component and task type. They are not browser first paint or pure service latency. Record multi-turn task timing and user actions separately rather than adding per-turn p99s. Small samples describe their observed distribution and range, not an agent HTTP capacity ceiling.
 
-主 Agent、分析、记忆和搜索的真实用量按已有 provider_usage 字段统计。Responses 内部 search_calls 不等同模型请求数。缓存只使用实际报告的读取字段，未知不当0；不推断供应商账单费用或显式 Anthropic 缓存命中率。预算触发与调用失败单列，成功与失败的成本均保留。
+Main, analysis, memory, and search usage uses existing provider_usage fields. Responses internal search_calls are not model-request counts. Cache observations use only reported read fields; unknown is not 0. Do not infer provider bills or explicit Anthropic cache hit rates. Budget exhaustion and call failures are separate categories; costs for both successes and failures remain included.
 
-## 语义说明修正后的定向回归
+## Targeted regression after semantic clarification
 
-完整54次之后发现，分析说明没有区分资源修订整数与数据来源标签；另外，部分回答混用了聚合单位或自然日与排除端点。补充每次分析必读的字段语义、商品集合与补零条件，并精确化主/分析 Agent 的聚合和日期表达规则后，在新提交上复用原 D04、D05、R05、R07 各3次，共12次。主日期说明放在每轮自动读取的现有商家上下文，保持原上下文长度上限。
+After the complete 54 attempts, analysis guidance was found not to distinguish integer resource revisions from source labels; some answers also confused aggregation units, calendar days, or excluded endpoints. Required analysis guidance was clarified for field semantics, product sets, and zero-fill conditions, alongside main/analysis aggregation and date-expression rules. On a new commit, original D04, D05, R05, and R07 were rerun 3 times each, for 12 attempts. Main-agent date guidance lives in the existing merchant context read automatically each turn, with its original length limit preserved.
 
 ```sh
 .venv/bin/python scripts/run_tasks.py --suite retail/development --tasks D04,D05 --repetitions 3
 .venv/bin/python scripts/run_tasks.py --suite retail/full-development --tasks R05,R07 --repetitions 3
 ```
 
-这是针对已发现问题选择的回归集合；原问题、R0、参考SQL、模型与每回合16次调用/300秒预算保持，结果单独记录新源码版本。该12次不覆盖原54的失败，也不代表新版本完整重跑54次。原交易、权限、页面、记忆和运行观察保留各自实际版本与边界。
+This subset was selected for observed failures. Original prompts, R0, reference SQL, model, and per-turn 16-call/300-second budget remain unchanged, while results record the new source version separately. These 12 attempts neither replace the original 54 failures nor establish another complete 54-attempt run. Existing transaction, permission, UI, memory, and runtime observations retain their actual versions and boundaries.
 
-本次回归之后，仍出现的普通模型语义错误保留为分析需要复核的限制，不继续反复修改提示挑选成功。实际数据、执行或权限边界的新缺陷仍应先修复。
+Ordinary model-semantic errors remaining after this regression are reported as limitations requiring analytical review, without repeatedly tuning prompts to select successes. New defects in actual data, execution, or permission boundaries still require fixing first.
