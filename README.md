@@ -1,61 +1,65 @@
-[![ShopMate · 选购有灵感，经营有把握](docs/assets/cover.png)](https://chantso.github.io/shopmate/)
+[![ShopMate · Native commerce and agents](docs/assets/cover.png)](https://chantso.github.io/shopmate/)
 
 # ShopMate
 
+**English** · [简体中文](README.zh-CN.md)
+
 [![CI](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ChanTso/shopmate/actions/workflows/ci.yml)
 
-**原生购物客户端 × 经营 Agent，让选择、确认与执行成为连续的体验。**
+**Native shopping apps and commerce agents. A continuous path from choosing to confirming to acting.**
 
-**[浏览产品官网 ↗](https://chantso.github.io/shopmate/)** · [Android](android/README.md) · [iOS](ios/README.md) · [本地运行](docs/RUNTIME.md#本地运行) · [业务验收](evals/records/retail-v2-20260907/README.md)
+**[Explore the product ↗](https://chantso.github.io/shopmate/)** · [Android](android/README.md) · [iOS](ios/README.md) · [Run locally](docs/RUNTIME.md#本地运行) · [Retail evaluation](evals/records/retail-v2-20260907/README.md) · [Contributing](CONTRIBUTING.md)
 
-面向同一零售品牌的 Android / iOS 买家 App 与 React 商家工作台。买家说出需求、比较商品、确认交易；运营人员从经营数据出发，准备方案、核对变更并批准执行。[CityBuddy](https://github.com/ChanTso/citybuddy) 提供实际交易与身份后端。
+Android / iOS buyer apps and a React merchant workspace for one retail brand. Shoppers describe what they need, compare products, and confirm transactions. Operators turn business data into proposals, review changes, and approve execution. [CityBuddy](https://github.com/ChanTso/citybuddy) provides the transaction and identity backend.
 
-## 一间商店，两种视角
+## One store, two perspectives
 
-| 买家 · Android / iOS | 商家 · React Web |
+| Buyer · Android / iOS | Merchant · React Web |
 |---|---|
-| 商品与规格、比较推荐、购物规划 | 经营趋势、库存预警、订单与售后 |
-| 商品上下文对话、流式卡片、可编辑偏好 | 只读 SQL 分析、独立 Python 计算 |
-| 购物车、报价确认、订单、模拟支付退款 | 商品维护、调价、补货、促销与营销草案 |
-| 秒杀预约、状态查询与原操作恢复 | 差异预览、操作员批准、执行回执 |
+| Products and specifications, comparisons, shopping plans | Sales trends, inventory alerts, orders and after-sales |
+| Product-aware conversations, streaming cards, editable preferences | Read-only SQL analysis and isolated Python computation |
+| Cart, quote confirmation, orders, simulated payments and refunds | Product updates, pricing, restocking, promotions and marketing drafts |
+| Flash-sale reservations, status lookup, original-operation recovery | Change previews, operator approval, execution receipts |
 
-官网展示真实客户端画面与交互演示；完整业务由本地服务运行。
+The product site presents native application footage and interaction demonstrations. The full business flows run with local services.
 
-## 值得深入的四个设计
+## Four designs to explore
 
-- **原生界面，共享规则。** Android 使用 Jetpack Compose，iOS 使用 SwiftUI；KMP 共享 SSE 解帧、消息归并、报价与恢复规则。导航、网络取消、安全存储和生命周期保留平台实现。
-- **流式阅读与异步状态。** 文字和商品卡片增量到达，阅读历史时保持位置，回到末尾再跟随。分页绑定已提交查询，迟到详情不能覆盖新选择；SwiftUI 以不可变消息段建立相等性边界，保留未变化卡片。
-- **原操作恢复。** 写入前持久化请求 key、原参数与确认报价。响应丢失后核对原回执，按原意图恢复；生成任务、普通购物与审批独立推进，业务终态由 Java 事务决定。
-- **能分析，也有执行边界。** 经营 Agent 将复杂分析交给只读 SQL 子 Agent，完整且有界的数据可交独立 Python 容器计算。Skills 按需加载，旧工具结果裁剪，记忆可改删；各类模型调用共用预算。结账、付款、退款确认及经营变更批准均由用户操作。
+- **Native interfaces, shared rules.** Android uses Jetpack Compose; iOS uses SwiftUI. KMP shares SSE decoding, message reduction, quote handling, and recovery rules. Navigation, network cancellation, secure storage, and lifecycle handling stay with each platform.
+- **Streaming reads and asynchronous state.** Text and product cards arrive incrementally. Reading history preserves scroll position; returning to the end resumes following. Pagination belongs to the submitted query, and late product details cannot replace a newer selection. SwiftUI uses immutable message segments as equality boundaries to retain unchanged cards.
+- **Recover the original operation.** Request keys, original arguments, and confirmed quotes are persisted before writes. If a response is lost, recovery checks the original receipt and resumes the same intent. Generation, ordinary shopping, and approvals proceed independently; Java transactions determine the final business state.
+- **Analysis with explicit execution boundaries.** The merchant agent delegates complex queries to a read-only SQL sub-agent; complete, bounded datasets can pass to an isolated Python container. Skills load on demand, old tool results are trimmed, memory is editable, and model calls share a budget. Checkout, payment, refund confirmation, and approval of merchant changes remain user actions.
 
-## 系统边界
+## System boundaries
 
 ```mermaid
 flowchart LR
     App[Android / iOS] --> Host[ShopMate API]
-    Web[React 商家工作台] --> Host
-    Host --> Agents[买家 / 经营 Agent]
-    Agents --> Analysis[只读 SQL / Python 沙箱]
-    Host --> State[(SQLite · 对话与恢复)]
-    Host -->|受限工具 / 人工确认| Java[CityBuddy · Auth / Commerce]
-    App -->|秒杀| Java
-    Java --> DB[(MySQL · 业务状态)]
-    Analysis -->|只读经营视图| DB
+    Web[React merchant workspace] --> Host
+    Host --> Agents[Buyer / Merchant agents]
+    Agents --> Analysis[Read-only SQL / Python sandbox]
+    Host --> State[(SQLite: conversations and recovery)]
+    Host -->|Scoped tools / user confirmation| Java[CityBuddy: Auth / Commerce]
+    App -->|Flash sales| Java
+    Java --> DB[(MySQL: business state)]
+    Analysis -->|Read-only business views| DB
 ```
 
-ShopMate 当前为单实例宿主，SQLite 使用 WAL 保存对话、意图和偏好；MySQL 保存身份、商品、订单和交易回执。两者职责与运行约束见[工程指南](docs/RUNTIME.md#身份对话与持久状态)。
+ShopMate currently runs as a single-instance host. SQLite with WAL stores conversations, intents, and preferences; MySQL stores identities, products, orders, and transaction receipts. See the [runtime guide](docs/RUNTIME.md#身份对话与持久状态) for ownership and deployment constraints.
 
-## 验证与结果
+## Validation and results
 
-原生测试覆盖流式阅读、取消、分页与详情竞态、跨页面状态和原请求恢复；业务集成测试通过真实接口与 SQL 核对交易结果。
+Native tests cover streaming reads, cancellation, pagination and detail races, state across screens, and original-request recovery. Business integration tests verify transactions through real APIs and SQL.
 
-[零售验收](evals/records/retail-v2-20260907/README.md)包含 **18 个已知场景、30 次真实模型尝试：24 次通过，3 次业务失败，3 次提供者故障**。购物付款退款、促销成交与经营分析等核对实际回答和数据库状态，报告保留失败、工作负载与完整源码版本。
+The [retail evaluation](evals/records/retail-v2-20260907/README.md) records **18 known scenarios and 30 real-model attempts: 24 passes, 3 business failures, and 3 provider failures**. Shopping, payment, refunds, promotional purchases, and merchant analysis are checked against actual responses and database state. The report retains failures, workload definitions, and full source revisions.
 
-[StateEval](https://github.com/ChanTso/state-eval)单独检验授权边界；业务完成、权限正确与模型回答质量分别判定。
+[StateEval](https://github.com/ChanTso/state-eval) examines authorization separately. Business completion, permission correctness, and response quality are distinct judgments.
 
-## 本地运行
+<a id="本地运行"></a>
 
-需要同级 CityBuddy 仓库、Java 21、Python 3.11+、Node.js 24、uv 与 Docker Compose。完成[首次后端准备](docs/RUNTIME.md#本地运行)后：
+## Run locally
+
+Prerequisites: a sibling CityBuddy checkout, Java 21, Python 3.11+, Node.js 24, uv, and Docker Compose. Complete the [initial backend setup](docs/RUNTIME.md#本地运行), then run:
 
 ```sh
 uv sync --frozen
@@ -65,15 +69,17 @@ npm --prefix web run build
 uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 ```
 
-商家工作台：**http://127.0.0.1:8101/**。买家客户端按 [Android](android/README.md) / [iOS](ios/README.md) 说明构建；模型配置、演示账号、数据重置及检查命令统一见[运行指南](docs/RUNTIME.md)。
+Open the merchant workspace at **http://127.0.0.1:8101/**. Build the buyer apps using the [Android](android/README.md) or [iOS](ios/README.md) guide. Model configuration, demo accounts, data reset, and checks are documented in the [runtime guide](docs/RUNTIME.md).
 
-## 工程入口
+## Explore the code
 
-| 目录 | 内容 |
+| Directory | Contents |
 |---|---|
-| [`android/`](android/) · [`ios/`](ios/) · [`shared/`](shared/) | 原生客户端与 KMP 业务核心 |
-| [`web/`](web/) · [`src/shopmate/`](src/shopmate/) | React 工作台与 Agent 宿主 |
-| [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | 业务边界测试与真实模型验收 |
-| [`site/`](site/) | 独立构建的 GitHub Pages 产品官网 |
+| [`android/`](android/) · [`ios/`](ios/) · [`shared/`](shared/) | Native clients and the KMP business core |
+| [`web/`](web/) · [`src/shopmate/`](src/shopmate/) | React workspace and agent host |
+| [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | Business-boundary tests and real-model evaluations |
+| [`site/`](site/) | Independently built GitHub Pages product site |
 
-复用 [commerce-agents](vendor/commerce-agents/README.md) 的零售核心与 Messages 运行时，扩展原生客户端、业务工具、身份、持久状态与实际交易接入。保留上游 [Apache-2.0 许可](vendor/commerce-agents/LICENSE)及[图片来源](web/public/products/IMAGE-CREDITS.md)；封面使用[官网中相同的原生演示画面](site/README.md)。
+ShopMate reuses the retail cores and Messages runtime from [commerce-agents](vendor/commerce-agents/README.md), adding native clients, business tools, identity, persistent state, and transaction integration. Upstream [Apache-2.0 licensing](vendor/commerce-agents/LICENSE) and [image credits](web/public/products/IMAGE-CREDITS.md) are preserved. The cover uses the [same native demo footage as the product site](site/README.md).
+
+[Contributing](CONTRIBUTING.md) · [Apache-2.0 license](LICENSE)
