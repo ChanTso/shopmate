@@ -1,0 +1,41 @@
+{
+  "repo_notes": [
+    {
+      "content": "Document the current source tree and the active README, docs/RUNTIME.md, docs/BUYER.md, and platform READMEs. This is one retail brand's own store, not a multi-merchant marketplace. ShopMate owns the Python API and buyer/merchant/analysis agents; CityBuddy is a separate repository providing Java Auth/Commerce services. Do not conflate CityBuddy agent-service or its engineering Web console with this repository's current agent host and merchant workspace. Trace every architecture arrow to actual code. The host uses a SELECT-only MySQL reporting account; analysis_runner.py passes complete bounded tables and code to analysis_sandbox.py. The Python sandbox has no network, database connection, or credentials. SQLite/WAL holds single-instance host conversations, recovery intents, and memory; Java/MySQL owns identity and transactions. Native flash-sale reservation/status calls go directly to Commerce, while simulated-payment orchestration goes through the ShopMate host. Android uses native Jetpack Compose and iOS native SwiftUI; KMP shares business/protocol rules, not the UI. Historical demo, transport and evaluation records retain their original measured revisions: Next.js references there are historical, not the current React/Vite workspace. Distinguish raw quoted prompts from documentation instructions. Do not invent performance, production capacity, multi-instance support, or authorization effectiveness from unactivated trials."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview and architecture",
+      "purpose": "Explain the product, one-store business scope, native clients, Python host, external CityBuddy Auth/Commerce, and exact data/analysis boundaries. Use README.md, docs/RUNTIME.md, and actual routes."
+    },
+    {
+      "title": "Local setup and repository guide",
+      "purpose": "Document current run/build/check commands from active runtime and platform READMEs; explain directory ownership, product site, and contribution workflow."
+    },
+    {
+      "title": "Native clients and shared Kotlin core",
+      "purpose": "Describe Android Compose and iOS SwiftUI, shared SSE decoding/reduction/recovery rules, native lifecycle/network/storage, streaming rendering and reading position. Cover android/, ios/, shared/ and relevant tests."
+    },
+    {
+      "title": "Buyer shopping and recovery",
+      "purpose": "Trace ordinary shopping, conversation ownership, user/OBO identities, request keys, quote confirmation, lost-response recovery, refunds and direct flash-sale calls using buyer routes, clients, sessions, and docs/BUYER.md."
+    },
+    {
+      "title": "Merchant workspace and controlled execution",
+      "purpose": "Describe current React/Vite web/ UI, proposal previews, operator approval, Java receipts and concurrent ordinary/agent operations. Trace actual direct-user and delegated paths without treating all confirmations as the same token type."
+    },
+    {
+      "title": "Agent analysis, sandbox, memory and budgets",
+      "purpose": "Cover buyer/merchant/analysis factories, bounded shared model/tool budgets, read-only host SQL, complete-table handoff to the no-network Python sandbox, skills, editable memory and model transport."
+    },
+    {
+      "title": "Tests and measured evaluations",
+      "purpose": "Explain native/host/integration checks and retail acceptance. Keep retail-v1, retail-v2 and historical assessments separate by full measured SHA and denominator; report failures, provider errors, timing boundaries and non-activated ownership trials accurately."
+    },
+    {
+      "title": "Product showcase and attribution",
+      "purpose": "Explain site/ as an independently built GitHub Pages showcase, local full-stack demonstration, source/asset provenance and vendored licensing. Do not present site interactions as a public live transaction backend."
+    }
+  ]
+}
