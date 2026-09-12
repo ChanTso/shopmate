@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml"><img src="https://github.com/ChanTso/shopmate/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://deepwiki.com/ChanTso/shopmate"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
 [English](README.md) · **简体中文**
