@@ -7,6 +7,14 @@ struct ConversationView: View {
     var embedded = false
     @State private var history = false
     @State private var following = true
+
+    init(model: BuyerModel, chat: ConversationState, embedded: Bool = false, initialFollowing: Bool = true) {
+        self.model = model
+        self.chat = chat
+        self.embedded = embedded
+        _following = State(initialValue: chat.reading.following ?? initialFollowing)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if embedded {
@@ -19,8 +27,9 @@ struct ConversationView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        if chat.messages.isEmpty { welcome }
-                        ForEach(Array(chat.messages.enumerated()), id: \.offset) { _, message in
+                        historyControl
+                        if chat.messages.isEmpty && !chat.requiresHistory { welcome }
+                        ForEach(chat.messages, id: \.messageId) { message in
                             VStack(alignment: .leading, spacing: 14) {
                                 HStack(spacing: 8) {
                                     if !message.user { Image(systemName: "sparkles").font(.caption) }
@@ -39,7 +48,20 @@ struct ConversationView: View {
                                         }
                                     }.padding(.top, 3)
                                 }
+                                if message.pending && !chat.running {
+                                    Text("这条回复尚未完成，可恢复对话查看最新状态。")
+                                        .font(.caption).foregroundStyle(mutedInk)
+                                }
                             }.padding(message.user ? 18 : 19).frame(maxWidth: .infinity, alignment: .leading)
+                                .id(message.messageId)
+                                .accessibilityElement(children: .contain)
+                                .accessibilityIdentifier("chat-message-\(message.messageId)")
+                                .background {
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(key: ConversationMessageFrames.self,
+                                            value: [message.messageId: geometry.frame(in: .named("chat-history"))])
+                                    }
+                                }
                                 .background(message.user ? Color(red: 0.91, green: 0.875, blue: 0.805) : Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 22))
                         }
                         if chat.running {
@@ -47,11 +69,30 @@ struct ConversationView: View {
                                 .padding(.horizontal, 4).padding(.vertical, 6)
                         }
                         Color.clear.frame(height: 1).id("latest")
-                    }.padding(18)
+                    }.background(ConversationViewportMarker(position: chat.reading))
                 }
-                .simultaneousGesture(DragGesture().onChanged { value in if value.translation.height > 8 { following = false } })
+                .coordinateSpace(name: "chat-history")
+                .onPreferenceChange(ConversationMessageFrames.self) { chat.reading.updateFrames($0) }
+                .contentMargins(18, for: .scrollContent)
+                .accessibilityIdentifier("chat-history")
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(DragGesture().onChanged { value in
+                    chat.reading.userDragged()
+                    if value.translation.height > 8 { following = false }
+                })
+                .onAppear {
+                    chat.reading.setFollowing(following)
+                    chat.reading.appeared(messageIDs: chat.messages.map(\.messageId)) { proxy.scrollTo($0, anchor: .top) }
+                }
+                .onDisappear { chat.reading.disappeared() }
+                .onChange(of: following) { _, value in chat.reading.setFollowing(value) }
+                .onChange(of: chat.messages.first?.messageId) { _, _ in
+                    if following { proxy.scrollTo("latest", anchor: .bottom) }
+                    else {
+                        chat.reading.prepended(messageIDs: chat.messages.map(\.messageId)) { proxy.scrollTo($0, anchor: .top) }
+                    }
+                }
                 .onChange(of: chat.revision) { _, _ in if following { proxy.scrollTo("latest", anchor: .bottom) } }
-                .onChange(of: chat.messages.count) { _, _ in if following { proxy.scrollTo("latest", anchor: .bottom) } }
                 .overlay(alignment: .bottomTrailing) {
                     if !following { Button { following = true; proxy.scrollTo("latest", anchor: .bottom) } label: { Label("回到最新", systemImage: "arrow.down") }.font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).padding() }
                 }
@@ -62,10 +103,10 @@ struct ConversationView: View {
                 if chat.running {
                     Button { model.stop() } label: { Image(systemName: "stop.fill").font(.system(size: 16)).foregroundStyle(.white).frame(width: 47, height: 47).background(ink, in: Circle()) }.accessibilityLabel("停止生成")
                 } else {
-                    Button { model.send(chat.draft); chat.draft = ""; following = true } label: {
+                    Button { model.send(chat.draft); following = true } label: {
                         Image(systemName: "arrow.up").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).frame(width: 47, height: 47)
                             .background(chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? mutedInk.opacity(0.35) : accent, in: Circle())
-                    }.disabled(chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("chat-send").accessibilityLabel("发送")
+                    }.disabled(chat.requiresHistory || chat.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("chat-send").accessibilityLabel("发送")
                 }
             }.padding(.horizontal, 17).padding(.vertical, 12).background(Color.white.opacity(0.94))
         }.background(paper).navigationTitle("购物助手").navigationBarTitleDisplayMode(.inline)
@@ -87,6 +128,24 @@ struct ConversationView: View {
                     Button("新对话", systemImage: "square.and.pencil") { model.newConversation() }.disabled(chat.running)
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("对话选项")
             }
+    }
+    private var historyControl: some View {
+        HStack {
+            Spacer()
+            if chat.latestLoading || chat.earlierLoading {
+                ProgressView("正在加载聊天记录").font(.caption).tint(accent)
+            } else if let failure = chat.historyError {
+                Button { chat.reading.prepareForEarlierPage(); model.retryHistory() } label: {
+                    Label(failure, systemImage: "arrow.clockwise").font(.caption)
+                }.accessibilityIdentifier("chat-history-retry")
+            } else if chat.nextBefore != nil {
+                Button("加载更早的消息") { following = false; chat.reading.prepareForEarlierPage(); model.loadEarlier() }
+                    .font(.caption).accessibilityIdentifier("chat-history-earlier")
+            } else if !chat.messages.isEmpty {
+                Text("已到对话开始").font(.caption).foregroundStyle(mutedInk)
+            }
+            Spacer()
+        }.frame(height: 36)
     }
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 24) {

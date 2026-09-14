@@ -85,6 +85,7 @@ class SessionStore:
                     "ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'merchant'"
                 )
         self._migrate_bindings()
+        self._migrate_buyer_message_ids()
         # A restarted process cannot resume an in-flight model stream.
         with self.db:
             rows = self.db.execute("SELECT * FROM sessions WHERE status='running'").fetchall()
@@ -92,6 +93,28 @@ class SessionStore:
                 record = self._record(row)
                 self._terminate_ui(record, "The previous turn was interrupted. You can continue.")
                 self.finish_turn(record, "interrupted")
+
+    def _migrate_buyer_message_ids(self):
+        # UI items are append-only; the original order gives legacy messages durable identity.
+        with self.db:
+            rows = self.db.execute("SELECT id,items FROM sessions WHERE role='buyer'").fetchall()
+            for row in rows:
+                items = json.loads(row["items"])
+                if not items:
+                    continue
+                if all("message_id" not in item for item in items):
+                    for identifier, item in enumerate(items, start=1):
+                        item["message_id"] = identifier
+                    self.db.execute(
+                        "UPDATE sessions SET items=? WHERE id=?", (dump(items), row["id"])
+                    )
+                else:
+                    previous = 0
+                    for item in items:
+                        identifier = item.get("message_id")
+                        if type(identifier) is not int or not previous < identifier <= 2**63 - 1:
+                            raise sqlite3.IntegrityError("Invalid persisted buyer message identity")
+                        previous = identifier
 
     def _migrate_bindings(self):
         # Existing actions keep their original OBO binding, including across this migration.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Depends, Header, HTTPException, Query, Response
 from pydantic import ConfigDict, Field
 from shopping_agent import PageContext
 
@@ -331,6 +331,27 @@ def install_buyer_routes(app, resources, busy, run_chat, context, login_model):
     async def restore_conversation(conversation_id: str, user=identity_dependency):
         record = resources["store"].get(conversation_id, user.subject, role="buyer")
         return await restore((user, record))
+
+    @app.get(prefix + "/conversations/{conversation_id}/messages")
+    async def conversation_messages(
+        conversation_id: str,
+        response: Response,
+        limit: int = Query(default=30, ge=1, le=100),
+        before: int | None = Query(default=None, ge=1, le=2**63 - 1),
+        user=identity_dependency,
+    ):
+        record = resources["store"].get(conversation_id, user.subject, role="buyer")
+        items = record.items
+        if before is not None:
+            items = [item for item in items if item["message_id"] < before]
+        page = items[-limit:]
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "session_id": record.session_id,
+            "status": record.status,
+            "items": page,
+            "next_before": page[0]["message_id"] if len(items) > limit else None,
+        }
 
     @app.post(prefix + "/conversations/{conversation_id}/chat")
     async def chat_conversation(

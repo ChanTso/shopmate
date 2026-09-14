@@ -5,6 +5,7 @@
 produces. Hosts render the event types below and ignore any they do not know.
 
 ==================  ==========================================================
+``turn_started``    ``{"session_id", "user_message_id", "assistant_message_id"}``: host-persisted buyer message identities.
 ``text_delta``      ``{"text"}``: incremental assistant text.
 ``tool_call``       ``{"tool", "id", "input"[, "label"]}``; ``label`` is the model's few
                     words for the person waiting while the call runs (the call's
@@ -37,6 +38,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 EventType = Literal[
+    "turn_started",
     "text_delta",
     "tool_call",
     "tool_result",

@@ -4,6 +4,7 @@
 /** Event shapes mirror commerce_common/streaming.py. */
 
 export type AgentEventType =
+  | "turn_started"
   | "text_delta"
   | "tool_call"
   | "tool_result"

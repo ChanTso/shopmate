@@ -119,9 +119,11 @@ data class ChatSegment(
 }
 
 data class ChatMessage(
+    val messageId: Long,
     val user: Boolean,
     val segments: List<ChatSegment>,
     val suggestions: List<String> = emptyList(),
+    val pending: Boolean = false,
 )
 
 data class Conversation(val id: String, val label: String)
@@ -141,4 +143,3 @@ fun statusLabel(raw: String): String =
         "DELIVERED" -> "已送达"
         else -> raw
     }
-

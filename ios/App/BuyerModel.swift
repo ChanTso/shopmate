@@ -10,8 +10,23 @@ final class ConversationState: ObservableObject {
     @Published var draft = ""
     @Published var revision = 0
     @Published var conversationKey = UUID().uuidString
+    @Published var latestLoading = false
+    @Published var earlierLoading = false
+    @Published var requiresHistory = false
+    @Published var historyError: String?
+    @Published var nextBefore: Int64?
     let timeline = ChatTimeline()
-    func clear() { timeline.clear(); messages = []; running = false; activity = "" }
+    let reading = ConversationReadingPosition()
+    func clear() {
+        reading.reset()
+        timeline.clear(); messages = []; running = false; activity = ""
+        latestLoading = false; earlierLoading = false; requiresHistory = false
+        historyError = nil; nextBefore = nil
+    }
+    func publishTimeline() {
+        messages = timeline.messages
+        nextBefore = timeline.nextBefore?.int64Value
+    }
 }
 
 struct BuyerApproval: Identifiable {
@@ -67,6 +82,9 @@ final class BuyerModel: ObservableObject {
     private var productTask: Task<Void, Never>?
     private var chatTask: Task<Void, Never>?
     private var chatGeneration = UUID()
+    private var historyGeneration = UUID()
+    private var earlierTask: Task<Void, Never>?
+    private var failedHistoryBefore: Int64?
     private var loadTask: Task<Void, Never>?
     private var writeTask: Task<Void, Never>?
 
@@ -80,7 +98,10 @@ final class BuyerModel: ObservableObject {
             try api.setCommerceRoot(storage.commerceEndpoint)
             api.token = try storage.token()
             signedIn = api.token != nil
-            if signedIn { pending = try storage.pending(); reload() }
+            if signedIn {
+                chat.requiresHistory = storage.conversation != nil
+                pending = try storage.pending(); reload()
+            }
         } catch { self.error = error.localizedDescription }
     }
     func report(_ failure: Error) {
@@ -104,13 +125,14 @@ final class BuyerModel: ObservableObject {
                 try storage.saveToken(text(value, "accessToken"))
                 api.token = text(value, "accessToken")
                 signedIn = true; pending = try storage.pending()
+                chat.requiresHistory = storage.conversation != nil
                 search()
-                try await refresh()
-                try await restoreConversation()
+                await refreshAndRestore()
             } catch { report(error) }
         }
     }
     func logout() {
+        invalidateHistory()
         chatGeneration = UUID()
         chatTask?.cancel(); loadTask?.cancel(); writeTask?.cancel(); searchTask?.cancel(); pollTask?.cancel(); productTask?.cancel()
         pollTask = nil; seckillVisible = false; reservationNotice = nil
@@ -128,12 +150,15 @@ final class BuyerModel: ObservableObject {
     func reload() -> Task<Void, Never> {
         if products.isEmpty && !searching { search() }
         loadTask?.cancel()
-        let task = Task {
-            do { try await refresh(); if !chat.running { try await restoreConversation() } }
-            catch { report(error) }
-        }
+        let task = Task { await refreshAndRestore() }
         loadTask = task
         return task
+    }
+    private func refreshAndRestore() async {
+        // Chat history belongs to ShopMate and must not wait for Commerce availability.
+        async let history: Void = restoreConversation()
+        do { try await refresh() } catch { report(error) }
+        await history
     }
     private func refresh() async throws {
         let cart = try await api.call("/cart")
@@ -232,26 +257,89 @@ final class BuyerModel: ObservableObject {
     func stop() { chatTask?.cancel(); chat.activity = "正在停止生成" }
     func newConversation() {
         guard !chat.running else { return }
+        invalidateHistory()
         storage.conversation = nil; chat.clear(); chat.conversationKey = UUID().uuidString
         assistantPage = ["page_type": "home"]
     }
-    private func restoreConversation() async throws {
-        guard let id = storage.conversation else { return }
-        let generation = chatGeneration
-        let saved = try await api.call("/conversations/" + id)
-        try Task.checkCancellation()
-        // A completed newer turn must not be replaced by an older in-flight history response.
-        guard !chat.running, storage.conversation == id, chatGeneration == generation else { return }
-        try chat.timeline.restore(payload: jsonText(saved)); chat.messages = chat.timeline.messages; chat.revision += 1
+    private func invalidateHistory() {
+        historyGeneration = UUID()
+        earlierTask?.cancel(); earlierTask = nil
+        chat.earlierLoading = false
+    }
+    private func restoreConversation() async {
+        guard let id = storage.conversation, !chat.running else { return }
+        invalidateHistory()
+        let owner = historyGeneration
+        let turn = chatGeneration
+        chat.latestLoading = true; chat.historyError = nil; failedHistoryBefore = nil
+        if chat.messages.isEmpty { chat.requiresHistory = true }
+        defer { if historyGeneration == owner { chat.latestLoading = false } }
+        do {
+            let saved = try await api.call("/conversations/" + id + "/messages?limit=30")
+            try Task.checkCancellation()
+            // Whole-history replacement is stale after any newer turn; older pages are independent.
+            guard storage.conversation == id, historyGeneration == owner,
+                  chatGeneration == turn, !chat.running else { return }
+            try chat.timeline.restorePage(payload: jsonText(saved), sessionId: id)
+            chat.publishTimeline(); chat.requiresHistory = false; chat.revision += 1
+        } catch {
+            guard storage.conversation == id, historyGeneration == owner, chatGeneration == turn else { return }
+            if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
+                chat.historyError = "聊天记录暂未加载，请重试。"
+            }
+            report(error)
+        }
+    }
+    @discardableResult
+    func loadEarlier() -> Task<Void, Never>? {
+        guard let id = storage.conversation, let before = chat.nextBefore,
+              !chat.earlierLoading, !chat.latestLoading else { return nil }
+        let owner = historyGeneration
+        chat.earlierLoading = true; chat.historyError = nil
+        let task = Task {
+            defer { if historyGeneration == owner { chat.earlierLoading = false } }
+            do {
+                let saved = try await api.call("/conversations/" + id + "/messages?limit=30&before=\(before)")
+                try Task.checkCancellation()
+                // Prefix insertion waits for the reader's gesture; live events keep using the same timeline.
+                try await chat.reading.waitUntilScrollingStops()
+                guard storage.conversation == id, historyGeneration == owner, chat.nextBefore == before else { return }
+                if try chat.timeline.prependPage(payload: jsonText(saved), before: before) {
+                    // Use the position at response time if the reader moved while the page was loading.
+                    chat.reading.willPrepend()
+                    chat.publishTimeline()
+                } else { chat.nextBefore = chat.timeline.nextBefore?.int64Value }
+            } catch {
+                guard storage.conversation == id, historyGeneration == owner, chat.nextBefore == before else { return }
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+                if let failure = error as? BuyerFailure, failure.status == 401 { report(error) }
+                else {
+                    failedHistoryBefore = before
+                    chat.historyError = "更早的聊天记录暂未加载，请重试。"
+                }
+            }
+        }
+        earlierTask = task
+        return task
+    }
+    func retryHistory() {
+        if failedHistoryBefore == nil {
+            loadTask?.cancel()
+            loadTask = Task { await restoreConversation() }
+        } else { loadEarlier() }
     }
     func send(_ raw: String) {
         let message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty, !chat.running else { return }
+        guard !message.isEmpty, !chat.running, !chat.requiresHistory else { return }
         chat.running = true; chat.activity = "正在查询"; error = nil
         let generation = UUID()
         chatGeneration = generation
         chatTask = Task {
-            defer { if chatGeneration == generation { chat.running = false } }
+            defer {
+                if chatGeneration == generation {
+                    chat.timeline.interrupt(); chat.publishTimeline(); chat.running = false
+                }
+            }
             do {
                 var id = storage.conversation
                 if id == nil {
@@ -260,18 +348,29 @@ final class BuyerModel: ObservableObject {
                     id = text(value, "session_id"); storage.conversation = id
                 }
                 guard let id, !id.isEmpty else { throw URLError(.badServerResponse) }
-                chat.timeline.begin(text: message); chat.messages = chat.timeline.messages
                 let decoder = StreamDecoder()
+                var started = false
                 try await api.stream("/conversations/" + id + "/chat", body: ["message": message, "page": self.assistantPage]) { line in
                     try Task.checkCancellation()
                     guard self.chatGeneration == generation else { throw CancellationError() }
                     if let event = try decoder.line(raw: line) {
                         if event.type == "error" {
+                            if started { try self.chat.timeline.accept(event: event); self.chat.publishTimeline() }
                             let value = try jsonObject(Data(event.payload.utf8))
                             throw BuyerFailure(status: 502, category: "", message: text(value, "message").isEmpty ? "助手暂未完成，请恢复对话后重试" : text(value, "message"))
                         }
-                        try self.chat.timeline.accept(event: event)
-                        if ["text_delta", "ui", "ui_partial"].contains(event.type) { self.chat.messages = self.chat.timeline.messages; self.chat.revision += 1 }
+                        if event.type == "turn_started" {
+                            guard !started else { throw URLError(.badServerResponse) }
+                            try self.chat.timeline.begin(text: message, event: event, sessionId: id)
+                            started = true
+                            if self.chat.draft == raw { self.chat.draft = "" }
+                        } else {
+                            guard started else { throw URLError(.badServerResponse) }
+                            try self.chat.timeline.accept(event: event)
+                        }
+                        if ["turn_started", "text_delta", "ui", "ui_partial", "turn_complete"].contains(event.type) {
+                            self.chat.publishTimeline(); self.chat.revision += 1
+                        }
                         self.chat.activity = event.type == "turn_complete" ? "本轮已完成" : "正在整理建议"
                     }
                 }
@@ -342,9 +441,11 @@ final class BuyerModel: ObservableObject {
     }
     func selectConversation(_ id: String) {
         guard !chat.running else { return }
+        invalidateHistory()
         storage.conversation = id; chat.clear(); chat.conversationKey = id
+        chat.requiresHistory = true
         loadTask?.cancel()
-        loadTask = Task { do { try await restoreConversation() } catch { report(error) } }
+        loadTask = Task { await restoreConversation() }
     }
     func askProduct(_ product: Object) {
         assistantPage = ["page_type": "product", "product_id": text(product, "product_id")]
