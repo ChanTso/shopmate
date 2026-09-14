@@ -871,10 +871,10 @@ private extension BuyerTestProtocol {
 
 
 private final class HistoryInteractionScrollView: UIScrollView {
-    var dragging = false
-    var decelerating = false
-    override var isDragging: Bool { dragging }
-    override var isDecelerating: Bool { decelerating }
+    var testDragging = false
+    var testDecelerating = false
+    override var isDragging: Bool { testDragging }
+    override var isDecelerating: Bool { testDecelerating }
 }
 
 extension BuyerAppTests {
@@ -883,8 +883,8 @@ extension BuyerAppTests {
         let (position, scroll, window) = try mountedHistoryPosition()
         defer { window.isHidden = true; window.rootViewController = nil }
         for dragging in [true, false] {
-            scroll.dragging = dragging
-            scroll.decelerating = !dragging
+            scroll.testDragging = dragging
+            scroll.testDecelerating = !dragging
             var resumed = false
             let entered = expectation(description: "scroll wait entered")
             let waiting = Task {
@@ -894,8 +894,8 @@ extension BuyerAppTests {
             }
             await fulfillment(of: [entered], timeout: 1)
             XCTAssertFalse(resumed)
-            scroll.dragging = false
-            scroll.decelerating = false
+            scroll.testDragging = false
+            scroll.testDecelerating = false
             try await waiting.value
             XCTAssertTrue(resumed)
         }
@@ -905,7 +905,7 @@ extension BuyerAppTests {
     func testHistoryWaitCanBeCancelledWhileGestureContinues() async throws {
         let (position, scroll, window) = try mountedHistoryPosition()
         defer { window.isHidden = true; window.rootViewController = nil }
-        scroll.dragging = true
+        scroll.testDragging = true
         let entered = expectation(description: "cancellable scroll wait entered")
         let waiting = Task {
             entered.fulfill()
