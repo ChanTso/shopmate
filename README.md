@@ -34,12 +34,13 @@ Android / iOS buyer apps and a React merchant workspace for one retail brand. Sh
 
 The product site presents native application footage and interaction demonstrations. The full business flows run with local services.
 
-## Four designs to explore
+## Five designs to explore
 
 - **Native interfaces, shared rules.** Android uses Jetpack Compose; iOS uses SwiftUI. KMP shares SSE decoding, message reduction, quote handling, and recovery rules. Navigation, network cancellation, secure storage, and lifecycle handling stay with each platform.
-- **Streaming reads and asynchronous state.** Text and product cards arrive incrementally. Reading history preserves scroll position; returning to the end resumes following. Pagination belongs to the submitted query, and late product details cannot replace a newer selection. SwiftUI uses immutable message segments as equality boundaries to retain unchanged cards.
+- **Streaming reads and asynchronous state.** Text and product cards arrive incrementally. Reading history preserves scroll position; returning to the end resumes following. Catalog pagination belongs to the submitted query, and late product details cannot replace a newer selection. SwiftUI uses immutable message segments as equality boundaries to retain unchanged cards.
+- **Agent runtime and tool execution.** The Chat adapter assembles argument fragments and validates the complete response before dispatching tools. Concurrent results retain their call IDs; cart read-modify-write operations are serialized within a conversation. Main and delegated agents share model-call limits and a deadline, with cancellation propagated to in-flight work. See the [execution flow](docs/RUNTIME.md#agent-execution).
 - **Recover the original operation.** Request keys, original arguments, and confirmed quotes are persisted before writes. If a response is lost, recovery checks the original receipt and resumes the same intent. Generation, ordinary shopping, and approvals proceed independently; Java transactions determine the final business state.
-- **Analysis with explicit execution boundaries.** The merchant agent delegates complex queries to a read-only SQL sub-agent; complete, bounded datasets can pass to an isolated Python container. Skills load on demand, old tool results are trimmed, memory is editable, and model calls share a budget. Checkout, payment, refund confirmation, and approval of merchant changes remain user actions.
+- **Analysis with explicit execution boundaries.** The merchant agent delegates complex queries to a read-only SQL sub-agent; complete, bounded datasets can pass to an isolated Python container. Skills load on demand; old tool-result bodies are trimmed while preserving call/result pairing, and memory is editable. Checkout, payment, refund confirmation, and approval of merchant changes remain user actions.
 
 ## System boundaries
 
@@ -69,7 +70,7 @@ ShopMate currently runs as a single-instance host. SQLite with WAL stores conver
 
 ## Validation and results
 
-Native tests cover streaming reads, cancellation, pagination and detail races, state across screens, and original-request recovery. Business integration tests verify transactions through real APIs and SQL.
+Native tests cover streaming reads, cancellation, catalog pagination and detail races, state across screens, and original-request recovery. Runtime tests cover fragmented arguments, truncated tool requests, concurrent result ownership, and budget cancellation. Business integration tests verify transactions through real APIs and SQL.
 
 The [retail evaluation](evals/records/retail-v2-20260907/README.md) records **18 known scenarios and 30 real-model attempts: 24 passes, 3 business failures, and 3 provider failures**. Shopping, payment, refunds, promotional purchases, and merchant analysis are checked against actual responses and database state. The report retains failures, workload definitions, and full source revisions.
 
@@ -96,7 +97,9 @@ Open the merchant workspace at **http://127.0.0.1:8101/**. Build the buyer apps 
 | Directory | Contents |
 |---|---|
 | [`android/`](android/) · [`ios/`](ios/) · [`shared/`](shared/) | Native clients and the KMP business core |
-| [`web/`](web/) · [`src/shopmate/`](src/shopmate/) | React workspace and agent host |
+| [`web/`](web/) | React merchant workspace |
+| [`src/shopmate/`](src/shopmate/) | Agent host, [protocol adapter](src/shopmate/providers/chat_to_messages.py), and [shared budget](src/shopmate/provider.py) |
+| [Buyer loop](vendor/commerce-agents/shopping-agent/runtime-messages-api/shopping_agent_runtime/orchestrator.py) · [Merchant loop](vendor/commerce-agents/merchant-agent/runtime-messages-api/merchant_agent_runtime/orchestrator.py) · [Tool dispatch](vendor/commerce-agents/commerce-common/commerce_common/turn.py) | Model rounds, tool execution, and result collection |
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | Business-boundary tests and real-model evaluations |
 | [`site/`](site/) | Independently built GitHub Pages product site |
 
