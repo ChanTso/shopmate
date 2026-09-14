@@ -7,6 +7,14 @@ struct ConversationView: View {
     var embedded = false
     @State private var history = false
     @State private var following = true
+
+    init(model: BuyerModel, chat: ConversationState, embedded: Bool = false, initialFollowing: Bool = true) {
+        self.model = model
+        self.chat = chat
+        self.embedded = embedded
+        _following = State(initialValue: initialFollowing)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if embedded {
