@@ -1,4 +1,4 @@
-"""Deployment tools around the upstream shopping executor, without a second model loop."""
+"""Buyer business tools, transaction confirmations, and command recovery."""
 
 from __future__ import annotations
 
