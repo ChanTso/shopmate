@@ -78,6 +78,8 @@ final class HistoryInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["停止生成"].exists)
         capture("05 Prepended page during generation", anchor: anchor, reference: original)
         XCTAssertEqual(anchor.frame.minY, original, accuracy: 2, "Concurrent reply growth must not pull the reader toward the tail.")
+        try revealEarlierControl()
+        XCTAssertTrue(message(11).exists, "The older page must be applied alongside the live reply.")
 
         app.buttons["回到最新"].tap()
         XCTAssertTrue(replyText.waitForExistence(timeout: 5))
@@ -117,6 +119,8 @@ final class HistoryInteractionTests: XCTestCase {
         XCTAssertTrue(anchor.exists)
         capture("07 Return after hidden prepend", anchor: anchor, reference: original)
         XCTAssertEqual(anchor.frame.minY, original, accuracy: 2, "A page delivered while hidden must retain the same message and visible offset.")
+        try revealEarlierControl()
+        XCTAssertTrue(message(11).exists, "The page delivered while hidden must remain available.")
     }
 
     func testMovingWhileEarlierPageIsPendingKeepsTheNewReadingPosition() throws {
