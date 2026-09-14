@@ -34,12 +34,13 @@
 
 官网展示真实客户端画面与交互演示；完整业务由本地服务运行。
 
-## 值得深入的四个设计
+## 值得深入的五个设计
 
 - **原生界面，共享规则。** Android 使用 Jetpack Compose，iOS 使用 SwiftUI；KMP 共享 SSE 解帧、消息归并、报价与恢复规则。导航、网络取消、安全存储和生命周期保留平台实现。
-- **流式阅读与异步状态。** 文字和商品卡片增量到达，阅读历史时保持位置，回到末尾再跟随。分页绑定已提交查询，迟到详情不能覆盖新选择；SwiftUI 以不可变消息段建立相等性边界，保留未变化卡片。
+- **流式阅读与异步状态。** 文字和商品卡片增量到达，阅读历史时保持位置，回到末尾再跟随。商品分页绑定已提交查询，迟到详情不能覆盖新选择；SwiftUI 以不可变消息段建立相等性边界，保留未变化卡片。
+- **Agent 运行时与工具执行。** Chat 适配器拼接参数碎片，完整响应校验通过后再派发工具。并发结果按调用 ID 归属，同一会话内购物车读改写串行；主 Agent 与委派 Agent 共享模型调用次数和截止时间，取消传递到在途任务。见[执行流程](docs/RUNTIME.md#agent-execution)。
 - **原操作恢复。** 写入前持久化请求 key、原参数与确认报价。响应丢失后核对原回执，按原意图恢复；生成任务、普通购物与审批独立推进，业务终态由 Java 事务决定。
-- **能分析，也有执行边界。** 经营 Agent 将复杂分析交给只读 SQL 子 Agent，完整且有界的数据可交独立 Python 容器计算。Skills 按需加载，旧工具结果裁剪，记忆可改删；各类模型调用共用预算。结账、付款、退款确认及经营变更批准均由用户操作。
+- **能分析，也有执行边界。** 经营 Agent 将复杂分析交给只读 SQL 子 Agent，完整且有界的数据可交独立 Python 容器计算。Skills 按需加载；裁剪旧工具结果正文时保留调用与结果配对，记忆可改删。结账、付款、退款确认及经营变更批准均由用户操作。
 
 ## 系统边界
 
@@ -69,7 +70,7 @@ ShopMate 当前为单实例宿主，SQLite 使用 WAL 保存对话、意图和�
 
 ## 验证与结果
 
-原生测试覆盖流式阅读、取消、分页与详情竞态、跨页面状态和原请求恢复；业务集成测试通过真实接口与 SQL 核对交易结果。
+原生测试覆盖流式阅读、取消、商品分页与详情竞态、跨页面状态和原请求恢复；运行时测试覆盖参数碎片、截断工具请求、并发结果归属与预算取消；业务集成测试通过真实接口与 SQL 核对交易结果。
 
 [零售验收](evals/records/retail-v2-20260907/README.md)包含 **18 个已知场景、30 次真实模型尝试：24 次通过，3 次业务失败，3 次提供者故障**。购物付款退款、促销成交与经营分析等核对实际回答和数据库状态，报告保留失败、工作负载与完整源码版本。
 
@@ -94,7 +95,9 @@ uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 | 目录 | 内容 |
 |---|---|
 | [`android/`](android/) · [`ios/`](ios/) · [`shared/`](shared/) | 原生客户端与 KMP 业务核心 |
-| [`web/`](web/) · [`src/shopmate/`](src/shopmate/) | React 工作台与 Agent 宿主 |
+| [`web/`](web/) | React 商家工作台 |
+| [`src/shopmate/`](src/shopmate/) | Agent 宿主、[协议适配](src/shopmate/providers/chat_to_messages.py)与[共享预算](src/shopmate/provider.py) |
+| [买家循环](vendor/commerce-agents/shopping-agent/runtime-messages-api/shopping_agent_runtime/orchestrator.py) · [商家循环](vendor/commerce-agents/merchant-agent/runtime-messages-api/merchant_agent_runtime/orchestrator.py) · [工具派发](vendor/commerce-agents/commerce-common/commerce_common/turn.py) | 模型轮次、工具执行与结果汇合 |
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | 业务边界测试与真实模型验收 |
 | [`site/`](site/) | 独立构建的 GitHub Pages 产品官网 |
 
