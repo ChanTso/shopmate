@@ -13,7 +13,7 @@ The fixture is defined by [`scripts/retail_fixture.py`](../scripts/retail_fixtur
 | Traffic and campaigns | 90 days of store-wide traffic observations, five original campaigns with their own attribution periods; C-203 revenue is unknown | `retail_store_traffic_daily`, `retail_campaign` |
 | Policies and guides | Policies, buying guides, and delivery-estimate settings matching current business capabilities | `faq_source` populated through the real FAQ publication service, and `retail_fulfillment_config` |
 
-Products, compact variant definitions, operations samples, buyers, order issues, and campaign observations come from [`vendor/commerce-agents/examples/retail/data`](../vendor/commerce-agents/examples/retail/data). Product images reuse existing repository files with [credits](../web/public/products/IMAGE-CREDITS.md) preserved. Products without images use the component's default presentation rather than a broken image address.
+Products, compact variant definitions, operations samples, buyers, order issues, and campaign observations come from [retail fixture data](../vendor/commerce-agents/examples/retail/data). Product images reuse existing repository files with [credits](../web/public/products/IMAGE-CREDITS.md) preserved. Products without images use the component's default presentation rather than a broken image address.
 
 Amounts are converted into CNY demo amounts, not presented as an exchange-rate conversion. Historical orders use deterministic construction rules, and traffic samples form matching daily observations; records include their source and data version. These are not actual store sales or advertising results. Supplied campaign spend and attributed revenue retain their original numeric relationship and explicit periods; a second mock-sales dataset is not imported as another source of sales truth.
 
@@ -99,7 +99,7 @@ New acceptance should first fix this dataset and reporting definition, then grad
 
 ## Chinese demo catalog and product images
 
-Chinese product copy is maintained in `scripts/data/demo-catalog-zh-CN.json` without rewriting the upstream catalog or historical order snapshots. Preview and apply it with:
+Chinese product copy is maintained in `scripts/data/demo-catalog-zh-CN.json` without rewriting the base catalog or historical order snapshots. Preview and apply it with:
 
 ```sh
 uv run python scripts/localize_demo_catalog.py

@@ -98,6 +98,6 @@ uv run uvicorn shopmate.app:create_app --factory --host 127.0.0.1 --port 8101
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | 业务边界测试与真实模型验收 |
 | [`site/`](site/) | 独立构建的 GitHub Pages 产品官网 |
 
-复用 [commerce-agents](vendor/commerce-agents/README.md) 的零售核心与 Messages 运行时，扩展原生客户端、业务工具、身份、持久状态与实际交易接入。保留上游 [Apache-2.0 许可](vendor/commerce-agents/LICENSE)及[图片来源](web/public/products/IMAGE-CREDITS.md)；[官网说明](site/README.md)记录了原生画面与交互演示的制作方式。
+原生界面、Agent 执行与持久会话连接 CityBuddy 的身份和交易服务。[官网说明](site/README.md)记录原生画面与交互演示的制作方式，[图片来源](web/public/products/IMAGE-CREDITS.md)列出商品摄影资料。
 
 [贡献指南](CONTRIBUTING.md) · [Apache-2.0 许可](LICENSE)

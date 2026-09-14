@@ -4,7 +4,7 @@
 
 An application and agent workspace for one retail brand's official store. CityBuddy provides the store's transaction and identity backend; ShopMate provides buyer and operator interfaces, agents, and conversations. The scope is one catalog, one operations team, and multiple customers, without multi-merchant onboarding. Merchants can analyze performance, manage products and stock, investigate order issues, and approve changes. Buyers can get recommendations and comparisons, manage their cart and own orders, and explicitly confirm checkout, simulated payment, and refund requests.
 
-The project reuses [commerce-agents](../vendor/commerce-agents/README.md)' merchant and shopping cores, Messages runtime, and retail UI components. Business tools, identity, persistent conversations, and actual writes connect to CityBuddy. The original [Apache-2.0 license](../vendor/commerce-agents/LICENSE), copyright notices, and [image credits](../web/public/products/IMAGE-CREDITS.md) are preserved.
+The runtime coordinates model requests, tool execution, identity-scoped conversations, and memory. It adapts streamed model responses into text, progress, and structured cards; business tools connect to CityBuddy for transaction checks and receipts.
 
 ## Product showcase
 
