@@ -1,4 +1,4 @@
-"""Authenticated retail portal over the upstream buyer and merchant runtimes."""
+"""Authenticated buyer and merchant API with durable retail sessions."""
 
 from __future__ import annotations
 
