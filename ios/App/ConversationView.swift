@@ -56,7 +56,12 @@ struct ConversationView: View {
                                 .id(message.messageId)
                                 .accessibilityElement(children: .contain)
                                 .accessibilityIdentifier("chat-message-\(message.messageId)")
-                                .background(ConversationMessageMarker(position: chat.reading, messageID: message.messageId))
+                                .background {
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(key: ConversationMessageFrames.self,
+                                            value: [message.messageId: geometry.frame(in: .named("chat-history"))])
+                                    }
+                                }
                                 .background(message.user ? Color(red: 0.91, green: 0.875, blue: 0.805) : Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 22))
                         }
                         if chat.running {
@@ -66,6 +71,8 @@ struct ConversationView: View {
                         Color.clear.frame(height: 1).id("latest")
                     }.background(ConversationViewportMarker(position: chat.reading))
                 }
+                .coordinateSpace(name: "chat-history")
+                .onPreferenceChange(ConversationMessageFrames.self) { chat.reading.updateFrames($0) }
                 .contentMargins(18, for: .scrollContent)
                 .accessibilityIdentifier("chat-history")
                 .scrollDismissesKeyboard(.interactively)

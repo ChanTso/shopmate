@@ -922,6 +922,36 @@ extension BuyerAppTests {
     }
 
     @MainActor
+    func testHistoryGeometryWaitsForFreshLayoutAndAdjustsEachSampleOnlyOnce() async throws {
+        let (position, scroll, window) = try mountedHistoryPosition()
+        defer { position.reset(); window.isHidden = true; window.rootViewController = nil }
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.contentSize = CGSize(width: scroll.bounds.width, height: scroll.bounds.height + 2_000)
+        scroll.setContentOffset(.zero, animated: false)
+        position.setFollowing(false)
+        let offscreen = CGRect(x: 18, y: scroll.bounds.height + 200, width: 300, height: 148)
+        position.updateFrames([41: CGRect(x: 18, y: 40, width: 300, height: 148), 50: offscreen])
+        position.prepareForEarlierPage()
+        position.willPrepend()
+        position.prepended(messageIDs: [1, 41, 50]) { _ in
+            XCTFail("A mounted reading anchor must not trigger a separate scroll-to-row")
+        }
+
+        // Several display ticks with the old layout must neither move nor finish the correction.
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(scroll.contentOffset.y, 0, accuracy: 0.5)
+        position.updateFrames([41: CGRect(x: 18, y: 140, width: 300, height: 148), 50: offscreen])
+        try await settle("one geometry compensation") { abs(scroll.contentOffset.y - 100) <= 0.5 }
+
+        // UIKit already moved; SwiftUI has not supplied another geometry sample yet.
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(scroll.contentOffset.y, 100, accuracy: 0.5)
+        position.updateFrames([41: CGRect(x: 18, y: 40, width: 300, height: 148), 50: offscreen])
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(scroll.contentOffset.y, 100, accuracy: 0.5)
+    }
+
+    @MainActor
     private func mountedHistoryPosition() throws -> (ConversationReadingPosition, HistoryInteractionScrollView, UIWindow) {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let window = UIWindow(windowScene: scene)
