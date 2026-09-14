@@ -7,9 +7,12 @@ class BuyerCoreTest {
     private fun event(type: String, payload: String) =
         StreamEvent(type, wireJson.parseToJsonElement(payload).jsonObject)
 
+    private fun ChatTimeline.beginFixture(text: String) = begin(text,
+        event("turn_started", """{"session_id":"fixture","user_message_id":1,"assistant_message_id":2}"""), "fixture")
+
     @Test fun partialCardIsReplacedWithoutLosingSurroundingText() {
         val timeline = ChatTimeline()
-        timeline.begin("推荐一套装备")
+        timeline.beginFixture("推荐一套装备")
         timeline.accept(event("text_delta", """{"text":"可以选择"}"""))
         timeline.accept(event("ui_partial", """{"component":"product_grid","stream_id":"one","payload":{}}"""))
         timeline.accept(event("text_delta", """{"text":"，预算内"}"""))
@@ -24,7 +27,7 @@ class BuyerCoreTest {
 
     @Test fun suggestionsDoNotReplaceProductCards() {
         val timeline = ChatTimeline()
-        timeline.begin("比较")
+        timeline.beginFixture("比较")
         timeline.accept(event("ui", """{"component":"product_grid","payload":{}}"""))
         timeline.accept(event("ui_partial", """{"component":"suggestions","payload":{"suggestions":["incomplete"]}}"""))
         assertTrue(timeline.messages.last().suggestions.isEmpty())
@@ -56,7 +59,7 @@ class BuyerCoreTest {
 
     @Test fun restoredHistoryKeepsFinalAndPartialCardDistinction() {
         val timeline = ChatTimeline()
-        timeline.restore("""{"items":[{"kind":"user","text":"比较"},{"kind":"assistant","segments":[{"type":"text","text":"结果"},{"type":"ui","slotKey":"p","status":"partial","block":{"component":"product_grid"}}],"suggestions":["继续"]}]}""")
+        timeline.restorePage("""{"session_id":"fixture","status":"completed","items":[{"message_id":1,"kind":"user","text":"比较"},{"message_id":2,"kind":"assistant","segments":[{"type":"text","text":"结果"},{"type":"ui","slotKey":"p","status":"partial","block":{"component":"product_grid"}}],"suggestions":["继续"]}],"next_before":null}""", "fixture")
         assertEquals(2, timeline.messages.size)
         assertTrue(timeline.messages.first().user)
         assertFalse(timeline.messages.last().segments.last().final)
@@ -65,7 +68,7 @@ class BuyerCoreTest {
 
     @Test fun invalidSuggestionsAreRejectedAtTheModelBoundary() {
         val timeline = ChatTimeline()
-        timeline.begin("比较")
+        timeline.beginFixture("比较")
         assertFailsWith<IllegalArgumentException> {
             timeline.accept(event("ui", """{"component":"suggestions","payload":{"suggestions":[{}]}}"""))
         }

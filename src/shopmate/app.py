@@ -551,6 +551,10 @@ def create_app(
                     },
                 ]
             )
+            if role == "buyer":
+                previous_id = record.items[-3]["message_id"] if len(record.items) > 2 else 0
+                record.items[-2]["message_id"] = previous_id + 1
+                record.items[-1]["message_id"] = previous_id + 2
             turn_id = resources["store"].begin_turn(record)
         except BaseException:
             release(record)
@@ -564,6 +568,17 @@ def create_app(
             budget = None
             analysis_queries = []
             try:
+                if role == "buyer":
+                    yield to_sse(
+                        AgentEvent(
+                            type="turn_started",
+                            data={
+                                "session_id": record.session_id,
+                                "user_message_id": record.items[-2]["message_id"],
+                                "assistant_message_id": record.items[-1]["message_id"],
+                            },
+                        )
+                    )
                 with (
                     bind_context(
                         user,
@@ -599,7 +614,7 @@ def create_app(
                                     if budget is not None:
                                         event.data["provider_usage"] = budget.summary()
                                 yield to_sse(event)
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, GeneratorExit):
                 resources["store"]._terminate_ui(
                     record, "The connection was interrupted. You can continue."
                 )

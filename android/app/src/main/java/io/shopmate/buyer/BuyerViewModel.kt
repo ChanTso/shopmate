@@ -47,6 +47,12 @@ data class ChatState(
     val streaming: Boolean = false,
     val activity: String = "",
     val draft: String = "",
+    val historyLoaded: Boolean = true,
+    val loadingHistory: Boolean = false,
+    val loadingEarlier: Boolean = false,
+    val historyError: String? = null,
+    val historyErrorBefore: Long? = null,
+    val nextBefore: Long? = null,
 )
 
 class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewModel() {
@@ -62,6 +68,10 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
     private var productRequest = 0L
     private var chatJob: Job? = null
     private var restoreJob: Job? = null
+    private var earlierJob: Job? = null
+    private var historyGeneration = 0L
+    private var turnGeneration = 0L
+    private val timeline = ChatTimeline()
     private var catalogJob: Job? = null
     private var assistantPage = buildJsonObject { put("page_type", "home") }
 
@@ -96,6 +106,7 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
 
     private fun report(e: Exception) {
         if (e is ApiFailure && e.status == 401) {
+            clearChatRequests()
             viewModelScope.coroutineContext.cancelChildren()
             api.token = null
             store.logout()
@@ -136,6 +147,7 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
             store.login(reply.text("subject"), reply.text("accessToken"))
             api.token = reply.text("accessToken")
             mutable.value = BuyerState(signedIn = true, pending = store.pending())
+            clearChatRequests()
             mutableChat.value = ChatState()
             refresh()
             restoreChat()
@@ -145,6 +157,7 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
     }
 
     fun logout() {
+        clearChatRequests()
         viewModelScope.coroutineContext.cancelChildren()
         api.token = null
         store.logout()
@@ -518,10 +531,20 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
         }
     }
 
+    private fun clearChatRequests() {
+        historyGeneration++
+        turnGeneration++
+        restoreJob?.cancel()
+        earlierJob?.cancel()
+        chatJob?.cancel()
+        timeline.clear()
+    }
+
     fun newChat() {
         if (chat.value.streaming) return
-        restoreJob?.cancel()
+        clearChatRequests()
         store.conversation = null
+        assistantPage = buildJsonObject { put("page_type", "home") }
         updateChat { ChatState(conversationKey = UUID.randomUUID().toString()) }
     }
 
@@ -532,14 +555,73 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
     }
 
     fun restoreChat() {
+        if (chat.value.streaming) return
+        val id = store.conversation ?: return
         restoreJob?.cancel()
-        restoreJob = launchRead {
-            if (chat.value.streaming) return@launchRead
-            val id = store.conversation ?: return@launchRead
-            val reply = api.json("/conversations/$id")
-            val messages = ChatReducer.restore(reply.toString())
-            if (store.conversation == id && !chat.value.streaming)
-                updateChat { it.copy(messages = messages, conversationKey = id) }
+        earlierJob?.cancel()
+        val generation = ++historyGeneration
+        val turn = turnGeneration
+        val origin = api.root
+        val token = api.token
+        val owner = store.owner
+        fun ownsRequest() = historyGeneration == generation && turnGeneration == turn &&
+            store.conversation == id && api.root == origin && api.token == token && store.owner == owner
+        val keepsLoadedHistory = chat.value.conversationKey == id && chat.value.historyLoaded
+        if (!keepsLoadedHistory) timeline.clear()
+        updateChat {
+            if (keepsLoadedHistory) it.copy(loadingHistory = true, loadingEarlier = false,
+                historyError = null, historyErrorBefore = null)
+            else ChatState(conversationKey = id, conversations = it.conversations, draft = it.draft,
+                historyLoaded = false, loadingHistory = true)
+        }
+        restoreJob = viewModelScope.launch {
+            try {
+                val reply = api.json("/conversations/$id/messages?limit=30")
+                currentCoroutineContext().ensureActive()
+                if (!ownsRequest()) return@launch
+                timeline.restorePage(reply.toString(), id)
+                updateChat { it.copy(messages = timeline.messages, nextBefore = timeline.nextBefore,
+                    historyLoaded = true, historyError = null) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (ownsRequest()) {
+                    if (e is ApiFailure && e.status == 401) report(e)
+                    else updateChat { it.copy(historyError = e.message ?: "对话加载失败，请重试") }
+                }
+            } finally {
+                if (ownsRequest()) updateChat { it.copy(loadingHistory = false) }
+            }
+        }
+    }
+
+    fun loadEarlierMessages() {
+        val current = chat.value
+        val before = current.nextBefore ?: return
+        if (!current.historyLoaded || current.loadingHistory || current.loadingEarlier) return
+        val id = store.conversation ?: return
+        val generation = historyGeneration
+        val origin = api.root
+        val token = api.token
+        val owner = store.owner
+        fun ownsRequest() = historyGeneration == generation && store.conversation == id &&
+            api.root == origin && api.token == token && store.owner == owner
+        updateChat { it.copy(loadingEarlier = true, historyError = null, historyErrorBefore = null) }
+        earlierJob = viewModelScope.launch {
+            try {
+                val reply = api.json("/conversations/$id/messages?limit=30&before=$before")
+                currentCoroutineContext().ensureActive()
+                if (!ownsRequest() || chat.value.nextBefore != before) return@launch
+                timeline.prependPage(reply.toString(), before)
+                updateChat { it.copy(messages = timeline.messages, nextBefore = timeline.nextBefore) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (ownsRequest()) {
+                    if (e is ApiFailure && e.status == 401) report(e)
+                    else updateChat { it.copy(historyError = e.message ?: "更早消息加载失败，请重试", historyErrorBefore = before) }
+                }
+            } finally {
+                if (ownsRequest()) updateChat { it.copy(loadingEarlier = false) }
+            }
         }
     }
 
@@ -549,55 +631,76 @@ class BuyerViewModel(val api: BuyerApi, private val store: BuyerStorage) : ViewM
     }
 
     fun send() {
-        val message = chat.value.draft.trim()
-        if (chat.value.streaming || message.isEmpty()) return
-        restoreJob?.cancel()
+        val current = chat.value
+        val message = current.draft.trim()
+        if (current.streaming || !current.historyLoaded || current.loadingHistory || message.isEmpty()) return
+        val generation = ++turnGeneration
+        val history = historyGeneration
+        val origin = api.root
+        val token = api.token
+        val owner = store.owner
+        fun ownsTurn() = turnGeneration == generation && historyGeneration == history &&
+            api.root == origin && api.token == token && store.owner == owner
         update { it.copy(error = null) }
         updateChat { it.copy(streaming = true, activity = "正在连接助手…") }
         chatJob = viewModelScope.launch {
             try {
-                val id =
-                    store.conversation
-                        ?: api.json("/conversations", emptyObject).text("session_id").also {
-                            store.conversation = it
-                        }
-                updateChat {
-                    it.copy(
-                        conversationKey = id,
-                        draft = "",
-                        messages =
-                            it.messages +
-                                ChatMessage(true, listOf(ChatSegment(message))) +
-                                ChatMessage(false, emptyList()),
-                    )
+                val id = store.conversation ?: run {
+                    val reply = api.json("/conversations", emptyObject)
+                    currentCoroutineContext().ensureActive()
+                    if (!ownsTurn()) return@launch
+                    reply.text("session_id").also { store.conversation = it }
                 }
+                updateChat { it.copy(conversationKey = id) }
+                var started = false
                 val page = assistantPage
                 api.chat(id, message, page).collect { event ->
+                    currentCoroutineContext().ensureActive()
+                    if (!ownsTurn() || store.conversation != id) throw CancellationException()
                     when (event.type) {
-                        "text_delta", "ui", "ui_partial" ->
-                            updateLast { ChatReducer.apply(it, event) }
+                        "turn_started" -> {
+                            check(!started) { "重复的对话开始事件，请恢复后核对" }
+                            timeline.begin(message, event, id)
+                            started = true
+                            updateChat { it.copy(messages = timeline.messages,
+                                draft = if (it.draft.trim() == message) "" else it.draft) }
+                        }
+                        "text_delta", "ui", "ui_partial", "turn_complete" -> {
+                            timeline.accept(event)
+                            updateChat { it.copy(messages = timeline.messages) }
+                        }
                         "tool_call" ->
                             updateChat { it.copy(activity = event.data.text("label", "正在查询业务数据…")) }
                         "progress" ->
                             updateChat { it.copy(activity = event.data.text("message", "正在分析…")) }
                         "cart_update" -> refreshCart()
-                        "error" ->
-                            update { it.copy(error = event.data.text("message", "助手未完成，请恢复后核对")) }
+                        "error" -> {
+                            if (started) timeline.accept(event)
+                            updateChat { it.copy(messages = timeline.messages) }
+                            throw ApiFailure(502, "agent", event.data.text("message", "助手未完成，请恢复后核对"))
+                        }
                     }
                 }
+                currentCoroutineContext().ensureActive()
+                if (!ownsTurn() || store.conversation != id) return@launch
                 readCart()
                 readOrders()
             } catch (e: CancellationException) {
+                if (ownsTurn()) {
+                    timeline.interrupt()
+                    updateChat { it.copy(messages = timeline.messages) }
+                }
                 throw e
             } catch (e: Exception) {
-                report(e)
-            } finally {
-                updateChat { it.copy(streaming = false, activity = "") }
+                if (ownsTurn()) {
+                    timeline.interrupt()
+                    updateChat { it.copy(messages = timeline.messages) }
+                    report(e)
+                }
+            }
+            finally {
+                if (ownsTurn()) updateChat { it.copy(streaming = false, activity = "") }
             }
         }
-    }
-
-    private fun updateLast(change: (ChatMessage) -> ChatMessage) {
-        updateChat { it.copy(messages = it.messages.dropLast(1) + change(it.messages.last())) }
     }
 }

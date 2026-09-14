@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.*
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.*
 
+private data class ReadingAnchor(val key: Any, val offset: Int, val gesture: Long)
+
 @Composable
 fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
     val chat by vm.chat.collectAsStateWithLifecycle()
@@ -32,12 +35,41 @@ fun ChatScreen(vm: BuyerViewModel, state: BuyerState) {
 @Composable
 fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
     var history by remember { mutableStateOf(false) }
-    val list = rememberSaveable(chat.conversationKey, saver = LazyListState.Saver) { LazyListState() }
+    val list = rememberSaveable(chat.conversationKey, saver = listSaver<LazyListState, Long>(
+        save = { state ->
+            val firstMessage = state.layoutInfo.visibleItemsInfo.firstOrNull {
+                it.key.toString().startsWith("message:")
+            }
+            listOf(state.firstVisibleItemIndex.toLong(), state.firstVisibleItemScrollOffset.toLong(),
+                firstMessage?.key.toString().removePrefix("message:").toLongOrNull() ?: 0L,
+                firstMessage?.offset?.toLong() ?: 0L)
+        },
+        restore = { saved ->
+            // An older page can finish while this screen is absent; its saved index is no longer an identity.
+            val messageIndex = chat.messages.indexOfFirst { it.messageId == saved[2] }
+            if (messageIndex >= 0) LazyListState(messageIndex + 1, -saved[3].toInt())
+            else LazyListState(saved[0].toInt(), saved[1].toInt())
+        },
+    )) { LazyListState() }
     var following by rememberSaveable(chat.conversationKey) { mutableStateOf(true) }
+    var gesture by remember(chat.conversationKey) { mutableLongStateOf(0) }
+    var readingAnchor by remember(chat.conversationKey) { mutableStateOf<ReadingAnchor?>(null) }
+    val requestEarlier by rememberUpdatedState(newValue = {
+        if (chat.historyLoaded && !chat.loadingHistory && !chat.loadingEarlier && chat.nextBefore != null) {
+            val visible = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key.toString().startsWith("message:") }
+            readingAnchor = visible?.let { ReadingAnchor(it.key, it.offset, gesture) }
+            following = false
+            vm.loadEarlierMessages()
+        }
+    })
+    val currentHistoryError by rememberUpdatedState(chat.historyError)
     val scroll = remember(list) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available.y > 0) following = false
+                if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                    gesture++
+                    if (available.y > 0) following = false
+                }
                 return Offset.Zero
             }
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
@@ -45,6 +77,19 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                     following = true
                 return Offset.Zero
             }
+        }
+    }
+    LaunchedEffect(list, chat.conversationKey) {
+        snapshotFlow { !following && !list.isScrollInProgress && list.firstVisibleItemIndex <= 1 }
+            .collect { atStart -> if (atStart && currentHistoryError == null) requestEarlier() }
+    }
+    LaunchedEffect(chat.messages.firstOrNull()?.messageId) {
+        val anchor = readingAnchor ?: return@LaunchedEffect
+        readingAnchor = null
+        // Stable keys preserve the viewport natively; an explicit offset also preserves a clipped first row.
+        if (!following && gesture == anchor.gesture && !list.isScrollInProgress) {
+            val index = chat.messages.indexOfFirst { "message:${it.messageId}" == anchor.key }
+            if (index >= 0) list.scrollToItem(index + 1, -anchor.offset)
         }
     }
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -74,8 +119,23 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (chat.messages.isEmpty())
-                item {
+            item(key = "history-control") {
+                Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
+                    when {
+                        chat.loadingHistory || chat.loadingEarlier ->
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        chat.historyError != null -> TextButton(
+                            onClick = { if (chat.historyErrorBefore != null) requestEarlier() else vm.restoreChat() },
+                            modifier = Modifier.testTag("history-retry"),
+                        ) { Text(if (chat.historyErrorBefore != null) "加载失败，重试更早消息" else "对话加载失败，重试") }
+                        chat.nextBefore != null -> TextButton(onClick = requestEarlier,
+                            modifier = Modifier.testTag("history-earlier")) { Text("查看更早消息") }
+                        chat.messages.isNotEmpty() -> Note("已到对话开头")
+                    }
+                }
+            }
+            if (chat.messages.isEmpty() && chat.historyLoaded)
+                item(key = "welcome") {
                     Sheet(Modifier.fillMaxWidth()) {
                         Text("最近想给生活添点什么？", fontSize = 23.sp, fontWeight = FontWeight.Bold)
                         Note("告诉我预算、人数和使用场景，我可以查商品、比较规格，再帮你规划装备。")
@@ -89,10 +149,9 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                         }
                     }
                 }
-            // History is append-only; the ordinal is stable within one conversation.
-            itemsIndexed(chat.messages, key = { index, _ -> "${chat.conversationKey}:$index" }) { _, message ->
+            items(chat.messages, key = { "message:${it.messageId}" }) { message ->
                 if (message.user)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Row(Modifier.fillMaxWidth().testTag("chat-message-${message.messageId}"), horizontalArrangement = Arrangement.End) {
                         Text(
                             message.segments.joinToString("") { it.text },
                             Modifier.widthIn(max = 500.dp)
@@ -102,7 +161,7 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                     }
                 else
                     Column(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().testTag("chat-message-${message.messageId}"),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
@@ -116,6 +175,7 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                             if (segment.block == null) SelectionContainerCompat(segment.text)
                             else AgentCard(segment, vm, state)
                         }
+                        if (message.pending && !chat.streaming) Note("这段回复尚未完成，可稍后从服务端恢复。")
                         message.suggestions.forEach { suggestion ->
                             SuggestionChip(
                                 onClick = { vm.draft(suggestion) },
@@ -125,8 +185,8 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                         }
                     }
             }
-            if (chat.streaming)
-                item {
+            item(key = "latest") {
+                if (chat.streaming) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -134,24 +194,21 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Note(chat.activity.ifBlank { "助手正在整理回答…" })
                     }
-                }
-            if (chat.messages.isNotEmpty() && !chat.streaming)
-                item {
+                } else if (chat.messages.isNotEmpty()) {
                     TextButton(
                         onClick = {
                             vm.restoreChat()
                             vm.refreshCart()
                             vm.refreshOrders()
                         }
-                    ) {
-                        Text("从服务端恢复对话与操作结果")
-                    }
+                    ) { Text("从服务端恢复对话与操作结果") }
                 }
+            }
         }
         LaunchedEffect(chat.messages, chat.streaming, following) {
             if (following && chat.messages.isNotEmpty()) {
-                // Target the footer so a growing final message remains visible without restarting an animation.
-                list.requestScrollToItem(chat.messages.size)
+                // One fixed history header precedes messages; the actual footer follows the growing reply.
+                list.requestScrollToItem(chat.messages.size + 1)
             }
         }
         if (!following) {
@@ -175,7 +232,7 @@ fun ChatContent(vm: BuyerViewModel, state: BuyerState, chat: ChatState) {
             )
             FilledIconButton(
                 onClick = if (chat.streaming) vm::stopChat else vm::send,
-                enabled = chat.streaming || chat.draft.isNotBlank(),
+                enabled = chat.streaming || (chat.historyLoaded && !chat.loadingHistory && chat.draft.isNotBlank()),
                 modifier = Modifier.size(52.dp),
             ) {
                 Icon(

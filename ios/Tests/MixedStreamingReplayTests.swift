@@ -46,17 +46,17 @@ final class MixedStreamingReplayTests: XCTestCase {
         let productBlock: Object = ["component": "products", "stream_id": "recommendation", "payload": ["title": "适合日常的选择", "items": [["product": product, "reason": "定时冲煮，适合日常多人饮用。"]]]]
         let comparison: Object = ["component": "comparison", "stream_id": "comparison", "payload": ["title": "先看清取舍", "entries": [["product": product, "best_for": "日常多人饮用", "pros": ["支持定时", "容量充足"], "cons": ["需要预留台面空间"]]]]]
         let history: [Object] = (0..<60).map { index in
-            if index.isMultiple(of: 2) { return ["kind": "user", "text": "第\(index / 2 + 1)轮：帮我比较咖啡器具。"] }
-            return ["kind": "assistant", "segments": [
+            if index.isMultiple(of: 2) { return ["message_id": index + 1, "kind": "user", "text": "第\(index / 2 + 1)轮：帮我比较咖啡器具。"] }
+            return ["message_id": index + 1, "kind": "assistant", "segments": [
                 ["type": "text", "text": "结合容量、清洁方式、占地和预算选择。"],
                 ["type": "ui", "slotKey": "saved-\(index)", "status": "final", "block": index.isMultiple(of: 3) ? comparison : productBlock]
             ]]
         }
-        let snapshot = try jsonText(["items": history])
+        let snapshot = try jsonText(["session_id": "mixed-history", "status": "completed", "items": history, "next_before": NSNull()])
         func frame(_ type: String, _ payload: Object) throws -> Data {
             Data("event: \(type)\r\ndata: \(try jsonText(payload))\r\n\r\n".utf8)
         }
-        var frames = [try frame("ui_partial", productBlock)]
+        var frames = [try frame("turn_started", ["session_id": "mixed-history", "user_message_id": 61, "assistant_message_id": 62]), try frame("ui_partial", productBlock)]
         for index in 0..<240 {
             if index == 24 { frames.append(try frame("ui", productBlock)) }
             if index == 120 { frames.append(try frame("ui", comparison)) }
@@ -80,7 +80,7 @@ final class MixedStreamingReplayTests: XCTestCase {
         var iteration = 0
         var environment: [String] = [
             "mode=\(mode); historyMessages=\(history.count); frames=\(frames.count); bytes=\(frames.reduce(0) { $0 + $1.count }); framesPerDelivery=\(framesPerDelivery)",
-            "nominalFrameBudgetMs=20; nominalLastFrameMs=4880; nominalEOFMs=4900",
+            "nominalFrameBudgetMs=20; nominalLastFrameMs=\(frames.count * 20); nominalEOFMs=\((frames.count + 1) * 20)",
             "system=\(UIDevice.current.systemName) \(UIDevice.current.systemVersion); initialFollowing=\(initialFollowing)"
         ]
         func powerState() -> String {
@@ -100,7 +100,7 @@ final class MixedStreamingReplayTests: XCTestCase {
                         os_signpost(.begin, log: Self.replayLog, name: "Restore history", signpostID: id, "%{public}@", run)
                         defer { os_signpost(.end, log: Self.replayLog, name: "Restore history", signpostID: id) }
                         model.chat.clear()
-                        try model.chat.timeline.restore(payload: snapshot)
+                        try model.chat.timeline.restorePage(payload: snapshot, sessionId: "mixed-history")
                         model.chat.messages = model.chat.timeline.messages
                     }
                     do {

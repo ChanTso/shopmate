@@ -15,10 +15,10 @@ final class StreamingReplayTests: XCTestCase {
         let model = BuyerModel(api: BuyerAPI(), storage: storage)
         let history: [Object] = (0..<60).map { index in
             index.isMultiple(of: 2)
-                ? ["kind": "user", "text": "第\(index / 2 + 1)轮：请比较适合日常使用的咖啡器具。"]
-                : ["kind": "assistant", "segments": [["type": "text", "text": String(repeating: "先比较容量、清洁方式和占地，再结合预算选择。", count: 12)]]]
+                ? ["message_id": index + 1, "kind": "user", "text": "第\(index / 2 + 1)轮：请比较适合日常使用的咖啡器具。"]
+                : ["message_id": index + 1, "kind": "assistant", "segments": [["type": "text", "text": String(repeating: "先比较容量、清洁方式和占地，再结合预算选择。", count: 12)]]]
         }
-        let snapshot = try jsonText(["items": history])
+        let snapshot = try jsonText(["session_id": "render-history", "status": "completed", "items": history, "next_before": NSNull()])
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
@@ -35,8 +35,11 @@ final class StreamingReplayTests: XCTestCase {
             Task { @MainActor in
                 do {
                     model.chat.clear()
-                    try model.chat.timeline.restore(payload: snapshot)
-                    model.chat.timeline.begin(text: "请继续比较，保留具体取舍。")
+                    try model.chat.timeline.restorePage(payload: snapshot, sessionId: "render-history")
+                    let start = StreamDecoder()
+                    _ = try start.line(raw: "event: turn_started")
+                    _ = try start.line(raw: "data: {\"session_id\":\"render-history\",\"user_message_id\":61,\"assistant_message_id\":62}")
+                    try model.chat.timeline.begin(text: "请继续比较，保留具体取舍。", event: XCTUnwrap(start.line(raw: "")), sessionId: "render-history")
                     model.chat.messages = model.chat.timeline.messages
                     model.chat.running = true
                     let decoder = StreamDecoder()

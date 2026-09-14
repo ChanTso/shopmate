@@ -127,7 +127,7 @@ open class BuyerApi(
         )
     }
 
-    fun chat(id: String, message: String, page: JsonObject): Flow<StreamEvent> = callbackFlow {
+    open fun chat(id: String, message: String, page: JsonObject): Flow<StreamEvent> = callbackFlow {
         val streamClient = client.newBuilder().readTimeout(0, TimeUnit.SECONDS).build()
         val call =
             streamClient.newCall(

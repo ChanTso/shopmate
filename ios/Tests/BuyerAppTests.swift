@@ -8,7 +8,7 @@ final class BuyerAppTests: XCTestCase {
         var transport = StreamLines()
         let decoder = StreamDecoder()
         let timeline = ChatTimeline()
-        timeline.begin(text: "查询")
+        try timeline.begin(text: "查询", event: startEvent("test"), sessionId: "test")
         let bytes = Data("event: text_delta\r\ndata: {\"text\":\"你好\"}\r\n\r\nevent: turn_complete\ndata: {}\n\n".utf8)
         for byte in bytes {
             if let line = try transport.accept(byte), let event = try decoder.line(raw: line) { try timeline.accept(event: event) }
@@ -110,13 +110,15 @@ final class BuyerAppTests: XCTestCase {
         defer { session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
         model.storage.conversation = "history-race"
         model.products = [["product_id": "test"]]
+        try model.chat.timeline.restorePage(payload: historyPage("history-race", ids: [1, 2]), sessionId: "history-race")
+        model.chat.publishTimeline()
         let historyStarted = expectation(description: "old history request")
         var delayed: BuyerTestProtocol?
         BuyerTestProtocol.handle = { request in
-            if request.request.url!.path.hasSuffix("/history-race") {
+            if request.request.url!.path.hasSuffix("/history-race/messages") {
                 DispatchQueue.main.async { delayed = request; historyStarted.fulfill() }
             } else if request.request.url!.path.hasSuffix("/chat") {
-                request.reply("event: text_delta\ndata: {\"text\":\"本轮的新回答\"}\n\nevent: turn_complete\ndata: {}\n\n", type: "text/event-stream")
+                request.reply(startFrame("history-race", user: 3, assistant: 4) + "event: text_delta\ndata: {\"text\":\"本轮的新回答\"}\n\nevent: turn_complete\ndata: {}\n\n", type: "text/event-stream")
             } else { request.reply("{}") }
         }
         let oldLoad = model.reload()
@@ -124,7 +126,7 @@ final class BuyerAppTests: XCTestCase {
         model.send("继续推荐")
         try await settle { !model.chat.running }
         XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
-        delayed?.reply("{\"items\":[{\"kind\":\"user\",\"text\":\"旧历史\"}]}")
+        delayed?.reply(try historyPage("history-race", ids: [1, 2]))
         await oldLoad.value
         XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "本轮的新回答")
         model.logout()
@@ -139,12 +141,12 @@ final class BuyerAppTests: XCTestCase {
         let cancelled = expectation(description: "native transport cancelled")
         BuyerTestProtocol.handle = { request in
             request.onStop = { cancelled.fulfill() }
-            request.startStream("event: text_delta\ndata: {\"text\":\"未完成的回答\"}\n\n")
+            request.startStream(startFrame("cancel-test") + "event: text_delta\ndata: {\"text\":\"未完成的回答\"}\n\n")
             started.fulfill()
         }
         model.send("先查询")
         await fulfillment(of: [started], timeout: 3)
-        try await settle { !model.chat.messages.last!.segments.isEmpty }
+        try await settle { model.chat.messages.last?.segments.isEmpty == false }
         model.stop()
         try await settle { !model.chat.running }
         await fulfillment(of: [cancelled], timeout: 3)
@@ -515,7 +517,7 @@ extension BuyerAppTests {
     func testSameSlotCardUpdatesFromPartialToFinalAndReplacement() async throws {
         let (model, session, defaults, suite) = try isolatedModel()
         defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
-        model.chat.timeline.begin(text: "请推荐一款咖啡机。")
+        try model.chat.timeline.begin(text: "请推荐一款咖啡机。", event: startEvent("cards"), sessionId: "cards")
         model.chat.messages = model.chat.timeline.messages
         model.chat.running = true
         model.chat.activity = "整理商品"
@@ -593,5 +595,347 @@ extension BuyerAppTests {
         XCTAssertEqual(text(product, "title"), "紧凑浓缩咖啡机")
         XCTAssertEqual(product["price"] as? Double, 249.0)
         try await capture("03 Same slot replacement - espresso product at 249")
+    }
+}
+
+private func startFrame(_ session: String, user: Int64 = 1, assistant: Int64 = 2) -> String {
+    "event: turn_started\ndata: {\"session_id\":\"\(session)\",\"user_message_id\":\(user),\"assistant_message_id\":\(assistant)}\n\n"
+}
+
+private func startEvent(_ session: String, user: Int64 = 1, assistant: Int64 = 2) throws -> StreamEvent {
+    let decoder = StreamDecoder()
+    var event: StreamEvent?
+    for line in startFrame(session, user: user, assistant: assistant).components(separatedBy: "\n") {
+        if let value = try decoder.line(raw: line) { event = value }
+    }
+    return try XCTUnwrap(event)
+}
+
+private func historyPage(_ session: String, ids: [Int64], before: Int64? = nil) throws -> String {
+    let items: [Object] = ids.map { id in
+        if id % 2 == 1 { return ["message_id": id, "kind": "user", "text": "历史问题\(id)"] }
+        return ["message_id": id, "kind": "assistant", "segments": [["type": "text", "text": "历史回答\(id)"]], "pending": false]
+    }
+    return try jsonText(["session_id": session, "status": "completed", "items": items, "next_before": before.map { $0 as Any } ?? NSNull()])
+}
+
+extension BuyerAppTests {
+    @MainActor
+    func testFirstHistoryDoesNotWaitForCommerceAndGatesSending() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "initial-page"
+        model.products = [["product_id": "test"]]
+        let requested = expectation(description: "history independent of Commerce")
+        var history: BuyerTestProtocol?
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.hasSuffix("/messages") {
+                DispatchQueue.main.async { history = request; requested.fulfill() }
+            } else { request.reply("{}", status: 503) }
+        }
+        let load = model.reload()
+        await fulfillment(of: [requested], timeout: 3)
+        XCTAssertTrue(model.chat.requiresHistory)
+        model.send("等待历史后才能开始")
+        XCTAssertFalse(model.chat.running)
+        history?.reply(try historyPage("initial-page", ids: [31, 32], before: 31))
+        await load.value
+        XCTAssertFalse(model.chat.requiresHistory)
+        XCTAssertEqual(model.chat.messages.map(\.messageId), [31, 32])
+        XCTAssertEqual(model.chat.nextBefore, 31)
+    }
+
+    @MainActor
+    func testEarlierPageMergesDuringStreamWithoutReplacingTail() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "paged-stream"
+        try model.chat.timeline.restorePage(payload: historyPage("paged-stream", ids: [31, 32], before: 31), sessionId: "paged-stream")
+        model.chat.publishTimeline()
+        let pageStarted = expectation(description: "earlier page in flight")
+        let streamStarted = expectation(description: "new stream in flight")
+        var page: BuyerTestProtocol?
+        var stream: BuyerTestProtocol?
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.hasSuffix("/messages") {
+                DispatchQueue.main.async { page = request; pageStarted.fulfill() }
+            } else {
+                DispatchQueue.main.async {
+                    stream = request
+                    request.startStream(startFrame("paged-stream", user: 33, assistant: 34) + "event: text_delta\ndata: {\"text\":\"新回复\"}\n\n")
+                    streamStarted.fulfill()
+                }
+            }
+        }
+        let load = try XCTUnwrap(model.loadEarlier())
+        await fulfillment(of: [pageStarted], timeout: 3)
+        model.send("一边翻页，一边回答")
+        await fulfillment(of: [streamStarted], timeout: 3)
+        try await settle { model.chat.messages.last?.segments.last?.text == "新回复" }
+        page?.reply(try historyPage("paged-stream", ids: Array(1...30)))
+        await load.value
+        XCTAssertTrue(model.chat.running)
+        XCTAssertEqual(model.chat.messages.map(\.messageId), Array(1...34))
+        XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "新回复")
+        XCTAssertNil(model.chat.nextBefore)
+        stream?.appendStream("event: text_delta\ndata: {\"text\":\"继续\"}\n\nevent: turn_complete\ndata: {}\n\n")
+        stream?.finishStream()
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "新回复继续")
+        XCTAssertEqual(model.chat.messages.last?.pending, false)
+    }
+
+    @MainActor
+    func testEarlierPageRetryKeepsCursorAndLoadedMessages() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "page-retry"
+        try model.chat.timeline.restorePage(payload: historyPage("page-retry", ids: [31, 32], before: 31), sessionId: "page-retry")
+        model.chat.publishTimeline()
+        let old = try historyPage("page-retry", ids: Array(1...30))
+        var queries: [String] = []
+        BuyerTestProtocol.handle = { request in
+            queries.append(request.request.url!.query!)
+            if queries.count == 1 { request.reply("{}", status: 503) }
+            else { request.reply(old) }
+        }
+        await model.loadEarlier()?.value
+        XCTAssertEqual(model.chat.nextBefore, 31)
+        XCTAssertEqual(model.chat.messages.map(\.messageId), [31, 32])
+        XCTAssertNotNil(model.chat.historyError)
+        model.retryHistory()
+        try await settle { !model.chat.earlierLoading }
+        XCTAssertEqual(queries, ["limit=30&before=31", "limit=30&before=31"])
+        XCTAssertNil(model.chat.nextBefore)
+        XCTAssertNil(model.chat.historyError)
+        XCTAssertEqual(model.chat.messages.count, 32)
+    }
+
+    @MainActor
+    func testLatestPageRetryDoesNotBecomeAnEarlierPageRequest() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "latest-retry"
+        model.products = [["product_id": "test"]]
+        try model.chat.timeline.restorePage(payload: historyPage("latest-retry", ids: [31, 32], before: 31), sessionId: "latest-retry")
+        model.chat.publishTimeline()
+        let latest = try historyPage("latest-retry", ids: [33, 34], before: 33)
+        var queries: [String] = []
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.hasSuffix("/messages") {
+                queries.append(request.request.url!.query!)
+                if queries.count == 1 { request.reply("{}", status: 503) }
+                else { request.reply(latest) }
+            } else { request.reply("{}") }
+        }
+        await model.reload().value
+        XCTAssertNotNil(model.chat.historyError)
+        XCTAssertFalse(model.chat.requiresHistory)
+        model.retryHistory()
+        try await settle { queries.count == 2 && !model.chat.latestLoading }
+        XCTAssertEqual(queries, ["limit=30", "limit=30"])
+        XCTAssertEqual(model.chat.messages.map(\.messageId), [33, 34])
+        XCTAssertEqual(model.chat.nextBefore, 33)
+    }
+
+    @MainActor
+    func testEarlierPageCannotLeakAcrossConversationSwitch() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "previous"
+        try model.chat.timeline.restorePage(payload: historyPage("previous", ids: [31, 32], before: 31), sessionId: "previous")
+        model.chat.publishTimeline()
+        let requested = expectation(description: "previous page")
+        var old: BuyerTestProtocol?
+        let next = try historyPage("next", ids: [1, 2])
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.contains("/previous/") {
+                DispatchQueue.main.async { old = request; requested.fulfill() }
+            } else { request.reply(next) }
+        }
+        let load = model.loadEarlier()
+        await fulfillment(of: [requested], timeout: 3)
+        model.selectConversation("next")
+        try await settle { !model.chat.requiresHistory && model.chat.messages.count == 2 }
+        old?.reply("{}", status: 503)
+        await load?.value
+        XCTAssertEqual(model.storage.conversation, "next")
+        XCTAssertEqual(model.chat.messages.map(\.messageId), [1, 2])
+        XCTAssertNil(model.chat.historyError)
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
+    func testFailedHistoryIsReportedBeforeCommerceFinishesAndCannotLeakAfterSwitch() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "failed-history"
+        model.products = [["product_id": "test"]]
+        let commerceStarted = expectation(description: "Commerce remains in flight")
+        let next = try historyPage("next", ids: [1, 2])
+        BuyerTestProtocol.handle = { request in
+            if request.request.url!.path.hasSuffix("/cart") { commerceStarted.fulfill() }
+            else if request.request.url!.path.contains("/failed-history/") { request.reply("{}", status: 503) }
+            else { request.reply(next) }
+        }
+        let oldLoad = model.reload()
+        await fulfillment(of: [commerceStarted], timeout: 3)
+        try await settle { model.chat.historyError != nil }
+        XCTAssertNotNil(model.error, "The owned history error is reported without waiting for Commerce")
+        model.error = nil
+        model.selectConversation("next")
+        await oldLoad.value
+        try await settle { !model.chat.requiresHistory }
+        XCTAssertEqual(model.storage.conversation, "next")
+        XCTAssertNil(model.error)
+        XCTAssertNil(model.chat.historyError)
+    }
+
+    @MainActor
+    func testDraftSurvivesBeforeStartFailureAndCancellation() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "draft"
+        for status in [409, 503] {
+            BuyerTestProtocol.handle = { request in request.reply("{}", status: status) }
+            model.chat.draft = "保留输入"
+            model.send(model.chat.draft)
+            try await settle { !model.chat.running }
+            XCTAssertEqual(model.chat.draft, "保留输入")
+            XCTAssertTrue(model.chat.messages.isEmpty)
+        }
+        let requested = expectation(description: "waiting for start")
+        BuyerTestProtocol.handle = { _ in requested.fulfill() }
+        model.send(model.chat.draft)
+        await fulfillment(of: [requested], timeout: 3)
+        model.stop()
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.draft, "保留输入")
+        XCTAssertTrue(model.chat.messages.isEmpty)
+    }
+
+    @MainActor
+    func testStartClearsOnlyTheSubmittedDraft() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "draft-start"
+        let requested = expectation(description: "delayed start")
+        var stream: BuyerTestProtocol?
+        BuyerTestProtocol.handle = { request in
+            DispatchQueue.main.async { stream = request; requested.fulfill() }
+        }
+        model.chat.draft = "原始输入"
+        model.send(model.chat.draft)
+        await fulfillment(of: [requested], timeout: 3)
+        model.chat.draft = "连接期间的新输入"
+        stream?.reply(startFrame("draft-start") + "event: turn_complete\ndata: {}\n\n", type: "text/event-stream")
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.draft, "连接期间的新输入")
+        XCTAssertEqual(model.chat.messages.first?.segments.first?.text, "原始输入")
+        BuyerTestProtocol.handle = { request in
+            request.reply(startFrame("draft-start", user: 3, assistant: 4) + "event: turn_complete\ndata: {}\n\n", type: "text/event-stream")
+        }
+        model.send(model.chat.draft)
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.draft, "")
+        XCTAssertEqual(model.chat.messages[2].segments.first?.text, "连接期间的新输入")
+    }
+
+    @MainActor
+    func testProtocolFailureAndServerErrorEndOnlyLocalReply() async throws {
+        let (model, session, defaults, suite) = try isolatedModel()
+        defer { model.logout(); session.invalidateAndCancel(); defaults.removePersistentDomain(forName: suite) }
+        model.storage.conversation = "stream-failure"
+        BuyerTestProtocol.handle = { request in
+            request.reply("event: text_delta\ndata: {\"text\":\"缺少身份\"}\n\nevent: turn_complete\ndata: {}\n\n", type: "text/event-stream")
+        }
+        model.send("无开始信息")
+        try await settle { !model.chat.running }
+        XCTAssertTrue(model.chat.messages.isEmpty)
+        XCTAssertNotNil(model.error)
+        BuyerTestProtocol.handle = { request in
+            request.reply(startFrame("stream-failure") + "event: text_delta\ndata: {\"text\":\"保留这部分\"}\n\nevent: error\ndata: {\"message\":\"生成中断\"}\n\n", type: "text/event-stream")
+        }
+        model.send("有开始信息后失败")
+        try await settle { !model.chat.running }
+        XCTAssertEqual(model.chat.messages.last?.segments.last?.text, "保留这部分")
+        XCTAssertEqual(model.chat.messages.last?.pending, false)
+        XCTAssertEqual(model.error, "生成中断")
+    }
+}
+
+private extension BuyerTestProtocol {
+    func appendStream(_ body: String) { client?.urlProtocol(self, didLoad: Data(body.utf8)) }
+    func finishStream() { client?.urlProtocolDidFinishLoading(self) }
+}
+
+
+private final class HistoryInteractionScrollView: UIScrollView {
+    var dragging = false
+    var decelerating = false
+    override var isDragging: Bool { dragging }
+    override var isDecelerating: Bool { decelerating }
+}
+
+extension BuyerAppTests {
+    @MainActor
+    func testHistoryWaitSuspendsForDraggingAndDeceleration() async throws {
+        let (position, scroll, window) = try mountedHistoryPosition()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for dragging in [true, false] {
+            scroll.dragging = dragging
+            scroll.decelerating = !dragging
+            var resumed = false
+            let entered = expectation(description: "scroll wait entered")
+            let waiting = Task {
+                entered.fulfill()
+                try await position.waitUntilScrollingStops()
+                resumed = true
+            }
+            await fulfillment(of: [entered], timeout: 1)
+            XCTAssertFalse(resumed)
+            scroll.dragging = false
+            scroll.decelerating = false
+            try await waiting.value
+            XCTAssertTrue(resumed)
+        }
+    }
+
+    @MainActor
+    func testHistoryWaitCanBeCancelledWhileGestureContinues() async throws {
+        let (position, scroll, window) = try mountedHistoryPosition()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        scroll.dragging = true
+        let entered = expectation(description: "cancellable scroll wait entered")
+        let waiting = Task {
+            entered.fulfill()
+            try await position.waitUntilScrollingStops()
+        }
+        await fulfillment(of: [entered], timeout: 1)
+        waiting.cancel()
+        do {
+            try await waiting.value
+            XCTFail("A cancelled earlier-page wait must not continue to merge")
+        } catch is CancellationError {
+            XCTAssertTrue(scroll.isDragging)
+        }
+    }
+
+    @MainActor
+    private func mountedHistoryPosition() throws -> (ConversationReadingPosition, HistoryInteractionScrollView, UIWindow) {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.windowLevel = .normal + 1
+        let controller = UIViewController()
+        window.rootViewController = controller
+        let scroll = HistoryInteractionScrollView(frame: window.bounds)
+        let position = ConversationReadingPosition()
+        let marker = ConversationViewportMarker.ViewportView(position: position)
+        scroll.addSubview(marker)
+        controller.view.addSubview(scroll)
+        window.makeKeyAndVisible()
+        XCTAssertNotNil(marker.window)
+        return (position, scroll, window)
     }
 }

@@ -54,6 +54,18 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  BuyerInteractionTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests/HistoryInteractionTests.swift]
+    dependencies:
+      - target: ShopMate
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.shopmate.buyer.ios.interaction-tests
+        OTHER_LDFLAGS: ''
+        TEST_TARGET_NAME: ShopMate
   StreamingReplayTests:
     type: bundle.unit-test
     platform: iOS
@@ -64,6 +76,14 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  BuyerInteraction:
+    build:
+      targets:
+        ShopMate: all
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets: [BuyerInteractionTests]
   StreamingReplay:
     build:
       targets:

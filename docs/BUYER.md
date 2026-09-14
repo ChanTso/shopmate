@@ -32,6 +32,23 @@ The ViewModel retains the current task across view reconstruction. Wide windows 
 
 Before an idempotent write, the phone saves the original key and request body. If the response is missing, the operation remains marked “待核对” (verbatim UI label: pending verification). Recovery first queries the original receipt; only after the user confirms continuation does it retry the original intent with the same key. Payment follows the original checkout, and refund confirmation replays the original pending action. Switching chats does not change command ownership.
 
+## Paged conversation history
+
+Both native clients first request `GET /api/buyer/conversations/{id}/messages?limit=30`. The endpoint is a pure read scoped to the authenticated buyer and conversation; it does not recover business operations. Its response contains `session_id`, `status`, `items` and `next_before`. Items are chronological; `next_before` is the first returned message ID when older items remain, otherwise `null`. Pass it as `before` to request strictly older items. `limit` defaults to 30 and accepts 1–100.
+
+Each buyer UI item has a positive, increasing `message_id` within its conversation. Existing buyer histories receive IDs in their saved order, once; already assigned IDs and merchant histories remain unchanged. After persisting the new user item and pending assistant item, the chat stream emits `turn_started` before invoking the model:
+
+```text
+event: turn_started
+data: {"session_id":"example","user_message_id":71,"assistant_message_id":72}
+```
+
+These IDs bind live text and card updates to the same messages returned by later history reads. They identify messages, not SSE offsets; reconnecting reads saved state rather than resuming an event log. A restored pending reply does not imply a running local stream. The existing full-session GET API remains available, including its recovery behavior.
+
+KMP validates conversation identity, page ordering and cursor boundaries, restores the latest page, and prepends older pages without replacing the live tail. An identical repeated page is ignored; conflicting repeated content is rejected. Native models own cancellation and request ownership across account or conversation changes; native views own reading anchors and following behavior. Sending into an existing conversation waits for its initial history page.
+
+Pagination bounds the response and initial client load. SQLite still stores and reads the whole conversation JSON; this change does not introduce a message table, indexed database pagination or a new retention policy.
+
 ## Data boundaries
 
 Java/MySQL is authoritative for orders, prices, stock, payment, and approvals. ShopMate SQLite stores single-instance conversations, memory, runtime state, and recovery records; it is not the seckill order database. Conversations, commands, and memory are isolated between both buyers and the merchant identity.

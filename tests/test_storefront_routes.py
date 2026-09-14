@@ -1,4 +1,5 @@
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -8,6 +9,7 @@ from commerce_common.streaming import AgentEvent
 
 from shopmate.app import create_app
 from shopmate.auth import RequestIdentity, current_context
+from shopmate.buyer_routes import ChatRequest
 from shopmate.sessions import SessionStore
 from shopmate.settings import Settings
 
@@ -72,7 +74,7 @@ async def portal(tmp_path):
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
     ):
-        yield SimpleNamespace(client=client, store=store, agent=agent)
+        yield SimpleNamespace(app=app, client=client, store=store, agent=agent)
     store.close()
 
 
@@ -160,3 +162,181 @@ async def test_chat_limits_do_not_block_shopping_and_cancel_releases_capacity(po
         await asyncio.gather(*tasks, return_exceptions=True)
     assert p.store.get(a1, "a", role="buyer").status == "interrupted"
     assert (await chat(a2, "a")).status_code == 200
+
+
+def history_items(count):
+    return [
+        {"message_id": index, "kind": "user", "text": f"Message {index}"}
+        if index % 2
+        else {
+            "message_id": index,
+            "kind": "assistant",
+            "turn": index // 2,
+            "segments": [{"type": "text", "text": f"Answer {index}"}],
+            "pending": False,
+        }
+        for index in range(1, count + 1)
+    ]
+
+
+async def test_buyer_history_pages_are_exclusive_and_unchanged_by_tail_append(portal):
+    p = portal
+    identifier = await conversation(p, "owner")
+    record = p.store.get(identifier, "owner", role="buyer")
+    record.items = history_items(74)
+    p.store.save(record)
+    path = f"/api/buyer/conversations/{identifier}/messages"
+    response = await p.client.get(path, headers=headers("owner"))
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    latest = response.json()
+    assert latest["session_id"] == identifier and latest["status"] == "idle"
+    assert latest["items"] == record.items[-30:]
+    assert latest["next_before"] == 45
+    first_older = (
+        await p.client.get(path, params={"before": 45, "limit": 20}, headers=headers("owner"))
+    ).json()
+    assert first_older["items"] == record.items[24:44]
+    assert first_older["next_before"] == 25
+    record.items = history_items(76)
+    p.store.save(record)
+    assert (
+        await p.client.get(path, params={"before": 45, "limit": 20}, headers=headers("owner"))
+    ).json() == first_older
+    collected = first_older["items"] + latest["items"]
+    before = first_older["next_before"]
+    while before is not None:
+        page = (
+            await p.client.get(
+                path, params={"before": before, "limit": 20}, headers=headers("owner")
+            )
+        ).json()
+        assert all(item["message_id"] < before for item in page["items"])
+        collected = page["items"] + collected
+        before = page["next_before"]
+    assert collected == history_items(74)
+    empty = (await p.client.get(path, params={"before": 1}, headers=headers("owner"))).json()
+    assert empty["items"] == [] and empty["next_before"] is None
+    all_items = (await p.client.get(path, params={"limit": 100}, headers=headers("owner"))).json()
+    assert all_items["items"] == history_items(76) and all_items["next_before"] is None
+
+
+async def test_buyer_history_is_pure_read_and_legacy_restore_keeps_recovery(portal):
+    p = portal
+    identifier = await conversation(p, "owner")
+    record = p.store.get(identifier, "owner", role="buyer")
+    record.items = history_items(40)
+    p.store.save(record)
+    calls = []
+
+    async def recover(context):
+        calls.append("recover")
+        return []
+
+    async def checkouts(context):
+        calls.append("checkouts")
+        return []
+
+    def actions(context):
+        calls.append("actions")
+        return []
+
+    resources = p.app.state.resources
+    resources["buyer_backend"].recover_cart_commands = recover
+    resources["transactions"] = SimpleNamespace(checkouts=checkouts, actions=actions)
+    recent = await p.client.get(
+        f"/api/buyer/conversations/{identifier}/messages", headers=headers("owner")
+    )
+    assert recent.status_code == 200 and len(recent.json()["items"]) == 30
+    assert calls == []
+    for path, extra in [
+        (f"/api/buyer/conversations/{identifier}", {}),
+        ("/api/buyer/session", {"X-Session-Id": identifier}),
+    ]:
+        legacy = await p.client.get(path, headers=headers("owner") | extra)
+        assert legacy.status_code == 200
+        assert legacy.json()["items"] == record.items
+        assert {"commands", "checkouts", "actions"} <= legacy.json().keys()
+    assert calls == ["recover", "checkouts", "actions"] * 2
+
+
+async def test_buyer_history_owner_role_and_query_boundaries(portal):
+    p = portal
+    identifier = await conversation(p, "owner")
+    path = f"/api/buyer/conversations/{identifier}/messages"
+    empty = await p.client.get(path, headers=headers("owner"))
+    assert empty.json()["items"] == [] and empty.json()["next_before"] is None
+    assert (await p.client.get(path)).status_code == 401
+    assert (await p.client.get(path, headers=headers("other"))).status_code == 404
+    merchant = p.store.create("owner")
+    assert (
+        await p.client.get(
+            f"/api/buyer/conversations/{merchant.session_id}/messages", headers=headers("owner")
+        )
+    ).status_code == 404
+    for params in [
+        {"limit": 0},
+        {"limit": 101},
+        {"before": 0},
+        {"before": "broken"},
+        {"before": 2**63},
+    ]:
+        assert (
+            await p.client.get(path, params=params, headers=headers("owner"))
+        ).status_code == 422
+
+
+async def test_buyer_start_ids_are_persisted_before_model_and_survive_early_close(portal):
+    p = portal
+    identifier = await conversation(p, "owner")
+    endpoint = next(
+        route.endpoint
+        for route in p.app.routes
+        if getattr(route, "path", None) == "/api/buyer/conversations/{conversation_id}/chat"
+    )
+    response = await endpoint(
+        identifier, ChatRequest(message="first"), RequestIdentity("owner", "owner")
+    )
+    stream = response.body_iterator
+    first = await anext(stream)
+    assert first.startswith("event: turn_started\n")
+    metadata = json.loads(first.split("data: ", 1)[1])
+    assert metadata == {"session_id": identifier, "user_message_id": 1, "assistant_message_id": 2}
+    saved = p.store.get(identifier, "owner", role="buyer")
+    assert [item["message_id"] for item in saved.items] == [1, 2]
+    assert saved.status == "running" and saved.items[-1]["pending"]
+    assert p.agent.started.empty()
+    recent = (
+        await p.client.get(
+            f"/api/buyer/conversations/{identifier}/messages", headers=headers("owner")
+        )
+    ).json()
+    assert recent["status"] == "running" and recent["items"] == saved.items
+    await stream.aclose()
+    await response.background()
+    saved = p.store.get(identifier, "owner", role="buyer")
+    assert saved.status == "interrupted" and not saved.items[-1]["pending"]
+    assert saved.items[-1]["message_id"] == 2
+    assert saved.items[-1]["segments"][-1]["type"] == "error"
+    assert p.agent.started.empty()
+    p.agent.release.set()
+    second = await p.client.post(
+        f"/api/buyer/conversations/{identifier}/chat",
+        json={"message": "second"},
+        headers=headers("owner"),
+    )
+    assert second.status_code == 200
+    frames = second.text.strip().split("\n\n")
+    assert [frame.splitlines()[0] for frame in frames] == [
+        "event: turn_started",
+        "event: text_delta",
+        "event: turn_complete",
+    ]
+    assert json.loads(frames[0].split("data: ", 1)[1]) == {
+        "session_id": identifier,
+        "user_message_id": 3,
+        "assistant_message_id": 4,
+    }
+    saved = p.store.get(identifier, "owner", role="buyer")
+    assert [item["message_id"] for item in saved.items] == [1, 2, 3, 4]
+    assert saved.status == "completed" and saved.items[-1]["pending"] is False

@@ -9,7 +9,17 @@ let softBorder = Color(red: 0.87, green: 0.83, blue: 0.74)
 
 @main
 struct ShopMateApp: App {
-    @StateObject private var model = BuyerModel()
+    @StateObject private var model: BuyerModel
+
+    init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--history-interaction-test") {
+            _model = StateObject(wrappedValue: HistoryUITestFixture.makeModel())
+            return
+        }
+        #endif
+        _model = StateObject(wrappedValue: BuyerModel())
+    }
     var body: some Scene {
         WindowGroup { BuyerRoot(model: model).tint(accent).preferredColorScheme(.light) }
     }
