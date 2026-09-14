@@ -100,6 +100,6 @@ Open the merchant workspace at **http://127.0.0.1:8101/**. Build the buyer apps 
 | [`integration_tests/`](integration_tests/) · [`evals/`](evals/) | Business-boundary tests and real-model evaluations |
 | [`site/`](site/) | Independently built GitHub Pages product site |
 
-ShopMate reuses the retail cores and Messages runtime from [commerce-agents](vendor/commerce-agents/README.md), adding native clients, business tools, identity, persistent state, and transaction integration. Upstream [Apache-2.0 licensing](vendor/commerce-agents/LICENSE) and [image credits](web/public/products/IMAGE-CREDITS.md) are preserved. The [product site notes](site/README.md) describe how its native footage and interaction demonstrations were made.
+Native interfaces, agent execution, and persistent conversations connect to CityBuddy's identity and transaction services. The [product site notes](site/README.md) describe the native footage and interaction demonstrations; [image credits](web/public/products/IMAGE-CREDITS.md) list product photography sources.
 
 [Contributing](CONTRIBUTING.md) · [Apache-2.0 license](LICENSE)

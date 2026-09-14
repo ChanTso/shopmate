@@ -40,7 +40,7 @@ Memory save/new-conversation/process-restart/edit/delete and role isolation, act
 
 Retain client monotonic samples from each POST to first nonempty text, first complete UI event, terminal event, and stream closure, interpreted by component and task type. They are not browser first paint or pure service latency. Record multi-turn task timing and user actions separately rather than adding per-turn p99s. Small samples describe their observed distribution and range, not an agent HTTP capacity ceiling.
 
-Main, analysis, memory, and search usage uses existing provider_usage fields. Responses internal search_calls are not model-request counts. Cache observations use only reported read fields; unknown is not 0. Do not infer provider bills or explicit Anthropic cache hit rates. Budget exhaustion and call failures are separate categories; costs for both successes and failures remain included.
+Main, analysis, memory, and search usage uses existing provider_usage fields. Responses internal search_calls are not model-request counts. Cache observations use only reported read fields; unknown is not 0. Do not infer provider bills or provider-specific cache hit rates. Budget exhaustion and call failures are separate categories; costs for both successes and failures remain included.
 
 ## Targeted regression after semantic clarification
 
